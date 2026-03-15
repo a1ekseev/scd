@@ -1,0 +1,22 @@
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:26.2.6
+    container_name: scd-xray-test
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./docker/xray/config:/etc/xray/config:ro
+    command:
+      - run
+      - -confdir
+      - /etc/xray/config
+  scd:
+    build:
+      context: ./scd
+    depends_on:
+      - xray
+    restart: unless-stopped
+    volumes:
+      - ./docker/config.yml:/app/config/config.yml:ro
+      - ./vpn:/app/data/vpn:ro
