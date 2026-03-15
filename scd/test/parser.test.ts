@@ -20,7 +20,7 @@ import { generateManifestFromSubscription } from '../src/runtime/generate-manife
 import { parseSubscriptionLine } from '../src/subscription/parse-subscription-line.ts';
 import { scanLines } from '../src/subscription/scan-lines.ts';
 
-const vpnPath = fileURLToPath(new URL('../../vpn', import.meta.url));
+const vpnPath = fileURLToPath(new URL('./fixtures/vpn-sample.txt', import.meta.url));
 
 test('scanLines reads current vpn sample', async () => {
   const source = await readFile(vpnPath, 'utf8');
