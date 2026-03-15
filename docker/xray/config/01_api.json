@@ -1,0 +1,12 @@
+{
+  "api": {
+    "tag": "api",
+    "listen": "0.0.0.0:8080",
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService",
+      "RoutingService"
+    ]
+  }
+}

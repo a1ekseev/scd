@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+.state
+*.log
+README.md
+AI_AGENT.md
+test
+config.yml

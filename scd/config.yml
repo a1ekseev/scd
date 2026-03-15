@@ -1,0 +1,32 @@
+subscriptions:
+  - id: local-vpn
+    input: ../vpn
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    # Optional subscription-level filters applied after parsing and before target-specific tagging.
+    # filters:
+    #   countryAllowlist:
+    #     - DE
+    #     - NL
+    #   labelIncludeRegex: '/,\\s*Extra(?!\\s*Whitelist)\\s*$/i'
+    targets:
+      - address: 127.0.0.1:8080
+        timeoutMs: 5000
+        fixedOutbounds:
+          - direct
+          - blocked
+        # Optional prefix added to every applied outbound tag on this target.
+        # Useful for static observatory/balancer selector prefixes.
+        observatorySubjectSelectorPrefix: x-observe-
+
+runtime:
+  mode: run-once
+
+logging:
+  level: info
+  format: pretty
+
+resources:
+  outbounds:
+    enabled: true
