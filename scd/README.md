@@ -170,6 +170,21 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
 
 ## Docker
 
+Official GHCR image:
+- `ghcr.io/a1ekseev/scd:latest`
+- `ghcr.io/a1ekseev/scd:<version>`
+
+Pull the published image:
+
+```bash
+docker pull ghcr.io/a1ekseev/scd:latest
+```
+
+GitHub Actions publication policy:
+- `pull_request` and `push` to `master` run `npm ci`, `typecheck`, `test`, and Docker build verification only
+- git tags in the form `vX.Y.Z` publish `ghcr.io/a1ekseev/scd:latest` and `ghcr.io/a1ekseev/scd:X.Y.Z`
+- published images are multi-arch: `linux/amd64` and `linux/arm64`
+
 The repository includes:
 - Xray config dir: `../docker/xray/config/`
 - scd config: `../docker/config.yml`
