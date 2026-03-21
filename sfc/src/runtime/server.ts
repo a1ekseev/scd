@@ -1,12 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { Buffer } from 'node:buffer';
 
 import type { AppState, LoadedConfig } from '../types.ts';
 import type { Logger } from '../logging/create-logger.ts';
+import { buildOutputPath } from './output-path.ts';
 
 export interface ResponsePayload {
   statusCode: number;
   contentType: string;
   body: string;
+  headers?: Record<string, string>;
 }
 
 function text(statusCode: number, body: string): ResponsePayload {
@@ -17,27 +20,56 @@ function text(statusCode: number, body: string): ResponsePayload {
   };
 }
 
-export function handleServerRequest(urlPath: string, state: AppState): ResponsePayload {
+function matchesUserAgent(userAgent: string | undefined, allowedPrefixes: string[] | undefined): boolean {
+  if (!userAgent || !allowedPrefixes || allowedPrefixes.length === 0) {
+    return false;
+  }
+
+  return allowedPrefixes.some((prefix) => userAgent.startsWith(prefix));
+}
+
+function encodeProfileTitle(value: string): string {
+  return `base64:${Buffer.from(value, 'utf8').toString('base64')}`;
+}
+
+export function handleServerRequest(
+  urlPath: string,
+  state: AppState,
+  requestHeaders: Record<string, string | string[] | undefined> = {},
+): ResponsePayload {
   if (urlPath === '/healthz') {
     return text(200, 'ok\n');
   }
 
-  const match = /^\/s\/([^/?#]+)$/.exec(urlPath);
-  if (!match) {
-    return text(404, 'not found\n');
-  }
-
-  const id = decodeURIComponent(match[1] ?? '');
-  const output = state.outputs[id];
+  const output = state.outputsByPath[urlPath];
   if (!output) {
-    return text(404, 'unknown output id\n');
+    return text(404, 'not found\n');
   }
 
   if (!output.lastGoodBase64) {
     return text(502, 'output is not available yet\n');
   }
 
-  return text(200, output.lastGoodBase64);
+  const response = text(200, output.lastGoodBase64);
+  const userAgentHeader = requestHeaders['user-agent'];
+  const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
+
+  if (!matchesUserAgent(userAgent, output.userAgent)) {
+    return response;
+  }
+
+  const headers: Record<string, string> = {};
+  if (output.profileTitle) {
+    headers['profile-title'] = encodeProfileTitle(output.profileTitle);
+  }
+  if (output.profileUpdateInterval !== undefined) {
+    headers['profile-update-interval'] = String(output.profileUpdateInterval);
+  }
+  if (Object.keys(headers).length > 0) {
+    response.headers = headers;
+  }
+
+  return response;
 }
 
 export async function startServer(
@@ -52,9 +84,10 @@ export async function startServer(
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
-    const payload = handleServerRequest(url.pathname, state);
+    const payload = handleServerRequest(url.pathname, state, request.headers);
     response.writeHead(payload.statusCode, {
       'content-type': payload.contentType,
+      ...(payload.headers ?? {}),
     });
     response.end(payload.body);
   });

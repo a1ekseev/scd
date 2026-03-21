@@ -20,6 +20,7 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     fixedOutbounds: [],
     fixedInbounds: [],
     fixedRouting: [],
+    visionUdp443Override: false,
     inboundSocks: {
       listen: '127.0.0.1',
       portRange: {
@@ -283,6 +284,10 @@ test('runTargetSpeedtestTick respects maxParallel and keeps URL fallback sequent
   assert.deepEqual(
     calls.filter((item) => item.tunnelId === 'port-20000').map((item) => item.url),
     ['https://example.test/primary.bin', 'https://example.test/fallback.bin'],
+  );
+  assert.deepEqual(
+    Array.from(new Set(calls.map((item) => item.tunnelId))).sort(),
+    ['port-20000', 'port-20001', 'port-20002'],
   );
   assert.ok(calls.some((item) => item.tunnelId === 'port-20001'));
   assert.ok(calls.some((item) => item.tunnelId === 'port-20002'));

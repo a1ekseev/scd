@@ -46,11 +46,26 @@ function validateListenAddress(value: string): void {
   }
 }
 
+function validatePathRoute(value: string): void {
+  if (!value.startsWith('/')) {
+    throw new Error('pathRoute must start with "/".');
+  }
+  if (value.length < 2) {
+    throw new Error('pathRoute must not be "/".');
+  }
+  if (value.endsWith('/')) {
+    throw new Error('pathRoute must not end with "/".');
+  }
+}
+
 const outputSchema = z.object({
   id: z.string().trim().min(1),
   enabled: z.boolean().default(true),
   name: optionalTrimmedStringSchema,
   labelIncludeRegex: z.string().trim().min(1),
+  userAgent: z.array(z.string().trim().min(1)).min(1).optional(),
+  profileTitle: optionalTrimmedStringSchema,
+  profileUpdateInterval: z.number().int().min(1).max(24).optional(),
 }).superRefine((output, context) => {
   try {
     parseRegexLiteral(output.labelIncludeRegex);
@@ -69,6 +84,7 @@ const subscriptionSchema = z.object({
   enabled: z.boolean().default(true),
   format: z.enum(['auto', 'plain', 'base64']).default('auto'),
   fetchTimeoutMs: z.number().int().positive().default(5000),
+  pathRoute: z.string().trim().min(1),
   outputs: z.array(outputSchema).min(1),
 });
 
@@ -112,6 +128,18 @@ const appConfigSchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Duplicate subscription id "${id}" is not allowed.`,
+        path: ['subscriptions'],
+      });
+    }
+  }
+
+  for (const subscription of config.subscriptions) {
+    try {
+      validatePathRoute(subscription.pathRoute);
+    } catch (error) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error instanceof Error ? error.message : 'Invalid pathRoute.',
         path: ['subscriptions'],
       });
     }

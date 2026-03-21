@@ -21,6 +21,7 @@ function createTargetConfig(overrides: Partial<SubscriptionTargetConfig> = {}): 
     fixedOutbounds: [],
     fixedInbounds: [],
     fixedRouting: [],
+    visionUdp443Override: false,
     monitor: {
       enabled: false,
       maxParallel: 10,
@@ -114,6 +115,43 @@ test('loadConfig resolves relative paths, targets and interpolates env vars', as
     assert.equal(loaded.config.subscriptions[0]?.input, resolve(tempDir, 'subscription.txt'));
   } finally {
     delete process.env.XRAY_API_ADDRESS;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig parses visionUdp443Override and defaults it to false', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-config-vision-override-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    enabled: true',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        visionUdp443Override: true',
+        '      - address: 127.0.0.1:8081',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const loaded = await loadConfig(configPath);
+
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.visionUdp443Override, true);
+    assert.equal(loaded.config.subscriptions[0]?.targets[1]?.visionUdp443Override, false);
+  } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
 });

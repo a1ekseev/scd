@@ -25,6 +25,7 @@ function createLoadedConfig(): LoadedConfig {
               fixedOutbounds: [],
               fixedInbounds: [],
               fixedRouting: [],
+              visionUdp443Override: false,
               inboundSocks: {
                 listen: '127.0.0.1',
                 portRange: {

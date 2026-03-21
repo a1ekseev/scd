@@ -15,6 +15,7 @@ import type {
 import { createLogger, type Logger } from '../logging/create-logger.ts';
 import { parseSubscriptionLine } from '../subscription/parse-subscription-line.ts';
 import { scanLines } from '../subscription/scan-lines.ts';
+import { buildOutputPath } from './output-path.ts';
 
 function now(): string {
   return new Date().toISOString();
@@ -24,20 +25,35 @@ function createOutputState(subscription: SubscriptionConfig, output: OutputConfi
   return {
     id: output.id,
     subscriptionId: subscription.id,
+    pathRoute: subscription.pathRoute,
     name: output.name,
     regex: output.labelIncludeRegex,
+    userAgent: output.userAgent,
+    profileTitle: output.profileTitle,
+    profileUpdateInterval: output.profileUpdateInterval,
   };
 }
 
+function setOutputState(state: AppState, outputState: OutputRuntimeState): void {
+  state.outputs[outputState.id] = outputState;
+  state.outputsByPath[buildOutputPath(outputState.pathRoute, outputState.id)] = outputState;
+}
+
 export function createAppState(config: LoadedConfig['config']): AppState {
-  const outputs = Object.fromEntries(
-    config.subscriptions.flatMap((subscription) =>
-      subscription.outputs.map((output) => [output.id, createOutputState(subscription, output)]),
-    ),
-  );
+  const outputs: Record<string, OutputRuntimeState> = {};
+  const outputsByPath: Record<string, OutputRuntimeState> = {};
+
+  for (const subscription of config.subscriptions) {
+    for (const output of subscription.outputs) {
+      const outputState = createOutputState(subscription, output);
+      outputs[output.id] = outputState;
+      outputsByPath[buildOutputPath(subscription.pathRoute, output.id)] = outputState;
+    }
+  }
 
   return {
     outputs,
+    outputsByPath,
     refreshInProgress: false,
   };
 }
@@ -60,14 +76,19 @@ function updateOutputFailure(
   error: string,
 ): RefreshOutputReport {
   const current = state.outputs[output.id] ?? createOutputState(subscription, output);
-  state.outputs[output.id] = {
+  const nextState = {
     ...current,
+    pathRoute: subscription.pathRoute,
     regex: output.labelIncludeRegex,
     name: output.name,
+    userAgent: output.userAgent,
+    profileTitle: output.profileTitle,
+    profileUpdateInterval: output.profileUpdateInterval,
     lastRefreshAt: now(),
     lastFailureAt: now(),
     lastError: error,
   };
+  setOutputState(state, nextState);
 
   return {
     id: output.id,
@@ -89,10 +110,14 @@ function updateOutputSuccess(
   const plain = matched.map((entry) => entry.raw).join('\n');
   const base64 = Buffer.from(plain, 'utf8').toString('base64');
   const timestamp = now();
-  state.outputs[output.id] = {
+  const nextState = {
     ...(state.outputs[output.id] ?? createOutputState(subscription, output)),
+    pathRoute: subscription.pathRoute,
     name: output.name,
     regex: output.labelIncludeRegex,
+    userAgent: output.userAgent,
+    profileTitle: output.profileTitle,
+    profileUpdateInterval: output.profileUpdateInterval,
     lastGoodPlain: plain,
     lastGoodBase64: base64,
     lastGoodLineCount: matched.length,
@@ -100,6 +125,7 @@ function updateOutputSuccess(
     lastSuccessAt: timestamp,
     lastError: undefined,
   };
+  setOutputState(state, nextState);
 
   return {
     id: output.id,
