@@ -95,6 +95,7 @@ const targetSchema = z.object({
   fixedOutbounds: z.array(z.string().trim().min(1)).default([]),
   fixedInbounds: z.array(z.string().trim().min(1)).default([]),
   fixedRouting: z.array(z.string().trim().min(1)).default([]),
+  visionUdp443Override: z.boolean().default(false),
   inboundSocks: z
     .object({
       listen: z.string().trim().min(1),

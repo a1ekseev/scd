@@ -4,6 +4,7 @@ import type { ManifestEntry, OutboundManifest, TargetTopology } from '../types.t
 import { XrayHandlerClient } from '../api/xray-handler-client.ts';
 import { generateManifestFromSubscription } from '../runtime/generate-manifest-from-source.ts';
 import { buildTargetTopology } from '../topology/build-tunnel-topology.ts';
+import { overrideOutboundForTarget } from '../targets/override-outbound-for-target.ts';
 import type { ResourceApplicator, ResourcePlan } from './resource-applicator.ts';
 import { applyOutbounds } from './apply-outbounds.ts';
 import type { OutboundApiClient } from './apply-outbounds.ts';
@@ -38,27 +39,15 @@ function withEffectiveTag(tag: string, prefix?: string): string {
   return `${prefix}${tag}`;
 }
 
-function buildTargetManifest(manifest: OutboundManifest, prefix?: string): OutboundManifest {
-  if (!prefix) {
-    return manifest;
-  }
-
+function buildTargetManifest(
+  manifest: OutboundManifest,
+  target: { observatorySubjectSelectorPrefix?: string; visionUdp443Override: boolean },
+): OutboundManifest {
   return {
     ...manifest,
     entries: manifest.entries.map((entry) => {
-      const tag = withEffectiveTag(entry.tag, prefix);
-      return {
-        ...entry,
-        tag,
-        normalized: {
-          ...entry.normalized,
-          tag,
-        },
-        jsonOutbound: {
-          ...entry.jsonOutbound,
-          tag,
-        },
-      };
+      const tag = withEffectiveTag(entry.tag, target.observatorySubjectSelectorPrefix);
+      return overrideOutboundForTarget(entry, target, tag);
     }),
   };
 }
@@ -105,7 +94,7 @@ export function createOutboundApplicator(
     preparePlanForTarget(plan, target) {
       const topology = buildTargetTopology(plan.manifest, target);
       const targetManifest = sortManifest(
-        buildTopologyManifest(topology, buildTargetManifest(plan.manifest, target.observatorySubjectSelectorPrefix)),
+        buildTopologyManifest(topology, buildTargetManifest(plan.manifest, target)),
       );
       return {
         ...plan,

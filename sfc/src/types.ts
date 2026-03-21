@@ -7,6 +7,9 @@ export interface OutputConfig {
   enabled: boolean;
   name?: string;
   labelIncludeRegex: string;
+  userAgent?: string[];
+  profileTitle?: string;
+  profileUpdateInterval?: number;
 }
 
 export interface SubscriptionConfig {
@@ -15,6 +18,7 @@ export interface SubscriptionConfig {
   enabled: boolean;
   format: SubscriptionInputFormat;
   fetchTimeoutMs: number;
+  pathRoute: string;
   outputs: OutputConfig[];
 }
 
@@ -69,8 +73,12 @@ export interface ParsedSubscriptionEntry {
 export interface OutputRuntimeState {
   id: string;
   subscriptionId: string;
+  pathRoute: string;
   name?: string;
   regex: string;
+  userAgent?: string[];
+  profileTitle?: string;
+  profileUpdateInterval?: number;
   lastGoodBase64?: string;
   lastGoodPlain?: string;
   lastGoodLineCount?: number;
@@ -82,6 +90,7 @@ export interface OutputRuntimeState {
 
 export interface AppState {
   outputs: Record<string, OutputRuntimeState>;
+  outputsByPath: Record<string, OutputRuntimeState>;
   refreshInProgress: boolean;
   lastRefreshStartedAt?: string;
   lastRefreshFinishedAt?: string;

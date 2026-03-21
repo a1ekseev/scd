@@ -20,6 +20,7 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     fixedOutbounds: ['direct', 'blocked'],
     fixedInbounds: [],
     fixedRouting: [],
+    visionUdp443Override: false,
     inboundSocks: {
       listen: '127.0.0.1',
       portRange: {
@@ -144,6 +145,49 @@ test('buildCurrentRuntimeStateSnapshot combines local config with runtime API st
     assert.equal(snapshot?.runtime.inbounds[0]?.parsed?.protocol, 'socks');
     assert.equal(snapshot?.runtime.routingRules[0]?.parsed.outboundTag, tunnel.outboundTagCurrent);
     assert.equal(snapshot?.serviceState?.balancerMonitor, undefined);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('buildCurrentRuntimeStateSnapshot reflects target-specific vision udp443 override in expected and runtime views', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-runtime-flow-'));
+
+  try {
+    const content =
+      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?security=reality&encryption=none&fp=chrome&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=io.example.test&pbk=CMkW1axrhEXoiJ6anMz9XEjlfqlAtEZya7L0b5ZPMyw&sid=abe4a59b9f2407e3#🇩🇪 Германия, Extra';
+    const inputPath = join(tempDir, 'subscription.txt');
+    await writeFile(inputPath, content, 'utf8');
+
+    const target = createTarget({
+      visionUdp443Override: true,
+    });
+    const subscription: SubscriptionConfig = {
+      id: 'source-1',
+      input: inputPath,
+      enabled: true,
+      format: 'plain',
+      fetchTimeoutMs: 5000,
+      targets: [target],
+    };
+    const loadedConfig = createLoadedConfig(subscription);
+    const manifest = buildManifest(content, subscription.id);
+    const topology = buildTargetTopology(manifest, target);
+    const tunnel = topology.tunnels[0]!;
+
+    const snapshot = await buildCurrentRuntimeStateSnapshot(loadedConfig, subscription.id, target.address, {
+      createClient: () => ({
+        listOutbounds: async () => [
+          { tag: tunnel.outboundTagCurrent, raw: buildOutboundGrpc(tunnel.outboundInitial.normalized).raw },
+        ],
+        listInbounds: async () => [],
+        listRules: async () => [],
+      }),
+    });
+
+    assert.ok(snapshot);
+    assert.equal(snapshot?.expected.outbounds[0]?.flow, 'xtls-rprx-vision-udp443');
+    assert.equal(snapshot?.runtime.outbounds[0]?.parsed?.flow, 'xtls-rprx-vision-udp443');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

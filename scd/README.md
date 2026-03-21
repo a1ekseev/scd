@@ -88,6 +88,7 @@ subscriptions:
           - blocked
         fixedInbounds: []
         fixedRouting: []
+        # visionUdp443Override: true
         # observatorySubjectSelectorPrefix: x-observe-
         # inboundSocks:
         #   listen: 127.0.0.1
@@ -168,6 +169,7 @@ Parameters:
 - `subscriptions[].targets[].fixedOutbounds`: exact outbound tags that must never be deleted by `scd` on this target. The sample configs explicitly include `direct` and `blocked`.
 - `subscriptions[].targets[].fixedInbounds`: exact inbound tags that must never be deleted by `scd`.
 - `subscriptions[].targets[].fixedRouting`: exact routing `ruleTag` values that must never be deleted by `scd`.
+- `subscriptions[].targets[].visionUdp443Override`: if `true`, `scd` rewrites generated VLESS REALITY `flow=xtls-rprx-vision` to `xtls-rprx-vision-udp443` only for this target. Default: `false`.
 - `subscriptions[].targets[].observatorySubjectSelectorPrefix`: optional prefix added to every applied outbound tag for this target. Use it when static `observatory.subjectSelector` or future `routing.balancers[].selector` should match dynamic outbound by prefix.
 - `subscriptions[].targets[].inboundSocks`: required when `resources.inbounds.enabled` or `resources.routing.enabled` is `true`.
 - `subscriptions[].targets[].inboundSocks.listen`: IP or host to bind generated SOCKS inbounds on this target.
@@ -194,7 +196,7 @@ Parameters:
 - `subscriptions[].targets[].speedtest.method`: only `GET` is supported in the current implementation.
 - `subscriptions[].targets[].speedtest.expectedSizeBytes`: optional expected payload size for reporting/debugging.
 - `subscriptions[].targets[].speedtest.timeoutMs`: request timeout in milliseconds. Default: `15000`.
-- `subscriptions[].targets[].speedtest.maxParallel`: maximum number of speedtests that may run at the same time for one target. Default: `3`.
+- `subscriptions[].targets[].speedtest.maxParallel`: maximum number of speedtests that may run at the same time for one target. Default: `3`. One tick still processes the full tunnel snapshot; this only limits concurrency inside that tick.
 - `runtime.mode`: service mode. Allowed values: `run-once`, `daemon`. Default: `run-once`.
 - `runtime.schedule`: cron expression for daemon mode. Required only when `runtime.mode: daemon`. Example: `"*/5 * * * *"`.
 - `logging.level`: log verbosity. Allowed values: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. Default: `info`.
@@ -207,6 +209,8 @@ Parameters:
 - `statusServer.runtimeState.enabled`: enables the detailed `/api/runtime-state` JSON endpoint. Default: `true`.
 - `statusServer.runtimeState.includeRaw`: includes `rawBase64` runtime blobs in the detailed JSON endpoint. Default: `false`.
 - `statusServer.runtimeState.includeSecrets`: includes sensitive fields such as subscription URLs and outbound UUID/key material in the detailed JSON endpoint. Default: `false`.
+
+In daemon mode `monitor`, `speedtest`, `balancerMonitor` and the main sync loop do not overlap with themselves. If one tick is still running when the next cron slot arrives, `scd` skips that slot and logs an explicit `*_tick_skipped_overrun` warning.
 
 Relative paths are resolved against the YAML file location.
 `${ENV_VAR}` interpolation is supported.

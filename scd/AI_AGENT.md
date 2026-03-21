@@ -89,6 +89,7 @@ Current schema:
     - `fixedOutbounds[]`
     - `fixedInbounds[]`
     - `fixedRouting[]`
+    - `visionUdp443Override`
     - `observatorySubjectSelectorPrefix?`
     - `inboundSocks?`
     - `monitor`

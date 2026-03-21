@@ -254,6 +254,7 @@ export interface SubscriptionTargetConfig {
   fixedOutbounds: string[];
   fixedInbounds: string[];
   fixedRouting: string[];
+  visionUdp443Override: boolean;
   inboundSocks?: InboundSocksConfig;
   monitor: TargetMonitorConfig;
   balancerMonitor: TargetBalancerMonitorConfig;
@@ -482,6 +483,7 @@ export interface ExpectedOutboundSnapshot {
   countryIso2?: string;
   initialTag: string;
   fallbackTag: string;
+  flow?: string;
 }
 
 export interface ExpectedInboundSnapshot {

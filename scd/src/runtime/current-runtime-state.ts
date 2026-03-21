@@ -125,6 +125,7 @@ function buildExpectedTopology(manifest: OutboundManifest, target: SubscriptionT
       countryIso2: tunnel.countryIso2,
       initialTag: tunnel.outboundTagInitial,
       fallbackTag: tunnel.outboundWithoutPrefix.tag,
+      flow: tunnel.outboundInitial.normalized.flow,
     })),
     inbounds: topology.tunnels.map((tunnel) => ({
       baseTunnelId: tunnel.baseTunnelId,

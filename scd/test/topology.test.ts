@@ -13,6 +13,7 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     fixedOutbounds: [],
     fixedInbounds: [],
     fixedRouting: [],
+    visionUdp443Override: false,
     inboundSocks: {
       listen: '127.0.0.1',
       portRange: {
@@ -60,6 +61,26 @@ test('buildTargetTopology allocates stable ports and target-scoped tags', () => 
   assert.equal(topology.tunnels[0]?.outboundWithoutPrefix.tag, topology.tunnels[0]?.baseOutboundTag);
   assert.match(topology.tunnels[0]?.inboundTag ?? '', /^in-/);
   assert.match(topology.tunnels[0]?.routeTag ?? '', /^route-/);
+});
+
+test('buildTargetTopology overrides reality vision flow per target when enabled', () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?security=reality&encryption=none&fp=chrome&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=io.example.test&pbk=CMkW1axrhEXoiJ6anMz9XEjlfqlAtEZya7L0b5ZPMyw&sid=abe4a59b9f2407e3#🇩🇪 Германия, Extra',
+    'inline',
+  );
+
+  const regularTarget = buildTargetTopology(manifest, createTarget());
+  const udp443Target = buildTargetTopology(
+    manifest,
+    createTarget({
+      visionUdp443Override: true,
+    }),
+  );
+
+  assert.equal(regularTarget.tunnels[0]?.outboundInitial.normalized.flow, 'xtls-rprx-vision');
+  assert.equal(regularTarget.tunnels[0]?.outboundWithoutPrefix.normalized.flow, 'xtls-rprx-vision');
+  assert.equal(udp443Target.tunnels[0]?.outboundInitial.normalized.flow, 'xtls-rprx-vision-udp443');
+  assert.equal(udp443Target.tunnels[0]?.outboundWithoutPrefix.normalized.flow, 'xtls-rprx-vision-udp443');
 });
 
 test('buildTargetTopology fails when port range is too small', () => {

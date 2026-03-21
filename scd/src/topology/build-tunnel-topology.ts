@@ -1,13 +1,12 @@
 import type {
-  JsonOutbound,
   ManifestEntry,
-  NormalizedOutbound,
   OutboundManifest,
   PreparedTunnelOutbound,
   SubscriptionTargetConfig,
   TargetTopology,
   TunnelMapping,
 } from '../types.ts';
+import { overrideOutboundForTarget } from '../targets/override-outbound-for-target.ts';
 
 function compareEntries(left: ManifestEntry, right: ManifestEntry): number {
   return left.tag.localeCompare(right.tag) || left.line - right.line || left.normalized.raw.localeCompare(right.normalized.raw);
@@ -21,25 +20,17 @@ function withEffectiveTag(tag: string, prefix?: string): string {
   return `${prefix}${tag}`;
 }
 
-function cloneNormalizedWithTag(normalized: NormalizedOutbound, tag: string): NormalizedOutbound {
-  return {
-    ...normalized,
-    tag,
-  };
-}
+function createPreparedOutbound(
+  entry: ManifestEntry,
+  target: SubscriptionTargetConfig,
+  tag: string,
+): PreparedTunnelOutbound {
+  const effectiveEntry = overrideOutboundForTarget(entry, target, tag);
 
-function cloneJsonOutboundWithTag(jsonOutbound: JsonOutbound, tag: string): JsonOutbound {
-  return {
-    ...jsonOutbound,
-    tag,
-  };
-}
-
-function createPreparedOutbound(entry: ManifestEntry, tag: string): PreparedTunnelOutbound {
   return {
     tag,
-    normalized: cloneNormalizedWithTag(entry.normalized, tag),
-    jsonOutbound: cloneJsonOutboundWithTag(entry.jsonOutbound, tag),
+    normalized: effectiveEntry.normalized,
+    jsonOutbound: effectiveEntry.jsonOutbound,
   };
 }
 
@@ -64,8 +55,8 @@ export function buildTargetTopology(
   const tunnels: TunnelMapping[] = entries.map((entry, index) => {
     const baseTunnelId = entry.tag;
     const outboundTagInitial = withEffectiveTag(entry.tag, target.observatorySubjectSelectorPrefix);
-    const outboundInitial = createPreparedOutbound(entry, outboundTagInitial);
-    const outboundWithoutPrefix = createPreparedOutbound(entry, entry.tag);
+    const outboundInitial = createPreparedOutbound(entry, target, outboundTagInitial);
+    const outboundWithoutPrefix = createPreparedOutbound(entry, target, entry.tag);
 
     return {
       baseTunnelId,
