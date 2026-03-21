@@ -18,3 +18,4 @@ scd/.pnpm-store/
 scd/.yarn/
 scd/.turbo/
 xtls-sdk/
+**/config.yml
