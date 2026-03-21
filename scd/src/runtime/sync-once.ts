@@ -1,4 +1,6 @@
 import { outboundApplicator } from '../apply/outbound-applicator.ts';
+import { inboundApplicator } from '../apply/inbound-applicator.ts';
+import { routingApplicator } from '../apply/routing-applicator.ts';
 import type { ResourceApplicator, ResourcePlan } from '../apply/resource-applicator.ts';
 import { loadConfig } from '../config/load-config.ts';
 import { createLogger, type Logger } from '../logging/create-logger.ts';
@@ -6,12 +8,20 @@ import type {
   ApplyReport,
   LoadedConfig,
   ResourceKind,
+  TargetTopology,
   SubscriptionTargetConfig,
   SyncReport,
   TargetSyncReport,
 } from '../types.ts';
 import { loadSubscriptions, type FailedSubscriptionLoad, type LoadedSubscription, type LoadSubscriptionsResult } from './generate-manifest-from-source.ts';
-import { buildTargetStateKey, createSyncMemoryState, type SyncMemoryState } from './run-state.ts';
+import {
+  buildTargetStateKey,
+  createSyncMemoryState,
+  getOrCreateTargetState,
+  replaceTargetTopology,
+  withTargetMutationLock,
+  type SyncMemoryState,
+} from './run-state.ts';
 
 interface SyncServices {
   loadSubscriptionsFn: (sources: LoadedConfig['config']['subscriptions']) => Promise<LoadSubscriptionsResult>;
@@ -44,7 +54,7 @@ function hasFilteredManifestSummary(
 
 const defaultSyncServices: SyncServices = {
   loadSubscriptionsFn: loadSubscriptions,
-  applicators: [outboundApplicator],
+  applicators: [outboundApplicator, inboundApplicator, routingApplicator],
 };
 
 function buildReportTimestamp(): string {
@@ -189,76 +199,104 @@ async function syncSubscriptionTarget(
   logger: Logger,
 ): Promise<TargetSyncReport> {
   const targetKey = buildTargetStateKey(subscription.id, target.address);
-  const targetState = (memoryState.targets[targetKey] ??= { resources: {} });
-  const resourceReports: ApplyReport[] = [];
-  const unchangedKinds: ResourceKind[] = [];
-
-  for (const { applicator, plan } of builtPlans) {
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const targetPlans = builtPlans.map(({ applicator, plan }) => ({
+    applicator,
+    plan: applicator.preparePlanForTarget(plan, target),
+  }));
+  const changedPlans = targetPlans.filter(({ plan }) => {
     const previous = targetState.resources[plan.kind];
-    const targetPlan = applicator.preparePlanForTarget(plan, target);
+    return !previous || previous.manifestHash !== plan.manifestHash;
+  });
 
-    if (previous && previous.manifestHash === targetPlan.manifestHash) {
-      unchangedKinds.push(plan.kind);
+  if (changedPlans.length === 0) {
+    const unchangedKinds = targetPlans.map(({ plan }) => plan.kind);
+    for (const kind of unchangedKinds) {
       logger.info(
         {
           event: 'skipped_no_changes',
-          kind: plan.kind,
+          kind,
           subscriptionId: subscription.id,
           targetAddress: target.address,
           observatorySubjectSelectorPrefix: target.observatorySubjectSelectorPrefix,
         },
         'Manifest unchanged for resource; skipping Xray API.',
       );
-      continue;
     }
 
-    try {
-      logger.info(
-        {
-          event: 'resource_apply_started',
-          kind: targetPlan.kind,
-          subscriptionId: subscription.id,
-          targetAddress: target.address,
-          observatorySubjectSelectorPrefix: target.observatorySubjectSelectorPrefix,
-        },
-        'Applying resource to target.',
-      );
-
-      const report = await applicator.applyPlan(targetPlan, {
-        subscriptionId: subscription.id,
-        target,
-      });
-      resourceReports.push(report);
-      logApplyResult(logger, report);
-
-      if (report.failed === 0) {
-        targetState.resources[targetPlan.kind] = {
-          manifestHash: targetPlan.manifestHash,
-        };
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const report = createFailedApplyReport(
-        targetPlan.kind,
-        subscription.id,
-        target.address,
-        targetPlan.sourceId,
-        targetPlan.skipped,
-        message,
-      );
-      resourceReports.push(report);
-      logApplyResult(logger, report);
-    }
+    return buildTargetSyncReport(
+      subscription.id,
+      target.address,
+      builtPlans[0]?.plan.sourceId ?? subscription.id,
+      unchangedKinds,
+      [],
+      builtPlans.flatMap((item) => item.plan.skipped),
+    );
   }
 
-  return buildTargetSyncReport(
-    subscription.id,
-    target.address,
-    builtPlans[0]?.plan.sourceId ?? subscription.id,
-    unchangedKinds,
-    resourceReports,
-    builtPlans.flatMap((item) => item.plan.skipped),
-  );
+  return withTargetMutationLock(memoryState, targetKey, async () => {
+    const resourceReports: ApplyReport[] = [];
+    const resourceHashes: Partial<Record<ResourceKind, string>> = {};
+    let nextTopology: TargetTopology | undefined;
+    let failed = false;
+
+    for (const { applicator, plan } of targetPlans) {
+      try {
+        logger.info(
+          {
+            event: 'resource_apply_started',
+            kind: plan.kind,
+            subscriptionId: subscription.id,
+            targetAddress: target.address,
+            observatorySubjectSelectorPrefix: target.observatorySubjectSelectorPrefix,
+          },
+          'Applying resource to target.',
+        );
+
+        const report = await applicator.applyPlan(plan, {
+          subscriptionId: subscription.id,
+          target,
+        });
+        resourceReports.push(report);
+        logApplyResult(logger, report);
+
+        if (report.failed > 0) {
+          failed = true;
+        } else {
+          resourceHashes[plan.kind] = plan.manifestHash;
+          if ('topology' in plan && typeof plan === 'object' && plan.topology) {
+            nextTopology = plan.topology as TargetTopology;
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const report = createFailedApplyReport(
+          plan.kind,
+          subscription.id,
+          target.address,
+          plan.sourceId,
+          plan.skipped,
+          message,
+        );
+        resourceReports.push(report);
+        logApplyResult(logger, report);
+        failed = true;
+      }
+    }
+
+    if (!failed && nextTopology) {
+      replaceTargetTopology(targetState, nextTopology, resourceHashes);
+    }
+
+    return buildTargetSyncReport(
+      subscription.id,
+      target.address,
+      builtPlans[0]?.plan.sourceId ?? subscription.id,
+      [],
+      resourceReports,
+      builtPlans.flatMap((item) => item.plan.skipped),
+    );
+  });
 }
 
 function buildManifestFailureTargetReports(

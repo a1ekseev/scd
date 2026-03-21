@@ -2,7 +2,19 @@ import { Buffer } from 'node:buffer';
 import { connect } from 'node:http2';
 
 import { ApiRequestError } from '../errors.ts';
-import { decodeGrpcFrames, decodeListOutboundsResponse, encodeGrpcFrame, encodeMessageField, encodeStringField, type RawOutboundConfig } from './protobuf.ts';
+import {
+  decodeGrpcFrames,
+  decodeListInboundsResponse,
+  decodeListOutboundsResponse,
+  decodeListRulesResponse,
+  encodeBoolField,
+  encodeGrpcFrame,
+  encodeMessageField,
+  encodeStringField,
+  type RawInboundConfig,
+  type RawOutboundConfig,
+  type RawRoutingRule,
+} from './protobuf.ts';
 
 interface XrayHandlerClientOptions {
   timeoutMs?: number;
@@ -128,6 +140,16 @@ export class XrayHandlerClient {
     return decodeListOutboundsResponse(payload);
   }
 
+  async listInbounds(): Promise<RawInboundConfig[]> {
+    const payload = await unaryCall(
+      this.authority,
+      '/xray.app.proxyman.command.HandlerService/ListInbounds',
+      new Uint8Array(0),
+      this.timeoutMs,
+    );
+    return decodeListInboundsResponse(payload);
+  }
+
   async removeOutbound(tag: string): Promise<void> {
     await unaryCall(
       this.authority,
@@ -142,6 +164,55 @@ export class XrayHandlerClient {
       this.authority,
       '/xray.app.proxyman.command.HandlerService/AddOutbound',
       encodeMessageField(1, rawOutbound),
+      this.timeoutMs,
+    );
+  }
+
+  async removeInbound(tag: string): Promise<void> {
+    await unaryCall(
+      this.authority,
+      '/xray.app.proxyman.command.HandlerService/RemoveInbound',
+      encodeStringField(1, tag),
+      this.timeoutMs,
+    );
+  }
+
+  async addInbound(rawInbound: Uint8Array): Promise<void> {
+    await unaryCall(
+      this.authority,
+      '/xray.app.proxyman.command.HandlerService/AddInbound',
+      encodeMessageField(1, rawInbound),
+      this.timeoutMs,
+    );
+  }
+
+  async listRules(): Promise<RawRoutingRule[]> {
+    const payload = await unaryCall(
+      this.authority,
+      '/xray.app.router.command.RoutingService/ListRule',
+      new Uint8Array(0),
+      this.timeoutMs,
+    );
+    return decodeListRulesResponse(payload);
+  }
+
+  async removeRule(ruleTag: string): Promise<void> {
+    await unaryCall(
+      this.authority,
+      '/xray.app.router.command.RoutingService/RemoveRule',
+      encodeStringField(1, ruleTag),
+      this.timeoutMs,
+    );
+  }
+
+  async addRule(rawRule: Uint8Array): Promise<void> {
+    await unaryCall(
+      this.authority,
+      '/xray.app.router.command.RoutingService/AddRule',
+      new Uint8Array([
+        ...encodeMessageField(1, rawRule),
+        ...encodeBoolField(2, true),
+      ]),
       this.timeoutMs,
     );
   }

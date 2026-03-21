@@ -1,5 +1,5 @@
 {
-  "name": "scd",
+  "name": "sfc",
   "version": "1.0.1",
   "private": true,
   "type": "module",
@@ -7,15 +7,14 @@
     "node": ">=24.14.0"
   },
   "bin": {
-    "scd": "./dist/cli.js"
+    "sfc": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "start": "node ./dist/cli.js",
-    "generate": "node ./dist/cli.js generate",
-    "sync": "node ./dist/cli.js sync",
-    "daemon": "node ./dist/cli.js daemon",
+    "serve": "node ./dist/cli.js serve",
+    "refresh": "node ./dist/cli.js refresh",
     "test": "node --test ./test/**/*.test.ts"
   },
   "dependencies": {

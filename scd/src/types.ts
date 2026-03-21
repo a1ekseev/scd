@@ -1,4 +1,4 @@
-export type ResourceKind = 'outbound';
+export type ResourceKind = 'outbound' | 'inbound' | 'routing';
 
 export interface SourceLine {
   line: number;
@@ -33,7 +33,7 @@ export interface SkippedEntry {
 
 export interface ParseSuccess {
   ok: true;
-  kind: ResourceKind;
+  kind: 'outbound';
   protocol: 'vless';
   line: number;
   raw: string;
@@ -57,7 +57,7 @@ export type NetworkKind = 'tcp' | 'ws';
 export type SecurityKind = 'tls' | 'reality';
 
 export interface NormalizedOutbound {
-  kind: ResourceKind;
+  kind: 'outbound';
   protocol: 'vless';
   profile: ProfileKind;
   tag: string;
@@ -103,7 +103,7 @@ export interface JsonOutbound {
 }
 
 export interface ManifestEntry {
-  kind: ResourceKind;
+  kind: 'outbound';
   tag: string;
   label: string;
   profile: ProfileKind;
@@ -195,11 +195,69 @@ export type SubscriptionInputFormat = 'auto' | 'plain' | 'base64';
 export type RuntimeMode = 'run-once' | 'daemon';
 export type LogFormat = 'json' | 'pretty';
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+export type MonitorHttpMethod = 'GET' | 'HEAD' | 'POST';
+
+export interface InboundSocksConfig {
+  listen: string;
+  portRange: {
+    start: number;
+    end: number;
+  };
+}
+
+export interface TargetMonitorRequestConfig {
+  url: string;
+  method: MonitorHttpMethod;
+  expectedStatus: number;
+  timeoutMs: number;
+}
+
+export interface BalancerMonitorSocks5Config {
+  host: string;
+  port: number;
+}
+
+export interface BalancerMonitorSuccessGetConfig {
+  url: string;
+  expectedStatus: number;
+  timeoutMs: number;
+}
+
+export interface TargetBalancerMonitorConfig {
+  enabled: boolean;
+  schedule?: string;
+  socks5?: BalancerMonitorSocks5Config;
+  request?: TargetMonitorRequestConfig;
+  successGet?: BalancerMonitorSuccessGetConfig;
+}
+
+export interface TargetMonitorConfig {
+  enabled: boolean;
+  schedule?: string;
+  maxParallel: number;
+  request?: TargetMonitorRequestConfig;
+}
+
+export interface TargetSpeedtestConfig {
+  enabled: boolean;
+  schedule?: string;
+  urls?: string[];
+  method: 'GET';
+  expectedSizeBytes?: number;
+  timeoutMs: number;
+  maxParallel: number;
+}
 
 export interface SubscriptionTargetConfig {
   address: string;
   timeoutMs: number;
   fixedOutbounds: string[];
+  fixedInbounds: string[];
+  fixedRouting: string[];
+  inboundSocks?: InboundSocksConfig;
+  monitor: TargetMonitorConfig;
+  balancerMonitor: TargetBalancerMonitorConfig;
+  speedtest: TargetSpeedtestConfig;
   observatorySubjectSelectorPrefix?: string;
 }
 
@@ -232,6 +290,22 @@ export interface ResourceConfig {
   outbounds: {
     enabled: boolean;
   };
+  inbounds: {
+    enabled: boolean;
+  };
+  routing: {
+    enabled: boolean;
+  };
+}
+
+export interface StatusServerConfig {
+  enabled: boolean;
+  listen?: string;
+  runtimeState: {
+    enabled: boolean;
+    includeRaw: boolean;
+    includeSecrets: boolean;
+  };
 }
 
 export interface AppConfig {
@@ -239,9 +313,232 @@ export interface AppConfig {
   runtime: RuntimeConfig;
   logging: LoggingConfig;
   resources: ResourceConfig;
+  statusServer: StatusServerConfig;
 }
 
 export interface LoadedConfig {
   configPath: string;
   config: AppConfig;
+}
+
+export interface PreparedTunnelOutbound {
+  tag: string;
+  normalized: NormalizedOutbound;
+  jsonOutbound: JsonOutbound;
+}
+
+export interface TunnelMapping {
+  baseTunnelId: string;
+  displayName: string;
+  countryIso2?: string;
+  baseOutboundTag: string;
+  outboundTagInitial: string;
+  outboundTagCurrent: string;
+  inboundTag: string;
+  routeTag: string;
+  listen: string;
+  port: number;
+  outboundInitial: PreparedTunnelOutbound;
+  outboundWithoutPrefix: PreparedTunnelOutbound;
+}
+
+export interface TargetTopology {
+  tunnels: TunnelMapping[];
+}
+
+export type TunnelMonitorStatus = 'healthy' | 'degraded' | 'repairing' | 'idle';
+
+export interface TunnelMonitorState {
+  state: TunnelMonitorStatus;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastStatusCode?: number;
+  lastLatencyMs?: number;
+  lastError?: string;
+  consecutiveFailures: number;
+}
+
+export interface TunnelSpeedtestState {
+  lastRunAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastBytes?: number;
+  lastDurationMs?: number;
+  lastBitsPerSecond?: number;
+  lastError?: string;
+}
+
+export interface TargetBalancerMonitorState {
+  state: 'idle' | 'healthy' | 'degraded';
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastStatusCode?: number;
+  lastLatencyMs?: number;
+  lastError?: string;
+  consecutiveFailures: number;
+  successGetLastRunAt?: string;
+  successGetLastStatusCode?: number;
+  successGetLastLatencyMs?: number;
+  successGetLastError?: string;
+}
+
+export interface TunnelRuntimeState {
+  tunnel: TunnelMapping;
+  monitor: TunnelMonitorState;
+  speedtest: TunnelSpeedtestState;
+}
+
+export interface StatusSnapshotTunnel {
+  subscriptionId: string;
+  targetAddress: string;
+  displayName: string;
+  countryIso2?: string;
+  endpoint: string;
+  state: TunnelMonitorStatus;
+  lastHttpStatus?: number;
+  lastLatencyMs?: number;
+  lastBitsPerSecond?: number;
+  balancerMonitorState?: TargetBalancerMonitorState['state'];
+  balancerMonitorLastStatusCode?: number;
+  balancerMonitorLastLatencyMs?: number;
+  balancerMonitorSuccessGetLastStatusCode?: number;
+}
+
+export interface GroupedStatusTarget {
+  subscriptionId: string;
+  targetAddress: string;
+  tunnels: StatusSnapshotTunnel[];
+  balancerMonitor?: {
+    state: TargetBalancerMonitorState['state'];
+    lastStatusCode?: number;
+    lastLatencyMs?: number;
+    successGetLastStatusCode?: number;
+  };
+}
+
+export interface GroupedStatusSubscription {
+  subscriptionId: string;
+  targets: GroupedStatusTarget[];
+}
+
+export interface ParsedRuntimeOutbound {
+  protocol: 'vless';
+  address?: string;
+  port?: number;
+  uuid?: string;
+  encryption?: string;
+  flow?: string;
+  network?: string;
+  security?: 'tls' | 'reality';
+  sni?: string;
+  alpn?: string[];
+  host?: string;
+  path?: string;
+  fingerprint?: string;
+  publicKey?: string;
+  shortId?: string;
+}
+
+export interface ParsedRuntimeInbound {
+  protocol: 'socks';
+  listen?: string;
+  portStart?: number;
+  portEnd?: number;
+  udp?: boolean;
+}
+
+export interface ParsedRuntimeRoutingRule {
+  ruleTag: string;
+  outboundTag: string;
+  inboundTags: string[];
+}
+
+export interface RuntimeOutboundSnapshot {
+  tag: string;
+  classification: 'fixed' | 'managed-initial' | 'managed-fallback' | 'unmanaged';
+  parsed?: ParsedRuntimeOutbound;
+  rawBase64?: string;
+}
+
+export interface RuntimeInboundSnapshot {
+  tag: string;
+  classification: 'fixed' | 'managed' | 'unmanaged';
+  parsed?: ParsedRuntimeInbound;
+  rawBase64?: string;
+}
+
+export interface RuntimeRoutingRuleSnapshot {
+  ruleTag: string;
+  classification: 'fixed' | 'managed' | 'unmanaged';
+  parsed: ParsedRuntimeRoutingRule;
+  rawBase64?: string;
+}
+
+export interface ExpectedOutboundSnapshot {
+  baseTunnelId: string;
+  displayName: string;
+  countryIso2?: string;
+  initialTag: string;
+  fallbackTag: string;
+}
+
+export interface ExpectedInboundSnapshot {
+  baseTunnelId: string;
+  displayName: string;
+  countryIso2?: string;
+  tag: string;
+  endpoint: string;
+}
+
+export interface ExpectedRoutingRuleSnapshot {
+  baseTunnelId: string;
+  displayName: string;
+  countryIso2?: string;
+  ruleTag: string;
+  inboundTag: string;
+  outboundInitialTag: string;
+  outboundFallbackTag: string;
+}
+
+export interface RuntimeStateDiff {
+  matched: string[];
+  missing: string[];
+  unexpected: string[];
+}
+
+export interface RuntimeStateOutboundDiff extends RuntimeStateDiff {
+  matchedFallback: string[];
+}
+
+export interface CurrentRuntimeStateSnapshot {
+  subscriptionId: string;
+  targetAddress: string;
+  capturedAt: string;
+  config: {
+    subscription: SubscriptionConfig;
+    target: SubscriptionTargetConfig;
+    resources: ResourceConfig;
+  };
+  serviceState?: {
+    balancerMonitor?: TargetBalancerMonitorState;
+  };
+  expected: {
+    source: string;
+    outbounds: ExpectedOutboundSnapshot[];
+    inbounds: ExpectedInboundSnapshot[];
+    routingRules: ExpectedRoutingRuleSnapshot[];
+    error?: string;
+  };
+  runtime: {
+    outbounds: RuntimeOutboundSnapshot[];
+    inbounds: RuntimeInboundSnapshot[];
+    routingRules: RuntimeRoutingRuleSnapshot[];
+  };
+  diff: {
+    outbounds: RuntimeStateOutboundDiff;
+    inbounds: RuntimeStateDiff;
+    routingRules: RuntimeStateDiff;
+  };
 }
