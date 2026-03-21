@@ -1,7 +1,7 @@
 # scd
 
 `scd` stands for `Subscription Control Daemon`.
-`scd` converts subscription-style VLESS input into Xray outbounds and applies them to Xray over the gRPC API.
+`scd` converts subscription-style VLESS input into Xray resources and applies them to Xray over the gRPC API.
 
 The project now supports both one-shot sync and long-running daemon mode driven by a YAML config.
 
@@ -86,7 +86,47 @@ subscriptions:
         fixedOutbounds:
           - direct
           - blocked
+        fixedInbounds: []
+        fixedRouting: []
         # observatorySubjectSelectorPrefix: x-observe-
+        # inboundSocks:
+        #   listen: 127.0.0.1
+        #   portRange:
+        #     start: 20000
+        #     end: 20099
+        # monitor:
+        #   enabled: true
+        #   schedule: "*/2 * * * *"
+        #   maxParallel: 10
+        #   request:
+        #     url: https://example.com/
+        #     method: GET
+        #     expectedStatus: 200
+        #     timeoutMs: 5000
+        # balancerMonitor:
+        #   enabled: true
+        #   schedule: "*/2 * * * *"
+        #   socks5:
+        #     host: 127.0.0.1
+        #     port: 1080
+        #   request:
+        #     url: https://example.com/health
+        #     method: GET
+        #     expectedStatus: 200
+        #     timeoutMs: 5000
+        #   successGet:
+        #     url: https://example.com/ping.txt
+        #     expectedStatus: 200
+        #     timeoutMs: 5000
+        # speedtest:
+        #   enabled: true
+        #   schedule: "*/10 * * * *"
+        #   urls:
+        #     - https://example.com/test-10mb.bin
+        #     - https://example.com/test-50mb.bin
+        #   method: GET
+        #   timeoutMs: 15000
+        #   maxParallel: 3
 
 runtime:
   mode: run-once
@@ -98,6 +138,18 @@ logging:
 resources:
   outbounds:
     enabled: true
+  inbounds:
+    enabled: false
+  routing:
+    enabled: false
+
+statusServer:
+  enabled: false
+  # listen: 127.0.0.1:9090
+  runtimeState:
+    enabled: true
+    includeRaw: false
+    includeSecrets: false
 ```
 
 Parameters:
@@ -114,12 +166,47 @@ Parameters:
 - `subscriptions[].targets[].address`: Xray gRPC API address in `host:port` form. Example: `127.0.0.1:8080` or `xray:8080` in Docker Compose.
 - `subscriptions[].targets[].timeoutMs`: per-request timeout to this target in milliseconds. Default: `5000`.
 - `subscriptions[].targets[].fixedOutbounds`: exact outbound tags that must never be deleted by `scd` on this target. The sample configs explicitly include `direct` and `blocked`.
+- `subscriptions[].targets[].fixedInbounds`: exact inbound tags that must never be deleted by `scd`.
+- `subscriptions[].targets[].fixedRouting`: exact routing `ruleTag` values that must never be deleted by `scd`.
 - `subscriptions[].targets[].observatorySubjectSelectorPrefix`: optional prefix added to every applied outbound tag for this target. Use it when static `observatory.subjectSelector` or future `routing.balancers[].selector` should match dynamic outbound by prefix.
+- `subscriptions[].targets[].inboundSocks`: required when `resources.inbounds.enabled` or `resources.routing.enabled` is `true`.
+- `subscriptions[].targets[].inboundSocks.listen`: IP or host to bind generated SOCKS inbounds on this target.
+- `subscriptions[].targets[].inboundSocks.portRange.start` / `end`: inclusive port range used for stable sequential tunnel allocation.
+- `subscriptions[].targets[].monitor`: optional HTTP health-check config for generated tunnels.
+- `subscriptions[].targets[].monitor.enabled`: enables monitoring for this target. Default: `false`.
+- `subscriptions[].targets[].monitor.schedule`: cron expression for monitor ticks. Required only when monitoring is enabled.
+- `subscriptions[].targets[].monitor.maxParallel`: maximum number of monitor probes that may run at the same time for one target. Default: `10`.
+- `subscriptions[].targets[].monitor.request`: request definition used through each generated SOCKS tunnel.
+- `subscriptions[].targets[].monitor.request.url`: monitored URL.
+- `subscriptions[].targets[].monitor.request.method`: `GET`, `HEAD` or `POST`. Default: `GET`.
+- `subscriptions[].targets[].monitor.request.expectedStatus`: expected HTTP status code.
+- `subscriptions[].targets[].monitor.request.timeoutMs`: request timeout in milliseconds. Default: `5000`.
+- `subscriptions[].targets[].balancerMonitor`: optional target-level HTTP check through a configured external SOCKS5 proxy.
+- `subscriptions[].targets[].balancerMonitor.enabled`: enables balancer monitoring for this target. Default: `false`.
+- `subscriptions[].targets[].balancerMonitor.schedule`: cron expression for balancer monitor ticks.
+- `subscriptions[].targets[].balancerMonitor.socks5.host` / `port`: external SOCKS5 endpoint used for balancer checks.
+- `subscriptions[].targets[].balancerMonitor.request`: primary request definition executed through that SOCKS5 proxy.
+- `subscriptions[].targets[].balancerMonitor.successGet`: optional best-effort `GET` request executed after a successful primary check. It is recorded in UI/JSON but does not affect health-state.
+- `subscriptions[].targets[].speedtest`: optional throughput telemetry config.
+- `subscriptions[].targets[].speedtest.enabled`: enables simple HTTP download speed tests. Default: `false`.
+- `subscriptions[].targets[].speedtest.schedule`: cron expression for speedtest ticks.
+- `subscriptions[].targets[].speedtest.urls`: list of URLs for speed tests. `scd` tries them in order and stores the first successful result.
+- `subscriptions[].targets[].speedtest.method`: only `GET` is supported in the current implementation.
+- `subscriptions[].targets[].speedtest.expectedSizeBytes`: optional expected payload size for reporting/debugging.
+- `subscriptions[].targets[].speedtest.timeoutMs`: request timeout in milliseconds. Default: `15000`.
+- `subscriptions[].targets[].speedtest.maxParallel`: maximum number of speedtests that may run at the same time for one target. Default: `3`.
 - `runtime.mode`: service mode. Allowed values: `run-once`, `daemon`. Default: `run-once`.
 - `runtime.schedule`: cron expression for daemon mode. Required only when `runtime.mode: daemon`. Example: `"*/5 * * * *"`.
 - `logging.level`: log verbosity. Allowed values: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. Default: `info`.
 - `logging.format`: log output format. Allowed values: `json`, `pretty`. Default: `json`.
-- `resources.outbounds.enabled`: enables outbound apply. If `false`, the service still fetches subscriptions and builds the manifest, but does not push outbounds to Xray.
+- `resources.outbounds.enabled`: enables generated outbound apply. Default: `true`.
+- `resources.inbounds.enabled`: enables generated SOCKS inbound apply. Default: `false`.
+- `resources.routing.enabled`: enables generated routing rule apply. Default: `false`.
+- `statusServer.enabled`: enables the built-in read-only status page. Default: `false`.
+- `statusServer.listen`: listen address in `host:port` form. Required only when the status server is enabled.
+- `statusServer.runtimeState.enabled`: enables the detailed `/api/runtime-state` JSON endpoint. Default: `true`.
+- `statusServer.runtimeState.includeRaw`: includes `rawBase64` runtime blobs in the detailed JSON endpoint. Default: `false`.
+- `statusServer.runtimeState.includeSecrets`: includes sensitive fields such as subscription URLs and outbound UUID/key material in the detailed JSON endpoint. Default: `false`.
 
 Relative paths are resolved against the YAML file location.
 `${ENV_VAR}` interpolation is supported.
@@ -150,16 +237,16 @@ Recommended usage notes:
 
 ## Sync behavior
 
-Control-plane owns all non-fixed outbound on a target.
+`scd` owns all non-fixed generated resources on a target.
 
 Current apply model:
 - if a subscription manifest did not change during the current process lifetime, that target is skipped without any Xray API calls
 - if an input source is empty after `trim()` or produces `parsed === 0`, that source fails closed and no Xray API calls are made for its targets
 - if subscription filters are configured, they run once per source in this order: `countryAllowlist`, then `labelIncludeRegex`
-- if the manifest changed, `scd` lists current outbounds on that target, deletes every non-fixed outbound, and then applies the full new outbound set
-- `fixedOutbounds` are never deleted
-- if `observatorySubjectSelectorPrefix` is set on a target, it is prepended to every applied outbound tag on that target
-- after cleanup, the full new outbound set is applied to that target
+- if the manifest changed, `scd` rebuilds target topology and re-applies every enabled generated resource kind for that target
+- generated topology is `outbound -> inbound -> routing`, with one SOCKS inbound and one routing rule per filtered outbound entry
+- `fixedOutbounds`, `fixedInbounds` and `fixedRouting` are never deleted
+- if `observatorySubjectSelectorPrefix` is set on a target, it is prepended only to the initial applied outbound tags
 - failure is target-local: one failed target does not stop other targets or subscriptions
 - if `add` fails after cleanup started, `scd` performs best-effort rollback: remove newly added outbound and re-add saved previous configs
 
@@ -167,6 +254,41 @@ The no-change optimization is memory-only. After a process restart, daemon memor
 `unchanged` in `SyncReport` is a resource-level metric: it counts skipped resource plans, not individual outbound items.
 Overlap protection is also memory-only and works only inside one running process. Separate `sync` processes are not coordinated with each other.
 Filter counters are separate from `skipped`: `skipped` remains parse/validation-only, while `filtered`, `filteredByCountry`, and `filteredByLabelRegex` describe intentional post-parse filtering.
+
+## Monitoring and repair
+
+- Monitoring is optional and runs only in daemon mode for targets where `monitor.enabled: true`.
+- Monitor probes run in parallel for all tunnels on one target.
+- Every generated tunnel is checked through its generated SOCKS inbound.
+- The current implementation performs HTTP checks and expects a configured response status code.
+- `balancerMonitor` is separate from tunnel monitoring and runs through a configured external SOCKS5 proxy.
+- `balancerMonitor.successGet`, when configured, runs only after a successful primary balancer check and is best-effort only.
+- Speedtest is telemetry-only in the current version: it performs an HTTP `GET` through the tunnel and stores the last measured throughput in memory.
+- Multiple speedtest URLs are supported as ordered fallback. This is useful when one test file or host is temporarily unavailable.
+- Speedtests run with bounded concurrency per target, controlled by `speedtest.maxParallel`.
+- If a monitor check fails, `scd` keeps the SOCKS inbound stable, removes that tunnel's generated routing rule and outbound, and recreates them.
+- Recreated outbound during repair is applied **without** `observatorySubjectSelectorPrefix`.
+- Sync and repair use the same per-target in-memory mutex, so they do not mutate one target concurrently.
+
+## Status page
+
+- The built-in status page is optional and available only in daemon mode.
+- HTML endpoint: `/` or `/status`
+- JSON endpoint: `/api/status`
+- Detailed target runtime JSON endpoint: `/api/runtime-state?subscriptionId=<id>&targetAddress=<addr>`
+- Current UI fields:
+  - `displayName`
+  - `countryIso2`
+  - generated SOCKS endpoint
+  - current monitor state
+  - current balancer monitor state
+  - last HTTP status
+  - last latency
+  - last speedtest throughput
+- HTML output is grouped by `subscription -> target`.
+- Each target block contains a `Current runtime state (JSON)` link for the detailed runtime dump.
+- `/api/status` remains a lightweight in-memory snapshot for the current status page.
+- `/api/runtime-state` is different: it builds a read-only target snapshot from the current loaded config plus live Xray API data.
 
 ## Docker
 
@@ -222,6 +344,14 @@ The compose setup was verified with:
 - Runtime:
   - `run-once`
   - `daemon`
+- Resource apply:
+  - outbound
+  - inbound (`socks`, `noauth`, `udp: true`)
+  - routing (generated inbound tag -> generated outbound tag)
+- Monitoring:
+  - HTTP health-check through generated SOCKS inbound
+  - simple HTTP download speedtest telemetry
+  - built-in read-only status page
 - Outbound profiles:
   - `tcp + tls`
   - `ws + tls`
@@ -230,7 +360,7 @@ The compose setup was verified with:
 ## What is not supported yet
 - non-`vless://` protocols
 - unsupported VLESS query params
-- inbound/routing/balancer apply logic
+- balancer apply logic
 - observatory runtime apply logic
 - distributed locking
 - inter-process lock coordination

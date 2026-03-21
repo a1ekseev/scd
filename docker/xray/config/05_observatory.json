@@ -1,0 +1,10 @@
+{
+  "observatory": {
+    "subjectSelector": [
+      "x-observe-"
+    ],
+    "probeURL": "https://www.google.com/generate_204",
+    "probeInterval": "15s",
+    "enableConcurrency": true
+  }
+}

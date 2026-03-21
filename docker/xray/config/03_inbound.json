@@ -1,0 +1,27 @@
+{
+    "inbounds": [
+        {
+            "protocol": "socks",
+            "tag": "socks-proxy",
+            "listen": "0.0.0.0",
+            "port": "1080",
+            "settings": {
+                "udp": true,
+                "auth": "noauth"
+            }
+        },
+        {
+            "protocol": "dokodemo-door",
+            "tag": "wg-proxy",
+            "listen": "0.0.0.0",
+            "port": "51820",
+            "settings": {
+                "address": "127.0.0.1",
+                "port": 443,
+                "network": "udp",
+                "timeout": 5,
+                "followRedirect": false
+            }
+        }
+    ]
+}

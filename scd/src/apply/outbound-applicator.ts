@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 
-import type { ManifestEntry, OutboundManifest } from '../types.ts';
+import type { ManifestEntry, OutboundManifest, TargetTopology } from '../types.ts';
 import { XrayHandlerClient } from '../api/xray-handler-client.ts';
 import { generateManifestFromSubscription } from '../runtime/generate-manifest-from-source.ts';
+import { buildTargetTopology } from '../topology/build-tunnel-topology.ts';
 import type { ResourceApplicator, ResourcePlan } from './resource-applicator.ts';
 import { applyOutbounds } from './apply-outbounds.ts';
 import type { OutboundApiClient } from './apply-outbounds.ts';
@@ -10,6 +11,7 @@ import type { OutboundApiClient } from './apply-outbounds.ts';
 export interface OutboundResourcePlan extends ResourcePlan {
   kind: 'outbound';
   manifest: OutboundManifest;
+  topology?: TargetTopology;
 }
 
 function buildManifestHash(manifest: OutboundManifest): string {
@@ -61,6 +63,22 @@ function buildTargetManifest(manifest: OutboundManifest, prefix?: string): Outbo
   };
 }
 
+function buildTopologyManifest(topology: TargetTopology, fallbackManifest: OutboundManifest): OutboundManifest {
+  if (topology.tunnels.length === 0) {
+    return fallbackManifest;
+  }
+
+  return {
+    ...fallbackManifest,
+    entries: topology.tunnels.map((tunnel) => ({
+      ...fallbackManifest.entries.find((entry) => entry.tag === tunnel.baseOutboundTag)!,
+      tag: tunnel.outboundTagCurrent,
+      normalized: tunnel.outboundInitial.normalized,
+      jsonOutbound: tunnel.outboundInitial.jsonOutbound,
+    })),
+  };
+}
+
 export function createOutboundApplicator(
   createClient: (target: { address: string; timeoutMs: number }) => OutboundApiClient = (target) =>
     new XrayHandlerClient(target.address, {
@@ -85,10 +103,14 @@ export function createOutboundApplicator(
       };
     },
     preparePlanForTarget(plan, target) {
-      const targetManifest = sortManifest(buildTargetManifest(plan.manifest, target.observatorySubjectSelectorPrefix));
+      const topology = buildTargetTopology(plan.manifest, target);
+      const targetManifest = sortManifest(
+        buildTopologyManifest(topology, buildTargetManifest(plan.manifest, target.observatorySubjectSelectorPrefix)),
+      );
       return {
         ...plan,
         manifest: targetManifest,
+        topology,
         manifestHash: buildManifestHash(targetManifest),
         managedIds: targetManifest.entries.map((entry) => entry.tag),
       };

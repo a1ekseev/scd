@@ -1,0 +1,32 @@
+{
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "ruleTag" : "direct",
+        "ip": [
+          "geoip:ru"
+        ],
+        "outboundTag": "direct"
+      },
+      {
+        "ruleTag" : "x-balancer",
+        "ip": [
+          "geoip:!ru"
+        ],
+        "balancerTag": "x-balancer"
+      }
+    ],
+    "balancers": [
+      {
+        "tag": "x-balancer",
+        "selector": [
+          "x-observe-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ]
+  }
+}

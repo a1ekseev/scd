@@ -12,7 +12,60 @@ import { buildManifest } from '../src/manifest.ts';
 import { loadSubscriptions } from '../src/runtime/generate-manifest-from-source.ts';
 import { createSyncMemoryState } from '../src/runtime/run-state.ts';
 import { syncWithConfig } from '../src/runtime/sync-once.ts';
-import type { LoadedConfig } from '../src/types.ts';
+import type { LoadedConfig, ResourceConfig, StatusServerConfig, SubscriptionTargetConfig } from '../src/types.ts';
+
+function createTargetConfig(overrides: Partial<SubscriptionTargetConfig> = {}): SubscriptionTargetConfig {
+  return {
+    address: '127.0.0.1:8080',
+    timeoutMs: 5000,
+    fixedOutbounds: [],
+    fixedInbounds: [],
+    fixedRouting: [],
+    monitor: {
+      enabled: false,
+      maxParallel: 10,
+    },
+    balancerMonitor: {
+      enabled: false,
+    },
+    speedtest: {
+      enabled: false,
+      method: 'GET',
+      timeoutMs: 15000,
+      maxParallel: 3,
+    },
+    ...overrides,
+  };
+}
+
+function createResourcesConfig(overrides: Partial<ResourceConfig> = {}): ResourceConfig {
+  return {
+    outbounds: {
+      enabled: true,
+      ...(overrides.outbounds ?? {}),
+    },
+    inbounds: {
+      enabled: false,
+      ...(overrides.inbounds ?? {}),
+    },
+    routing: {
+      enabled: false,
+      ...(overrides.routing ?? {}),
+    },
+  };
+}
+
+function createStatusServerConfig(overrides: Partial<StatusServerConfig> = {}): StatusServerConfig {
+  return {
+    enabled: false,
+    runtimeState: {
+      enabled: true,
+      includeRaw: false,
+      includeSecrets: false,
+    },
+    ...overrides,
+  };
+}
 
 test('loadConfig resolves relative paths, targets and interpolates env vars', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'scd-config-'));
@@ -198,6 +251,242 @@ test('loadConfig rejects invalid regex literal in filters', async () => {
   }
 });
 
+test('loadConfig accepts multiple speedtest urls', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-speedtest-urls-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        fixedOutbounds: []',
+        '        fixedInbounds: []',
+        '        fixedRouting: []',
+        '        inboundSocks:',
+        '          listen: 127.0.0.1',
+        '          portRange:',
+        '            start: 20000',
+        '            end: 20010',
+        '        speedtest:',
+        '          enabled: true',
+        '          schedule: "*/10 * * * *"',
+        '          urls:',
+        '            - https://example.com/test-10mb.bin',
+        '            - https://example.com/test-50mb.bin',
+        '          method: GET',
+        '          timeoutMs: 15000',
+        '          maxParallel: 2',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+        '  inbounds:',
+        '    enabled: true',
+        '  routing:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    const loaded = await loadConfig(configPath);
+    assert.deepEqual(loaded.config.subscriptions[0]?.targets[0]?.speedtest.urls, [
+      'https://example.com/test-10mb.bin',
+      'https://example.com/test-50mb.bin',
+    ]);
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.speedtest.maxParallel, 2);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig rejects invalid speedtest maxParallel', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-speedtest-max-parallel-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        fixedOutbounds: []',
+        '        fixedInbounds: []',
+        '        fixedRouting: []',
+        '        inboundSocks:',
+        '          listen: 127.0.0.1',
+        '          portRange:',
+        '            start: 20000',
+        '            end: 20010',
+        '        speedtest:',
+        '          enabled: true',
+        '          schedule: "*/10 * * * *"',
+        '          urls:',
+        '            - https://example.com/test-10mb.bin',
+        '          method: GET',
+        '          timeoutMs: 15000',
+        '          maxParallel: 0',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+        '  inbounds:',
+        '    enabled: true',
+        '  routing:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(configPath), /maxParallel/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig accepts monitor.maxParallel and statusServer.runtimeState defaults', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-monitor-status-config-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        fixedOutbounds: []',
+        '        fixedInbounds: []',
+        '        fixedRouting: []',
+        '        inboundSocks:',
+        '          listen: 127.0.0.1',
+        '          portRange:',
+        '            start: 20000',
+        '            end: 20010',
+        '        monitor:',
+        '          enabled: true',
+        '          schedule: "*/2 * * * *"',
+        '          maxParallel: 4',
+        '          request:',
+        '            url: https://example.com/health',
+        '            method: GET',
+        '            expectedStatus: 200',
+        '            timeoutMs: 5000',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+        '  inbounds:',
+        '    enabled: true',
+        '  routing:',
+        '    enabled: true',
+        'statusServer:',
+        '  enabled: true',
+        '  listen: 127.0.0.1:9090',
+      ].join('\n'),
+    );
+
+    const loaded = await loadConfig(configPath);
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.monitor.maxParallel, 4);
+    assert.equal(loaded.config.statusServer.runtimeState.enabled, true);
+    assert.equal(loaded.config.statusServer.runtimeState.includeRaw, false);
+    assert.equal(loaded.config.statusServer.runtimeState.includeSecrets, false);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig accepts balancerMonitor config and rejects incomplete balancerMonitor config', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-balancer-monitor-config-'));
+
+  try {
+    const validPath = join(tempDir, 'valid.yml');
+    await writeFile(
+      validPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        balancerMonitor:',
+        '          enabled: true',
+        '          schedule: "*/2 * * * *"',
+        '          socks5:',
+        '            host: 127.0.0.1',
+        '            port: 1080',
+        '          request:',
+        '            url: https://example.com/health',
+        '            method: GET',
+        '            expectedStatus: 200',
+        '            timeoutMs: 5000',
+        '          successGet:',
+        '            url: https://example.com/ping.txt',
+        '            expectedStatus: 200',
+        '            timeoutMs: 5000',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    const loaded = await loadConfig(validPath);
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.enabled, true);
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.socks5?.port, 1080);
+    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.successGet?.expectedStatus, 200);
+
+    const invalidPath = join(tempDir, 'invalid.yml');
+    await writeFile(
+      invalidPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        '        balancerMonitor:',
+        '          enabled: true',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(invalidPath), /balancerMonitor\.(schedule|socks5|request)/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('loadSubscriptions sorts enabled subscriptions by id', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'scd-sort-subscriptions-'));
 
@@ -215,7 +504,7 @@ test('loadSubscriptions sorts enabled subscriptions by id', async () => {
         enabled: true,
         format: 'auto',
         fetchTimeoutMs: 5000,
-        targets: [{ address: '127.0.0.1:8081', timeoutMs: 5000, fixedOutbounds: [] }],
+        targets: [createTargetConfig({ address: '127.0.0.1:8081' })],
       },
       {
         id: 'source-a',
@@ -223,7 +512,7 @@ test('loadSubscriptions sorts enabled subscriptions by id', async () => {
         enabled: true,
         format: 'auto',
         fetchTimeoutMs: 5000,
-        targets: [{ address: '127.0.0.1:8080', timeoutMs: 5000, fixedOutbounds: [] }],
+        targets: [createTargetConfig({ address: '127.0.0.1:8080' })],
       },
     ]);
 
@@ -285,12 +574,13 @@ test('outbound applicator applies target-specific observatory prefix to effectiv
     content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
   });
 
-  const targetPlan = applicator.preparePlanForTarget(basePlan, {
-    address: '127.0.0.1:8080',
-    timeoutMs: 5000,
-    fixedOutbounds: ['direct', 'blocked'],
-    observatorySubjectSelectorPrefix: 'x-observe-',
-  });
+  const targetPlan = applicator.preparePlanForTarget(
+    basePlan,
+    createTargetConfig({
+      fixedOutbounds: ['direct', 'blocked'],
+      observatorySubjectSelectorPrefix: 'x-observe-',
+    }),
+  );
 
   assert.notEqual(basePlan.manifestHash, targetPlan.manifestHash);
   assert.match(targetPlan.managedIds[0] ?? '', /^x-observe-/);
@@ -395,12 +685,9 @@ test('syncWithConfig skips Xray API when subscription manifest is unchanged in m
           format: 'auto',
           fetchTimeoutMs: 5000,
           targets: [
-            {
-              address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
+            createTargetConfig({
               observatorySubjectSelectorPrefix: 'x-observe-',
-            },
+            }),
           ],
         },
       ],
@@ -411,11 +698,8 @@ test('syncWithConfig skips Xray API when subscription manifest is unchanged in m
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 
@@ -482,18 +766,14 @@ test('syncWithConfig applies one subscription to multiple targets independently'
           format: 'auto',
           fetchTimeoutMs: 5000,
           targets: [
-            {
+            createTargetConfig({
               address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
               observatorySubjectSelectorPrefix: 'x-t1-',
-            },
-            {
+            }),
+            createTargetConfig({
               address: '127.0.0.1:8081',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
               observatorySubjectSelectorPrefix: 'x-t2-',
-            },
+            }),
           ],
         },
       ],
@@ -504,11 +784,8 @@ test('syncWithConfig applies one subscription to multiple targets independently'
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 
@@ -576,12 +853,9 @@ test('syncWithConfig skips overlapping runs inside one process', async () => {
           format: 'auto',
           fetchTimeoutMs: 5000,
           targets: [
-            {
-              address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
+            createTargetConfig({
               observatorySubjectSelectorPrefix: 'x-observe-',
-            },
+            }),
           ],
         },
       ],
@@ -592,11 +866,8 @@ test('syncWithConfig skips overlapping runs inside one process', async () => {
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 
@@ -655,12 +926,10 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
           format: 'auto',
           fetchTimeoutMs: 5000,
           targets: [
-            {
+            createTargetConfig({
               address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
               observatorySubjectSelectorPrefix: 'x-a-',
-            },
+            }),
           ],
         },
         {
@@ -670,12 +939,10 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
           format: 'auto',
           fetchTimeoutMs: 5000,
           targets: [
-            {
+            createTargetConfig({
               address: '127.0.0.1:8081',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
               observatorySubjectSelectorPrefix: 'x-b-',
-            },
+            }),
           ],
         },
       ],
@@ -686,11 +953,8 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 
@@ -764,13 +1028,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            {
-              address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
-            },
-          ],
+          targets: [createTargetConfig()],
         },
         {
           id: 'source-valid',
@@ -778,13 +1036,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            {
-              address: '127.0.0.1:8081',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
-            },
-          ],
+          targets: [createTargetConfig({ address: '127.0.0.1:8081' })],
         },
       ],
       runtime: {
@@ -794,11 +1046,8 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 
@@ -875,13 +1124,7 @@ test('syncWithConfig does not call Xray API when filters remove all entries', as
           filters: {
             countryAllowlist: ['US'],
           },
-          targets: [
-            {
-              address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
-            },
-          ],
+          targets: [createTargetConfig()],
         },
       ],
       runtime: {
@@ -891,11 +1134,8 @@ test('syncWithConfig does not call Xray API when filters remove all entries', as
         level: 'silent',
         format: 'json',
       },
-      resources: {
-        outbounds: {
-          enabled: true,
-        },
-      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
     },
   };
 

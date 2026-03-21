@@ -1,8 +1,0 @@
-{
-  "policy": {
-    "system": {
-      "statsOutboundUplink": true,
-      "statsOutboundDownlink": true
-    }
-  }
-}
