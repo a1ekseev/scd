@@ -3,7 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { loadConfig } from '../config/load-config.ts';
 import type { Logger } from '../logging/create-logger.ts';
 import { createLogger } from '../logging/create-logger.ts';
-import { runTargetBalancerMonitorTick, runTargetMonitorTick, runTargetSpeedtestTick } from './monitoring.ts';
+import { runTargetBalancerMonitorTick, runTargetMonitorTick } from './monitoring.ts';
 import { createSyncMemoryState } from './run-state.ts';
 import { startStatusServer } from './status-server.ts';
 import { syncWithConfig } from './sync-once.ts';
@@ -173,7 +173,8 @@ export async function runDaemon(configPath: string): Promise<void> {
         failureMessage: 'Daemon sync failed.',
       }),
       ...loadedConfig.config.subscriptions.flatMap((subscription) =>
-        subscription.targets.flatMap((target) => {
+        {
+          const target = subscription.target;
           const tasks: Promise<void>[] = [];
 
           if (target.monitor.enabled && target.monitor.schedule) {
@@ -185,23 +186,6 @@ export async function runDaemon(configPath: string): Promise<void> {
                 overrunMessage: 'Monitor tick skipped because previous run is still in progress.',
                 failureEvent: 'monitor_tick_failed',
                 failureMessage: 'Monitor tick failed.',
-                context: {
-                  subscriptionId: subscription.id,
-                  targetAddress: target.address,
-                },
-              }),
-            );
-          }
-
-          if (target.speedtest.enabled && target.speedtest.schedule) {
-            tasks.push(
-              runLoggedCronLoop(target.speedtest.schedule, () => stopping, async () => {
-                await runTargetSpeedtestTick(subscription.id, target, memoryState);
-              }, logger, {
-                overrunEvent: 'speedtest_tick_skipped_overrun',
-                overrunMessage: 'Speedtest tick skipped because previous run is still in progress.',
-                failureEvent: 'speedtest_tick_failed',
-                failureMessage: 'Speedtest tick failed.',
                 context: {
                   subscriptionId: subscription.id,
                   targetAddress: target.address,
@@ -228,7 +212,7 @@ export async function runDaemon(configPath: string): Promise<void> {
           }
 
           return tasks;
-        }),
+        },
       ),
     ];
 

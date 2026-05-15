@@ -18,6 +18,7 @@ function createSummary(totalLines: number): ManifestSummary {
     unsupportedCombo: 0,
     invalidUri: 0,
     missingRequiredField: 0,
+    duplicateTag: 0,
   };
 }
 
@@ -41,6 +42,9 @@ function increment(summary: ManifestSummary, skipped: SkippedEntry) {
   if (skipped.reasonCode === 'missing_required_field') {
     summary.missingRequiredField += 1;
   }
+  if (skipped.reasonCode === 'duplicate_tag') {
+    summary.duplicateTag += 1;
+  }
 }
 
 export function buildManifest(text: string, sourceFile: string): OutboundManifest {
@@ -48,6 +52,7 @@ export function buildManifest(text: string, sourceFile: string): OutboundManifes
   const summary = createSummary(lines.length);
   const entries: OutboundManifest['entries'] = [];
   const skipped: SkippedEntry[] = [];
+  const seenTags = new Set<string>();
 
   for (const line of lines) {
     const parsed = parseSubscriptionLine(line);
@@ -63,6 +68,20 @@ export function buildManifest(text: string, sourceFile: string): OutboundManifes
       increment(summary, normalized);
       continue;
     }
+
+    if (seenTags.has(normalized.tag)) {
+      const duplicate: SkippedEntry = {
+        line: normalized.line,
+        raw: normalized.raw,
+        label: normalized.label,
+        reasonCode: 'duplicate_tag',
+        reason: `Duplicate generated outbound tag "${normalized.tag}".`,
+      };
+      skipped.push(duplicate);
+      increment(summary, duplicate);
+      continue;
+    }
+    seenTags.add(normalized.tag);
 
     const jsonOutbound = buildOutboundJson(normalized);
     entries.push({

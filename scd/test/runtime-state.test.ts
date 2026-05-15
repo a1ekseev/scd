@@ -35,12 +35,6 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     balancerMonitor: {
       enabled: false,
     },
-    speedtest: {
-      enabled: false,
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 3,
-    },
     observatorySubjectSelectorPrefix: 'x-observe-',
     ...overrides,
   };
@@ -98,7 +92,7 @@ test('buildCurrentRuntimeStateSnapshot combines local config with runtime API st
       enabled: true,
       format: 'plain',
       fetchTimeoutMs: 5000,
-      targets: [target],
+      target,
     };
     const loadedConfig = createLoadedConfig(subscription);
     const manifest = buildManifest(content, subscription.id);
@@ -168,7 +162,7 @@ test('buildCurrentRuntimeStateSnapshot reflects target-specific vision udp443 ov
       enabled: true,
       format: 'plain',
       fetchTimeoutMs: 5000,
-      targets: [target],
+      target,
     };
     const loadedConfig = createLoadedConfig(subscription);
     const manifest = buildManifest(content, subscription.id);
@@ -208,7 +202,7 @@ test('buildCurrentRuntimeStateSnapshot treats repaired outbound tag as fallback 
       enabled: true,
       format: 'plain',
       fetchTimeoutMs: 5000,
-      targets: [target],
+      target,
     };
     const loadedConfig = createLoadedConfig(subscription);
     const manifest = buildManifest(content, subscription.id);
@@ -242,13 +236,13 @@ test('buildCurrentRuntimeStateSnapshot does not refetch remote subscriptions and
     enabled: true,
     format: 'plain',
     fetchTimeoutMs: 5000,
-    targets: [target],
+    target,
   };
   const loadedConfig = createLoadedConfig(subscription);
   const memoryState = {
     syncInProgress: false,
     targetLocks: {},
-    targets: {
+      targets: {
       [`${subscription.id}::${target.address}`]: {
         resources: {},
         topologyGeneration: 0,
@@ -283,6 +277,68 @@ test('buildCurrentRuntimeStateSnapshot does not refetch remote subscriptions and
   assert.equal(snapshot?.serviceState?.balancerMonitor?.state, 'healthy');
 });
 
+test('buildCurrentRuntimeStateSnapshot redacts target monitor URLs by default and exposes them with includeSecrets', async () => {
+  const target = createTarget({
+    monitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      maxParallel: 10,
+      request: {
+        url: 'https://monitor.example.test/health?token=secret',
+        method: 'GET',
+        expectedStatus: 204,
+        timeoutMs: 5000,
+      },
+    },
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.1',
+        port: 1080,
+      },
+      request: {
+        url: 'https://balancer.example.test/check?token=secret',
+        method: 'GET',
+        expectedStatus: 204,
+        timeoutMs: 5000,
+      },
+    },
+  });
+  const subscription: SubscriptionConfig = {
+    id: 'source-1',
+    input: 'https://subscription.example.test/tokenized/path?secret=abc',
+    enabled: true,
+    format: 'plain',
+    fetchTimeoutMs: 5000,
+    target,
+  };
+  const loadedConfig = createLoadedConfig(subscription);
+  const dependencies = {
+    createClient: () => ({
+      listOutbounds: async () => [],
+      listInbounds: async () => [],
+      listRules: async () => [],
+    }),
+  };
+
+  const redacted = await buildCurrentRuntimeStateSnapshot(loadedConfig, subscription.id, target.address, dependencies);
+  const exposed = await buildCurrentRuntimeStateSnapshot(
+    loadedConfig,
+    subscription.id,
+    target.address,
+    dependencies,
+    {
+      includeSecrets: true,
+    },
+  );
+
+  assert.equal(redacted?.config.target.monitor.request?.url, 'https://monitor.example.test/<redacted>');
+  assert.equal(redacted?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/<redacted>');
+  assert.equal(exposed?.config.target.monitor.request?.url, 'https://monitor.example.test/health?token=secret');
+  assert.equal(exposed?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/check?token=secret');
+});
+
 test('buildCurrentRuntimeStateSnapshot exposes raw and secrets only when explicitly enabled', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'scd-runtime-secrets-'));
 
@@ -298,7 +354,7 @@ test('buildCurrentRuntimeStateSnapshot exposes raw and secrets only when explici
       enabled: true,
       format: 'plain',
       fetchTimeoutMs: 5000,
-      targets: [target],
+      target,
     };
     const loadedConfig = createLoadedConfig(subscription);
     const manifest = buildManifest(content, subscription.id);
@@ -364,4 +420,46 @@ test('groupStatusSnapshot groups tunnels by subscription and target', () => {
   assert.equal(grouped[0]?.targets[0]?.targetAddress, '127.0.0.1:8080');
   assert.equal(grouped[0]?.targets[1]?.targetAddress, '127.0.0.1:8082');
   assert.equal(grouped[1]?.subscriptionId, 'sub-b');
+});
+
+test('groupStatusSnapshot sorts tunnels by latency and moves idle or missing latency to the end', () => {
+  const snapshot: StatusSnapshotTunnel[] = [
+    {
+      subscriptionId: 'sub-a',
+      targetAddress: '127.0.0.1:8080',
+      displayName: 'Idle',
+      endpoint: '127.0.0.1:20003',
+      state: 'idle',
+    },
+    {
+      subscriptionId: 'sub-a',
+      targetAddress: '127.0.0.1:8080',
+      displayName: 'Slow',
+      endpoint: '127.0.0.1:20002',
+      state: 'healthy',
+      lastLatencyMs: 300,
+    },
+    {
+      subscriptionId: 'sub-a',
+      targetAddress: '127.0.0.1:8080',
+      displayName: 'Fast',
+      endpoint: '127.0.0.1:20000',
+      state: 'healthy',
+      lastLatencyMs: 30,
+    },
+    {
+      subscriptionId: 'sub-a',
+      targetAddress: '127.0.0.1:8080',
+      displayName: 'Unknown',
+      endpoint: '127.0.0.1:20001',
+      state: 'healthy',
+    },
+  ];
+
+  const grouped = groupStatusSnapshot(snapshot);
+
+  assert.deepEqual(
+    grouped[0]?.targets[0]?.tunnels.map((item) => item.displayName),
+    ['Fast', 'Slow', 'Idle', 'Unknown'],
+  );
 });

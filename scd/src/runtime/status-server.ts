@@ -5,7 +5,7 @@ import type { Logger } from '../logging/create-logger.ts';
 import type { GroupedStatusSubscription, LoadedConfig, StatusSnapshotTunnel } from '../types.ts';
 import { ApiRequestError } from '../errors.ts';
 import { buildCurrentRuntimeStateSnapshot } from './current-runtime-state.ts';
-import { buildStatusSnapshot, type SyncMemoryState } from './run-state.ts';
+import { buildStatusSnapshot, buildTargetStateKey, type SyncMemoryState } from './run-state.ts';
 
 interface StatusServerDependencies {
   buildCurrentRuntimeStateSnapshotFn?: typeof buildCurrentRuntimeStateSnapshot;
@@ -37,70 +37,157 @@ function escapeHtml(value: string): string {
     .replaceAll('"', '&quot;');
 }
 
-function formatBitsPerSecond(value?: number): string {
-  if (!value) {
-    return '-';
+function stateClass(value: string | undefined): string {
+  if (value === 'healthy' || value === 'degraded' || value === 'repairing') {
+    return value;
   }
-
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(2)} Gbps`;
-  }
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)} Mbps`;
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(2)} Kbps`;
-  }
-  return `${value} bps`;
+  return 'idle';
 }
 
-function renderHtml(snapshot: StatusSnapshotTunnel[]): string {
+function formatLatency(value?: number): string {
+  return value === undefined ? '-' : `${value} ms`;
+}
+
+function formatLastCheck(latency?: number, error?: string): string {
+  if (latency !== undefined) {
+    return formatLatency(latency);
+  }
+  return error ? `Error: ${error}` : '-';
+}
+
+function formatBalancerStatus(value?: boolean): string {
+  if (value === true) {
+    return 'active';
+  }
+  if (value === false) {
+    return 'removed';
+  }
+  return 'n/a';
+}
+
+function compareLatencyThenName(left: StatusSnapshotTunnel, right: StatusSnapshotTunnel): number {
+  const leftLatency = left.state === 'idle' || left.lastLatencyMs === undefined ? Number.POSITIVE_INFINITY : left.lastLatencyMs;
+  const rightLatency = right.state === 'idle' || right.lastLatencyMs === undefined ? Number.POSITIVE_INFINITY : right.lastLatencyMs;
+  return leftLatency - rightLatency || left.displayName.localeCompare(right.displayName);
+}
+
+function renderMetric(label: string, value: string): string {
+  return `<span class="metric"><span class="metric-label">${escapeHtml(label)}</span><span class="metric-value">${escapeHtml(value)}</span></span>`;
+}
+
+function renderTunnelCard(item: StatusSnapshotTunnel): string {
+  const state = stateClass(item.state);
+  return `<article class="node-card state-${state}">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-title">${escapeHtml(item.displayName)}</div>
+    <div class="node-meta">${escapeHtml(item.countryIso2 ?? '-')} · ${escapeHtml(item.endpoint)}</div>
+    <div class="node-metrics">
+      ${renderMetric('State', item.state)}
+      ${renderMetric('Last Check', formatLastCheck(item.lastLatencyMs, item.lastError))}
+      ${renderMetric('Balancer', formatBalancerStatus(item.balanced))}
+    </div>
+  </div>
+</article>`;
+}
+
+function buildConfiguredStatusGroups(
+  snapshot: StatusSnapshotTunnel[],
+  loadedConfig: LoadedConfig,
+  memoryState: SyncMemoryState,
+): GroupedStatusSubscription[] {
   const grouped = groupStatusSnapshot(snapshot);
+  const subscriptionMap = new Map<string, GroupedStatusSubscription>(
+    grouped.map((subscription) => [
+      subscription.subscriptionId,
+      {
+        subscriptionId: subscription.subscriptionId,
+        targets: subscription.targets.map((target) => ({ ...target })),
+      },
+    ]),
+  );
+
+  for (const subscription of loadedConfig.config.subscriptions.filter((item) => item.enabled)) {
+    const configuredSubscription = subscriptionMap.get(subscription.id) ?? {
+      subscriptionId: subscription.id,
+      targets: [],
+    };
+    subscriptionMap.set(subscription.id, configuredSubscription);
+
+    const targetState = memoryState.targets[buildTargetStateKey(subscription.id, subscription.target.address)];
+    const existingTarget = configuredSubscription.targets.find(
+      (target) => target.targetAddress === subscription.target.address,
+    );
+    const balancerMonitor = targetState?.balancerMonitor
+      ? {
+          state: targetState.balancerMonitor.state,
+          lastStatusCode: targetState.balancerMonitor.lastStatusCode,
+          lastLatencyMs: targetState.balancerMonitor.lastLatencyMs,
+          lastError: targetState.balancerMonitor.lastError,
+          lastCheckedAt: targetState.balancerMonitor.lastCheckedAt,
+          lastSuccessAt: targetState.balancerMonitor.lastSuccessAt,
+          lastFailureAt: targetState.balancerMonitor.lastFailureAt,
+          lastSuccessStatusCode: targetState.balancerMonitor.lastSuccessStatusCode,
+          lastSuccessLatencyMs: targetState.balancerMonitor.lastSuccessLatencyMs,
+        }
+      : existingTarget?.balancerMonitor ?? { state: 'idle' as const };
+
+    if (existingTarget) {
+      existingTarget.balancerMonitor = balancerMonitor;
+      continue;
+    }
+
+    configuredSubscription.targets.push({
+      subscriptionId: subscription.id,
+      targetAddress: subscription.target.address,
+      tunnels: [],
+      balancerMonitor,
+    });
+  }
+
+  return [...subscriptionMap.values()]
+    .sort((left, right) => left.subscriptionId.localeCompare(right.subscriptionId))
+    .map((subscription) => ({
+      ...subscription,
+      targets: [...subscription.targets].sort((left, right) => left.targetAddress.localeCompare(right.targetAddress)),
+    }));
+}
+
+function renderHtml(
+  snapshot: StatusSnapshotTunnel[],
+  loadedConfig: LoadedConfig,
+  memoryState: SyncMemoryState,
+): string {
+  const grouped = buildConfiguredStatusGroups(snapshot, loadedConfig, memoryState);
   const sections = grouped
     .map((subscription) => {
       const targets = subscription.targets
         .map((target) => {
-          const rows = target.tunnels
-            .map((item) => {
-              return `<tr>
-<td>${escapeHtml(item.displayName)}</td>
-<td>${escapeHtml(item.countryIso2 ?? '-')}</td>
-<td>${escapeHtml(item.endpoint)}</td>
-<td>${escapeHtml(item.state)}</td>
-<td>${escapeHtml(item.lastHttpStatus ? String(item.lastHttpStatus) : '-')}</td>
-<td>${escapeHtml(item.lastLatencyMs ? `${item.lastLatencyMs} ms` : '-')}</td>
-<td>${escapeHtml(formatBitsPerSecond(item.lastBitsPerSecond))}</td>
-</tr>`;
-            })
-            .join('\n');
-
-          const runtimeStateHref = `/api/runtime-state?subscriptionId=${encodeURIComponent(subscription.subscriptionId)}&targetAddress=${encodeURIComponent(target.targetAddress)}`;
+          const balancerState = target.balancerMonitor?.state ?? 'idle';
+          const balancerStateClass = stateClass(balancerState);
+          const tunnelCards = target.tunnels.map(renderTunnelCard).join('\n');
 
           return `<section class="target-card">
   <div class="target-head">
     <div>
       <h3>${escapeHtml(target.targetAddress)}</h3>
       <p>${target.tunnels.length} tunnel(s)</p>
-      <p>Balancer: ${escapeHtml(target.balancerMonitor?.state ?? 'idle')} | HTTP ${escapeHtml(target.balancerMonitor?.lastStatusCode ? String(target.balancerMonitor.lastStatusCode) : '-')} | Latency ${escapeHtml(target.balancerMonitor?.lastLatencyMs ? `${target.balancerMonitor.lastLatencyMs} ms` : '-')} | Success GET ${escapeHtml(target.balancerMonitor?.successGetLastStatusCode ? String(target.balancerMonitor.successGetLastStatusCode) : '-')}</p>
     </div>
-    <a class="action-link" href="${runtimeStateHref}">Current runtime state (JSON)</a>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Country</th>
-        <th>SOCKS Endpoint</th>
-        <th>State</th>
-        <th>HTTP</th>
-        <th>Latency</th>
-        <th>Speed</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows || '<tr><td colspan="7">No tunnel data.</td></tr>'}
-    </tbody>
-  </table>
+  <article class="balancer-card state-${balancerStateClass}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        ${renderMetric('State', balancerState)}
+        ${renderMetric('Last Check', formatLastCheck(target.balancerMonitor?.lastLatencyMs, target.balancerMonitor?.lastError))}
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    ${tunnelCards || '<p class="empty-state">No tunnel data.</p>'}
+  </div>
 </section>`;
         })
         .join('\n');
@@ -119,28 +206,99 @@ function renderHtml(snapshot: StatusSnapshotTunnel[]): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>scd status</title>
+  <title>Subscription Control Daemon Status</title>
   <style>
-    :root { color-scheme: light; }
-    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; background: #f5f3ef; color: #1c1712; }
-    h1 { margin: 0 0 12px; font-size: 28px; }
-    h2 { margin: 0; font-size: 18px; }
-    h3 { margin: 0; font-size: 16px; }
-    p { margin: 4px 0 0; color: #6c5d4a; font-size: 13px; }
-    .subscription-card { margin: 0 0 20px; padding: 12px; border: 1px solid #d9d1c4; background: #fffaf0; }
-    .target-card { margin: 12px 0 0; padding: 12px; border: 1px solid #e0d7c8; background: #fffdf8; }
+    :root {
+      color-scheme: light;
+      --bg: #f2efe7;
+      --panel: #fffaf0;
+      --panel-strong: #fff4df;
+      --ink: #1f1a14;
+      --muted: #766b5c;
+      --line: #dfd3c0;
+      --healthy: #16864d;
+      --degraded: #c53931;
+      --repairing: #c27a12;
+      --idle: #8b8580;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(194, 122, 18, .16), transparent 32rem),
+        linear-gradient(135deg, #f8f5ed, var(--bg));
+    }
+    main { max-width: 1440px; margin: 0 auto; padding: 28px; }
+    h1 { margin: 0 0 20px; font-size: clamp(28px, 4vw, 48px); letter-spacing: -.04em; }
+    h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+    h3 { margin: 0; font-size: 18px; }
+    p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .subscription-card {
+      margin: 0 0 24px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 250, 240, .78);
+      box-shadow: 0 18px 50px rgba(72, 55, 32, .08);
+      backdrop-filter: blur(14px);
+    }
+    .target-card {
+      margin: 14px 0 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 253, 248, .82);
+    }
     .subscription-head, .target-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
-    .action-link { color: #6d3f0e; text-decoration: none; font-weight: 600; }
-    .action-link:hover { text-decoration: underline; }
-    table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid #d9d1c4; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #e8e0d5; text-align: left; font-size: 14px; }
-    th { background: #efe6d7; }
-    tr:nth-child(even) { background: #fbf7ef; }
+    .balancer-card, .node-card {
+      position: relative;
+      display: flex;
+      gap: 13px;
+      align-items: flex-start;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffdf8, #fbf4e7);
+      box-shadow: 0 10px 24px rgba(72, 55, 32, .06);
+    }
+    .balancer-card { margin: 0 0 14px; padding: 16px; background: linear-gradient(135deg, var(--panel-strong), #fffdf8); }
+    .nodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .node-card { padding: 14px; }
+    .node-orb {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      border-radius: 999px;
+      background: var(--idle);
+      box-shadow: 0 0 0 6px rgba(139, 133, 128, .14);
+    }
+    .state-healthy .node-orb { background: var(--healthy); box-shadow: 0 0 0 6px rgba(22, 134, 77, .14); }
+    .state-degraded .node-orb { background: var(--degraded); box-shadow: 0 0 0 6px rgba(197, 57, 49, .14); }
+    .state-repairing .node-orb { background: var(--repairing); box-shadow: 0 0 0 6px rgba(194, 122, 18, .18); }
+    .node-main { min-width: 0; width: 100%; }
+    .node-kicker { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: 15px; }
+    .node-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .node-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .metric { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 8px; border-radius: 999px; background: rgba(239, 230, 215, .8); }
+    .metric-label { color: var(--muted); font-size: 11px; }
+    .metric-value { font-size: 12px; font-weight: 750; }
+    .empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; }
+    @media (max-width: 720px) {
+      main { padding: 18px; }
+      .nodes-grid { grid-template-columns: 1fr; }
+      .subscription-card, .target-card { border-radius: 16px; }
+    }
   </style>
 </head>
 <body>
-  <h1>scd status</h1>
-  ${sections || '<section class="subscription-card"><div class="subscription-head"><h2>No subscriptions</h2></div></section>'}
+  <main>
+    <h1>Subscription Control Daemon Status</h1>
+    ${sections || '<section class="subscription-card"><div class="subscription-head"><h2>No subscriptions</h2></div></section>'}
+  </main>
 </body>
 </html>`;
 }
@@ -165,13 +323,18 @@ export function groupStatusSnapshot(snapshot: StatusSnapshotTunnel[]): GroupedSt
         .map(([targetAddress, tunnels]) => ({
           subscriptionId,
           targetAddress,
-          tunnels: [...tunnels].sort((left, right) => left.displayName.localeCompare(right.displayName)),
+          tunnels: [...tunnels].sort(compareLatencyThenName),
           balancerMonitor: tunnels[0]
             ? {
                 state: tunnels[0].balancerMonitorState ?? 'idle',
                 lastStatusCode: tunnels[0].balancerMonitorLastStatusCode,
                 lastLatencyMs: tunnels[0].balancerMonitorLastLatencyMs,
-                successGetLastStatusCode: tunnels[0].balancerMonitorSuccessGetLastStatusCode,
+                lastError: tunnels[0].balancerMonitorLastError,
+                lastCheckedAt: tunnels[0].balancerMonitorLastCheckedAt,
+                lastSuccessAt: tunnels[0].balancerMonitorLastSuccessAt,
+                lastFailureAt: tunnels[0].balancerMonitorLastFailureAt,
+                lastSuccessStatusCode: tunnels[0].balancerMonitorLastSuccessStatusCode,
+                lastSuccessLatencyMs: tunnels[0].balancerMonitorLastSuccessLatencyMs,
               }
             : undefined,
         })),
@@ -262,7 +425,7 @@ export async function handleStatusServerRequest(
   return {
     statusCode: 200,
     contentType: 'text/html; charset=utf-8',
-    body: renderHtml(snapshot),
+    body: renderHtml(snapshot, loadedConfig, memoryState),
   };
 }
 

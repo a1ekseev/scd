@@ -131,7 +131,7 @@ export async function applyOutbounds(
       }
     }
 
-    for (const [tag, backup] of rollbackBackups) {
+    for (const backup of rollbackBackups.values()) {
       try {
         await client.addOutbound(backup);
       } catch {

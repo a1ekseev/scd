@@ -29,6 +29,7 @@ jobs:
           cache-dependency-path: |
             scd/package-lock.json
             sfc/package-lock.json
+            gtl/package-lock.json
 
       - name: Install dependencies
         working-directory: ./scd
@@ -52,6 +53,18 @@ jobs:
 
       - name: Run sfc tests
         working-directory: ./sfc
+        run: npm test
+
+      - name: Install gtl dependencies
+        working-directory: ./gtl
+        run: npm ci
+
+      - name: Typecheck gtl
+        working-directory: ./gtl
+        run: npm run typecheck
+
+      - name: Run gtl tests
+        working-directory: ./gtl
         run: npm test
 
       - name: Set up QEMU
@@ -80,6 +93,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build gtl Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./gtl
+          file: ./gtl/Dockerfile
+          push: false
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -98,6 +121,7 @@ jobs:
           cache-dependency-path: |
             scd/package-lock.json
             sfc/package-lock.json
+            gtl/package-lock.json
 
       - name: Install dependencies
         working-directory: ./scd
@@ -121,6 +145,18 @@ jobs:
 
       - name: Run sfc tests
         working-directory: ./sfc
+        run: npm test
+
+      - name: Install gtl dependencies
+        working-directory: ./gtl
+        run: npm ci
+
+      - name: Typecheck gtl
+        working-directory: ./gtl
+        run: npm run typecheck
+
+      - name: Run gtl tests
+        working-directory: ./gtl
         run: npm test
 
       - name: Set up QEMU
@@ -160,6 +196,18 @@ jobs:
             org.opencontainers.image.title=sfc
             org.opencontainers.image.description=Subscription Filter Control
 
+      - name: Extract gtl Docker metadata
+        id: meta_gtl
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/a1ekseev/gtl
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+          labels: |
+            org.opencontainers.image.title=gtl
+            org.opencontainers.image.description=Gen Test Load
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -181,5 +229,17 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta_sfc.outputs.tags }}
           labels: ${{ steps.meta_sfc.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push gtl Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./gtl
+          file: ./gtl/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta_gtl.outputs.tags }}
+          labels: ${{ steps.meta_gtl.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

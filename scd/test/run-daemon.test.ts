@@ -96,10 +96,10 @@ test('runLoggedCronLoop logs overrun through logger path', async () => {
       },
     },
     {
-      overrunEvent: 'speedtest_tick_skipped_overrun',
-      overrunMessage: 'Speedtest tick skipped because previous run is still in progress.',
-      failureEvent: 'speedtest_tick_failed',
-      failureMessage: 'Speedtest tick failed.',
+      overrunEvent: 'balancer_monitor_tick_skipped_overrun',
+      overrunMessage: 'Balancer monitor tick skipped because previous run is still in progress.',
+      failureEvent: 'balancer_monitor_tick_failed',
+      failureMessage: 'Balancer monitor tick failed.',
       context: {
         subscriptionId: 'sub-1',
         targetAddress: 'xray:8080',
@@ -123,8 +123,8 @@ test('runLoggedCronLoop logs overrun through logger path', async () => {
 
   assert.equal(errors.length, 0);
   assert.ok(warnings.length >= 1);
-  assert.equal(warnings[0]?.message, 'Speedtest tick skipped because previous run is still in progress.');
-  assert.equal(warnings[0]?.object.event, 'speedtest_tick_skipped_overrun');
+  assert.equal(warnings[0]?.message, 'Balancer monitor tick skipped because previous run is still in progress.');
+  assert.equal(warnings[0]?.object.event, 'balancer_monitor_tick_skipped_overrun');
   assert.equal(warnings[0]?.object.subscriptionId, 'sub-1');
   assert.equal(warnings[0]?.object.targetAddress, 'xray:8080');
 });

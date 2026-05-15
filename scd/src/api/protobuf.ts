@@ -66,10 +66,6 @@ export function encodeRepeatedStringField(fieldNumber: number, values: string[])
   return concatBytes(values.map((value) => encodeStringField(fieldNumber, value)));
 }
 
-export function encodeRepeatedBytesField(fieldNumber: number, values: Uint8Array[]): Uint8Array {
-  return concatBytes(values.map((value) => encodeBytesField(fieldNumber, value)));
-}
-
 function decodeVarint(input: Uint8Array, start: number): { value: number; next: number } {
   let shift = 0;
   let result = 0n;

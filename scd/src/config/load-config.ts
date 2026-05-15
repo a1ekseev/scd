@@ -147,28 +147,11 @@ const targetSchema = z.object({
           timeoutMs: z.number().int().positive().default(5000),
         })
         .optional(),
-      successGet: z
-        .object({
-          url: z.string().trim().url(),
-          expectedStatus: z.number().int().min(100).max(599),
-          timeoutMs: z.number().int().positive().default(5000),
-        })
-        .optional(),
     })
+    .strict()
     .default({ enabled: false }),
-  speedtest: z
-    .object({
-      enabled: z.boolean().default(false),
-      schedule: z.string().trim().optional(),
-      urls: z.array(z.string().trim().url()).min(1).optional(),
-      method: z.literal('GET').default('GET'),
-      expectedSizeBytes: z.number().int().positive().optional(),
-      timeoutMs: z.number().int().positive().default(15000),
-      maxParallel: z.number().int().positive().default(3),
-    })
-    .default({ enabled: false, method: 'GET', timeoutMs: 15000, maxParallel: 3 }),
   observatorySubjectSelectorPrefix: optionalTrimmedStringSchema,
-});
+}).strict();
 
 const subscriptionSchema = z.object({
   id: z.string().trim().min(1),
@@ -177,8 +160,8 @@ const subscriptionSchema = z.object({
   format: z.enum(['auto', 'plain', 'base64']).default('auto'),
   fetchTimeoutMs: z.number().int().positive().default(5000),
   filters: filtersSchema,
-  targets: z.array(targetSchema).min(1),
-});
+  target: targetSchema,
+}).strict();
 
 const appConfigSchema = z.object({
   subscriptions: z.array(subscriptionSchema).min(1),
@@ -222,9 +205,7 @@ const appConfigSchema = z.object({
 
   const addresses = new Map<string, number>();
   for (const subscription of config.subscriptions) {
-    for (const target of subscription.targets) {
-      addresses.set(target.address, (addresses.get(target.address) ?? 0) + 1);
-    }
+    addresses.set(subscription.target.address, (addresses.get(subscription.target.address) ?? 0) + 1);
   }
 
   for (const [address, count] of addresses) {
@@ -278,137 +259,93 @@ const appConfigSchema = z.object({
   }
 
   for (const subscription of config.subscriptions) {
-    for (const target of subscription.targets) {
-      if ((config.resources.inbounds.enabled || config.resources.routing.enabled) && !target.inboundSocks) {
+    const target = subscription.target;
+
+    if ((config.resources.inbounds.enabled || config.resources.routing.enabled) && !target.inboundSocks) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'inboundSocks is required when resources.inbounds.enabled or resources.routing.enabled is true.',
+        path: ['subscriptions'],
+      });
+    }
+
+    if (target.monitor.enabled) {
+      if (!target.monitor.schedule) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'inboundSocks is required when resources.inbounds.enabled or resources.routing.enabled is true.',
+          message: 'monitor.schedule is required when monitor.enabled is true.',
+          path: ['subscriptions'],
+        });
+      } else {
+        try {
+          CronExpressionParser.parse(target.monitor.schedule);
+        } catch (error) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error instanceof Error ? error.message : 'Invalid cron expression.',
+            path: ['subscriptions'],
+          });
+        }
+      }
+
+      if (!target.monitor.request) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'monitor.request is required when monitor.enabled is true.',
           path: ['subscriptions'],
         });
       }
 
-      if (target.monitor.enabled) {
-        if (!target.monitor.schedule) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'monitor.schedule is required when monitor.enabled is true.',
-            path: ['subscriptions'],
-          });
-        } else {
-          try {
-            CronExpressionParser.parse(target.monitor.schedule);
-          } catch (error) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: error instanceof Error ? error.message : 'Invalid cron expression.',
-              path: ['subscriptions'],
-            });
-          }
-        }
+      if (!target.inboundSocks) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'inboundSocks is required when monitor.enabled is true.',
+          path: ['subscriptions'],
+        });
+      }
 
-        if (!target.monitor.request) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'monitor.request is required when monitor.enabled is true.',
-            path: ['subscriptions'],
-          });
-        }
+      if (!config.resources.inbounds.enabled || !config.resources.routing.enabled || !config.resources.outbounds.enabled) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'monitor.enabled requires resources.outbounds.enabled, resources.inbounds.enabled and resources.routing.enabled.',
+          path: ['resources'],
+        });
+      }
+    }
 
-        if (!target.inboundSocks) {
+    if (target.balancerMonitor.enabled) {
+      if (!target.balancerMonitor.schedule) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'balancerMonitor.schedule is required when balancerMonitor.enabled is true.',
+          path: ['subscriptions'],
+        });
+      } else {
+        try {
+          CronExpressionParser.parse(target.balancerMonitor.schedule);
+        } catch (error) {
           context.addIssue({
             code: z.ZodIssueCode.custom,
-            message: 'inboundSocks is required when monitor.enabled is true.',
+            message: error instanceof Error ? error.message : 'Invalid cron expression.',
             path: ['subscriptions'],
-          });
-        }
-
-        if (!config.resources.inbounds.enabled || !config.resources.routing.enabled || !config.resources.outbounds.enabled) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'monitor.enabled requires resources.outbounds.enabled, resources.inbounds.enabled and resources.routing.enabled.',
-            path: ['resources'],
           });
         }
       }
 
-      if (target.speedtest.enabled) {
-        if (!target.speedtest.schedule) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'speedtest.schedule is required when speedtest.enabled is true.',
-            path: ['subscriptions'],
-          });
-        } else {
-          try {
-            CronExpressionParser.parse(target.speedtest.schedule);
-          } catch (error) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: error instanceof Error ? error.message : 'Invalid cron expression.',
-              path: ['subscriptions'],
-            });
-          }
-        }
-
-        if (!target.speedtest.urls || target.speedtest.urls.length === 0) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'speedtest.urls is required when speedtest.enabled is true.',
-            path: ['subscriptions'],
-          });
-        }
-
-        if (!target.inboundSocks) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'inboundSocks is required when speedtest.enabled is true.',
-            path: ['subscriptions'],
-          });
-        }
-
-        if (!config.resources.inbounds.enabled || !config.resources.routing.enabled || !config.resources.outbounds.enabled) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'speedtest.enabled requires resources.outbounds.enabled, resources.inbounds.enabled and resources.routing.enabled.',
-            path: ['resources'],
-          });
-        }
+      if (!target.balancerMonitor.socks5) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'balancerMonitor.socks5 is required when balancerMonitor.enabled is true.',
+          path: ['subscriptions'],
+        });
       }
 
-      if (target.balancerMonitor.enabled) {
-        if (!target.balancerMonitor.schedule) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'balancerMonitor.schedule is required when balancerMonitor.enabled is true.',
-            path: ['subscriptions'],
-          });
-        } else {
-          try {
-            CronExpressionParser.parse(target.balancerMonitor.schedule);
-          } catch (error) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: error instanceof Error ? error.message : 'Invalid cron expression.',
-              path: ['subscriptions'],
-            });
-          }
-        }
-
-        if (!target.balancerMonitor.socks5) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'balancerMonitor.socks5 is required when balancerMonitor.enabled is true.',
-            path: ['subscriptions'],
-          });
-        }
-
-        if (!target.balancerMonitor.request) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'balancerMonitor.request is required when balancerMonitor.enabled is true.',
-            path: ['subscriptions'],
-          });
-        }
+      if (!target.balancerMonitor.request) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'balancerMonitor.request is required when balancerMonitor.enabled is true.',
+          path: ['subscriptions'],
+        });
       }
     }
   }

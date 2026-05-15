@@ -1,5 +1,5 @@
 {
-  "name": "sfc",
+  "name": "gtl",
   "version": "1.0.3",
   "private": true,
   "type": "module",
@@ -7,19 +7,17 @@
     "node": ">=24.14.0"
   },
   "bin": {
-    "sfc": "./dist/cli.js"
+    "gtl": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "start": "node ./dist/cli.js",
     "serve": "node ./dist/cli.js serve",
-    "refresh": "node ./dist/cli.js refresh",
     "test": "node --test ./test/**/*.test.ts"
   },
   "dependencies": {
     "commander": "^14.0.2",
-    "cron-parser": "^5.4.0",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.1",
     "yaml": "^2.8.1",

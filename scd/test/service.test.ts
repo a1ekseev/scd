@@ -29,12 +29,6 @@ function createTargetConfig(overrides: Partial<SubscriptionTargetConfig> = {}): 
     balancerMonitor: {
       enabled: false,
     },
-    speedtest: {
-      enabled: false,
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 3,
-    },
     ...overrides,
   };
 }
@@ -87,12 +81,12 @@ test('loadConfig resolves relative paths, targets and interpolates env vars', as
         '      countryAllowlist:',
         '        - de',
         '      labelIncludeRegex: /,\\s*Extra$/i',
-        '    targets:',
-        '      - address: ${XRAY_API_ADDRESS}',
-        '        timeoutMs: 5000',
-        '        fixedOutbounds:',
-        '          - direct',
-        '        observatorySubjectSelectorPrefix: x-observe-',
+        '    target:',
+        '      address: ${XRAY_API_ADDRESS}',
+        '      timeoutMs: 5000',
+        '      fixedOutbounds:',
+        '        - direct',
+        '      observatorySubjectSelectorPrefix: x-observe-',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -105,13 +99,13 @@ test('loadConfig resolves relative paths, targets and interpolates env vars', as
     );
 
     const loaded = await loadConfig(configPath);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.address, '127.0.0.1:8080');
+    assert.equal(loaded.config.subscriptions[0]?.target.address, '127.0.0.1:8080');
     assert.equal(loaded.config.subscriptions[0]?.fetchTimeoutMs, 7000);
     assert.deepEqual(loaded.config.subscriptions[0]?.filters?.countryAllowlist, ['DE']);
     assert.equal(loaded.config.subscriptions[0]?.filters?.labelIncludeRegex, '/,\\s*Extra$/i');
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.timeoutMs, 5000);
-    assert.deepEqual(loaded.config.subscriptions[0]?.targets[0]?.fixedOutbounds, ['direct']);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.observatorySubjectSelectorPrefix, 'x-observe-');
+    assert.equal(loaded.config.subscriptions[0]?.target.timeoutMs, 5000);
+    assert.deepEqual(loaded.config.subscriptions[0]?.target.fixedOutbounds, ['direct']);
+    assert.equal(loaded.config.subscriptions[0]?.target.observatorySubjectSelectorPrefix, 'x-observe-');
     assert.equal(loaded.config.subscriptions[0]?.input, resolve(tempDir, 'subscription.txt'));
   } finally {
     delete process.env.XRAY_API_ADDRESS;
@@ -131,10 +125,14 @@ test('loadConfig parses visionUdp443Override and defaults it to false', async ()
         '  - id: source-1',
         '    input: ./subscription.txt',
         '    enabled: true',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        visionUdp443Override: true',
-        '      - address: 127.0.0.1:8081',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      visionUdp443Override: true',
+        '  - id: source-2',
+        '    input: ./subscription-2.txt',
+        '    enabled: true',
+        '    target:',
+        '      address: 127.0.0.1:8081',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -149,8 +147,8 @@ test('loadConfig parses visionUdp443Override and defaults it to false', async ()
 
     const loaded = await loadConfig(configPath);
 
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.visionUdp443Override, true);
-    assert.equal(loaded.config.subscriptions[0]?.targets[1]?.visionUdp443Override, false);
+    assert.equal(loaded.config.subscriptions[0]?.target.visionUdp443Override, true);
+    assert.equal(loaded.config.subscriptions[1]?.target.visionUdp443Override, false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -168,13 +166,13 @@ test('loadConfig rejects duplicate target addresses', async () => {
         '  - id: source-1',
         '    input: ./subscription-1.txt',
         '    fetchTimeoutMs: 5000',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
+        '    target:',
+        '      address: 127.0.0.1:8080',
         '  - id: source-2',
         '    input: ./subscription-2.txt',
         '    fetchTimeoutMs: 5000',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
+        '    target:',
+        '      address: 127.0.0.1:8080',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -192,6 +190,68 @@ test('loadConfig rejects duplicate target addresses', async () => {
   }
 });
 
+test('loadConfig rejects legacy targets array shape', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-legacy-targets-shape-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    targets:',
+        '      - address: 127.0.0.1:8080',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(configPath), /subscriptions\.0\.target:/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig rejects mixed target and legacy targets array shape', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-mixed-targets-shape-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '    targets:',
+        '      - address: 127.0.0.1:8081',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(configPath), /subscriptions\.0: Unrecognized key: "targets"/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('loadConfig rejects invalid daemon cron expression', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'scd-cron-'));
 
@@ -204,8 +264,8 @@ test('loadConfig rejects invalid daemon cron expression', async () => {
         '  - id: source-1',
         '    input: ./subscription.txt',
         '    fetchTimeoutMs: 5000',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
+        '    target:',
+        '      address: 127.0.0.1:8080',
         'runtime:',
         '  mode: daemon',
         '  schedule: "not-a-cron"',
@@ -238,8 +298,8 @@ test('loadConfig rejects unsupported country code in filters', async () => {
         '    filters:',
         '      countryAllowlist:',
         '        - ZZ',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
+        '    target:',
+        '      address: 127.0.0.1:8080',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -270,8 +330,8 @@ test('loadConfig rejects invalid regex literal in filters', async () => {
         '    input: ./subscription.txt',
         '    filters:',
         '      labelIncludeRegex: /(/i',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
+        '    target:',
+        '      address: 127.0.0.1:8080',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -289,8 +349,8 @@ test('loadConfig rejects invalid regex literal in filters', async () => {
   }
 });
 
-test('loadConfig accepts multiple speedtest urls', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'scd-speedtest-urls-'));
+test('loadConfig rejects legacy speedtest config', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-legacy-speedtest-'));
 
   try {
     const configPath = join(tempDir, 'config.yml');
@@ -300,25 +360,25 @@ test('loadConfig accepts multiple speedtest urls', async () => {
         'subscriptions:',
         '  - id: source-1',
         '    input: ./subscription.txt',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        fixedOutbounds: []',
-        '        fixedInbounds: []',
-        '        fixedRouting: []',
-        '        inboundSocks:',
-        '          listen: 127.0.0.1',
-        '          portRange:',
-        '            start: 20000',
-        '            end: 20010',
-        '        speedtest:',
-        '          enabled: true',
-        '          schedule: "*/10 * * * *"',
-        '          urls:',
-        '            - https://example.com/test-10mb.bin',
-        '            - https://example.com/test-50mb.bin',
-        '          method: GET',
-        '          timeoutMs: 15000',
-        '          maxParallel: 2',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      fixedOutbounds: []',
+        '      fixedInbounds: []',
+        '      fixedRouting: []',
+        '      inboundSocks:',
+        '        listen: 127.0.0.1',
+        '        portRange:',
+        '          start: 20000',
+        '          end: 20010',
+        '      speedtest:',
+        '        enabled: true',
+        '        schedule: "*/10 * * * *"',
+        '        urls:',
+        '          - https://example.com/test-10mb.bin',
+        '          - https://example.com/test-50mb.bin',
+        '        method: GET',
+        '        timeoutMs: 15000',
+        '        maxParallel: 2',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -334,62 +394,7 @@ test('loadConfig accepts multiple speedtest urls', async () => {
       ].join('\n'),
     );
 
-    const loaded = await loadConfig(configPath);
-    assert.deepEqual(loaded.config.subscriptions[0]?.targets[0]?.speedtest.urls, [
-      'https://example.com/test-10mb.bin',
-      'https://example.com/test-50mb.bin',
-    ]);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.speedtest.maxParallel, 2);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-});
-
-test('loadConfig rejects invalid speedtest maxParallel', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'scd-speedtest-max-parallel-'));
-
-  try {
-    const configPath = join(tempDir, 'config.yml');
-    await writeFile(
-      configPath,
-      [
-        'subscriptions:',
-        '  - id: source-1',
-        '    input: ./subscription.txt',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        fixedOutbounds: []',
-        '        fixedInbounds: []',
-        '        fixedRouting: []',
-        '        inboundSocks:',
-        '          listen: 127.0.0.1',
-        '          portRange:',
-        '            start: 20000',
-        '            end: 20010',
-        '        speedtest:',
-        '          enabled: true',
-        '          schedule: "*/10 * * * *"',
-        '          urls:',
-        '            - https://example.com/test-10mb.bin',
-        '          method: GET',
-        '          timeoutMs: 15000',
-        '          maxParallel: 0',
-        'runtime:',
-        '  mode: run-once',
-        'logging:',
-        '  level: info',
-        '  format: json',
-        'resources:',
-        '  outbounds:',
-        '    enabled: true',
-        '  inbounds:',
-        '    enabled: true',
-        '  routing:',
-        '    enabled: true',
-      ].join('\n'),
-    );
-
-    await assert.rejects(() => loadConfig(configPath), /maxParallel/);
+    await assert.rejects(() => loadConfig(configPath), /speedtest/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -406,25 +411,25 @@ test('loadConfig accepts monitor.maxParallel and statusServer.runtimeState defau
         'subscriptions:',
         '  - id: source-1',
         '    input: ./subscription.txt',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        fixedOutbounds: []',
-        '        fixedInbounds: []',
-        '        fixedRouting: []',
-        '        inboundSocks:',
-        '          listen: 127.0.0.1',
-        '          portRange:',
-        '            start: 20000',
-        '            end: 20010',
-        '        monitor:',
-        '          enabled: true',
-        '          schedule: "*/2 * * * *"',
-        '          maxParallel: 4',
-        '          request:',
-        '            url: https://example.com/health',
-        '            method: GET',
-        '            expectedStatus: 200',
-        '            timeoutMs: 5000',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      fixedOutbounds: []',
+        '      fixedInbounds: []',
+        '      fixedRouting: []',
+        '      inboundSocks:',
+        '        listen: 127.0.0.1',
+        '        portRange:',
+        '          start: 20000',
+        '          end: 20010',
+        '      monitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        maxParallel: 4',
+        '        request:',
+        '          url: https://example.com/health',
+        '          method: GET',
+        '          expectedStatus: 200',
+        '          timeoutMs: 5000',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -444,7 +449,7 @@ test('loadConfig accepts monitor.maxParallel and statusServer.runtimeState defau
     );
 
     const loaded = await loadConfig(configPath);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.monitor.maxParallel, 4);
+    assert.equal(loaded.config.subscriptions[0]?.target.monitor.maxParallel, 4);
     assert.equal(loaded.config.statusServer.runtimeState.enabled, true);
     assert.equal(loaded.config.statusServer.runtimeState.includeRaw, false);
     assert.equal(loaded.config.statusServer.runtimeState.includeSecrets, false);
@@ -464,23 +469,19 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
         'subscriptions:',
         '  - id: source-1',
         '    input: ./subscription.txt',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        balancerMonitor:',
-        '          enabled: true',
-        '          schedule: "*/2 * * * *"',
-        '          socks5:',
-        '            host: 127.0.0.1',
-        '            port: 1080',
-        '          request:',
-        '            url: https://example.com/health',
-        '            method: GET',
-        '            expectedStatus: 200',
-        '            timeoutMs: 5000',
-        '          successGet:',
-        '            url: https://example.com/ping.txt',
-        '            expectedStatus: 200',
-        '            timeoutMs: 5000',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        socks5:',
+        '          host: 127.0.0.1',
+        '          port: 1080',
+        '        request:',
+        '          url: https://example.com/health',
+        '          method: GET',
+        '          expectedStatus: 200',
+        '          timeoutMs: 5000',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -493,9 +494,8 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
     );
 
     const loaded = await loadConfig(validPath);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.enabled, true);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.socks5?.port, 1080);
-    assert.equal(loaded.config.subscriptions[0]?.targets[0]?.balancerMonitor.successGet?.expectedStatus, 200);
+    assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.enabled, true);
+    assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.socks5?.port, 1080);
 
     const invalidPath = join(tempDir, 'invalid.yml');
     await writeFile(
@@ -504,10 +504,10 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
         'subscriptions:',
         '  - id: source-1',
         '    input: ./subscription.txt',
-        '    targets:',
-        '      - address: 127.0.0.1:8080',
-        '        balancerMonitor:',
-        '          enabled: true',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        enabled: true',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -520,6 +520,51 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
     );
 
     await assert.rejects(() => loadConfig(invalidPath), /balancerMonitor\.(schedule|socks5|request)/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig rejects legacy balancerMonitor successGet config', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-legacy-success-get-'));
+
+  try {
+    const configPath = join(tempDir, 'config.yml');
+    await writeFile(
+      configPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        socks5:',
+        '          host: 127.0.0.1',
+        '          port: 1080',
+        '        request:',
+        '          url: https://example.com/health',
+        '          method: GET',
+        '          expectedStatus: 200',
+        '          timeoutMs: 5000',
+        '        successGet:',
+        '          url: https://example.com/ping.txt',
+        '          expectedStatus: 200',
+        '          timeoutMs: 5000',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(configPath), /successGet/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -542,7 +587,7 @@ test('loadSubscriptions sorts enabled subscriptions by id', async () => {
         enabled: true,
         format: 'auto',
         fetchTimeoutMs: 5000,
-        targets: [createTargetConfig({ address: '127.0.0.1:8081' })],
+        target: createTargetConfig({ address: '127.0.0.1:8081' }),
       },
       {
         id: 'source-a',
@@ -550,7 +595,7 @@ test('loadSubscriptions sorts enabled subscriptions by id', async () => {
         enabled: true,
         format: 'auto',
         fetchTimeoutMs: 5000,
-        targets: [createTargetConfig({ address: '127.0.0.1:8080' })],
+        target: createTargetConfig({ address: '127.0.0.1:8080' }),
       },
     ]);
 
@@ -573,7 +618,7 @@ test('outbound applicator stabilizes manifest hash and managed ids for reordered
     input: 'inline',
     source: 'inline',
     encoding: 'plain',
-    targets: [],
+    target: createTargetConfig(),
     content: [
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия',
@@ -584,7 +629,7 @@ test('outbound applicator stabilizes manifest hash and managed ids for reordered
     input: 'inline',
     source: 'inline',
     encoding: 'plain',
-    targets: [],
+    target: createTargetConfig(),
     content: [
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия',
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
@@ -608,7 +653,7 @@ test('outbound applicator applies target-specific observatory prefix to effectiv
     input: 'inline',
     source: 'inline',
     encoding: 'plain',
-    targets: [],
+    target: createTargetConfig(),
     content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
   });
 
@@ -722,11 +767,9 @@ test('syncWithConfig skips Xray API when subscription manifest is unchanged in m
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            createTargetConfig({
-              observatorySubjectSelectorPrefix: 'x-observe-',
-            }),
-          ],
+          target: createTargetConfig({
+            observatorySubjectSelectorPrefix: 'x-observe-',
+          }),
         },
       ],
       runtime: {
@@ -752,7 +795,7 @@ test('syncWithConfig skips Xray API when subscription manifest is unchanged in m
             source: resolve(tempDir, 'subscription.txt'),
             content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
             encoding: 'plain' as const,
-            targets: loadedConfig.config.subscriptions[0]!.targets,
+            target: loadedConfig.config.subscriptions[0]!.target,
           },
         ],
         failed: [],
@@ -786,8 +829,8 @@ test('syncWithConfig skips Xray API when subscription manifest is unchanged in m
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test('syncWithConfig applies one subscription to multiple targets independently', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'scd-multi-target-'));
+test('syncWithConfig applies multiple subscriptions independently', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-multi-subscription-'));
   const logger = createLogger({
     level: 'silent',
     format: 'json',
@@ -803,16 +846,21 @@ test('syncWithConfig applies one subscription to multiple targets independently'
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            createTargetConfig({
-              address: '127.0.0.1:8080',
-              observatorySubjectSelectorPrefix: 'x-t1-',
-            }),
-            createTargetConfig({
-              address: '127.0.0.1:8081',
-              observatorySubjectSelectorPrefix: 'x-t2-',
-            }),
-          ],
+          target: createTargetConfig({
+            address: '127.0.0.1:8080',
+            observatorySubjectSelectorPrefix: 'x-t1-',
+          }),
+        },
+        {
+          id: 'source-2',
+          input: resolve(tempDir, 'subscription-2.txt'),
+          enabled: true,
+          format: 'auto',
+          fetchTimeoutMs: 5000,
+          target: createTargetConfig({
+            address: '127.0.0.1:8081',
+            observatorySubjectSelectorPrefix: 'x-t2-',
+          }),
         },
       ],
       runtime: {
@@ -838,7 +886,15 @@ test('syncWithConfig applies one subscription to multiple targets independently'
             source: resolve(tempDir, 'subscription.txt'),
             content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
             encoding: 'plain' as const,
-            targets: loadedConfig.config.subscriptions[0]!.targets,
+            target: loadedConfig.config.subscriptions[0]!.target,
+          },
+          {
+            id: 'source-2',
+            input: resolve(tempDir, 'subscription-2.txt'),
+            source: resolve(tempDir, 'subscription-2.txt'),
+            content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия',
+            encoding: 'plain' as const,
+            target: loadedConfig.config.subscriptions[1]!.target,
           },
         ],
         failed: [],
@@ -890,11 +946,9 @@ test('syncWithConfig skips overlapping runs inside one process', async () => {
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            createTargetConfig({
-              observatorySubjectSelectorPrefix: 'x-observe-',
-            }),
-          ],
+          target: createTargetConfig({
+            observatorySubjectSelectorPrefix: 'x-observe-',
+          }),
         },
       ],
       runtime: {
@@ -963,12 +1017,10 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            createTargetConfig({
-              address: '127.0.0.1:8080',
-              observatorySubjectSelectorPrefix: 'x-a-',
-            }),
-          ],
+          target: createTargetConfig({
+            address: '127.0.0.1:8080',
+            observatorySubjectSelectorPrefix: 'x-a-',
+          }),
         },
         {
           id: 'source-b',
@@ -976,12 +1028,10 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [
-            createTargetConfig({
-              address: '127.0.0.1:8081',
-              observatorySubjectSelectorPrefix: 'x-b-',
-            }),
-          ],
+          target: createTargetConfig({
+            address: '127.0.0.1:8081',
+            observatorySubjectSelectorPrefix: 'x-b-',
+          }),
         },
       ],
       runtime: {
@@ -1007,7 +1057,7 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
             source: resolve(tempDir, 'source-b.txt'),
             content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
             encoding: 'plain' as const,
-            targets: loadedConfig.config.subscriptions[1]!.targets,
+            target: loadedConfig.config.subscriptions[1]!.target,
           },
         ],
         failed: [
@@ -1016,7 +1066,7 @@ test('syncWithConfig keeps other subscriptions running when one source load fail
             input: resolve(tempDir, 'source-a.txt'),
             source: resolve(tempDir, 'source-a.txt'),
             error: 'Input source timed out',
-            targets: loadedConfig.config.subscriptions[0]!.targets,
+            target: loadedConfig.config.subscriptions[0]!.target,
           },
         ],
       };
@@ -1066,7 +1116,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [createTargetConfig()],
+          target: createTargetConfig(),
         },
         {
           id: 'source-valid',
@@ -1074,7 +1124,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
           enabled: true,
           format: 'auto',
           fetchTimeoutMs: 5000,
-          targets: [createTargetConfig({ address: '127.0.0.1:8081' })],
+          target: createTargetConfig({ address: '127.0.0.1:8081' }),
         },
       ],
       runtime: {
@@ -1100,7 +1150,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
             source: resolve(tempDir, 'subscription.txt'),
             content: 'trojan://example',
             encoding: 'plain' as const,
-            targets: loadedConfig.config.subscriptions[0]!.targets,
+            target: loadedConfig.config.subscriptions[0]!.target,
           },
           {
             id: 'source-valid',
@@ -1108,7 +1158,7 @@ test('syncWithConfig does not call Xray API when manifest has no valid entries',
             source: resolve(tempDir, 'subscription-valid.txt'),
             content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
             encoding: 'plain' as const,
-            targets: loadedConfig.config.subscriptions[1]!.targets,
+            target: loadedConfig.config.subscriptions[1]!.target,
           },
         ],
         failed: [],
@@ -1162,7 +1212,7 @@ test('syncWithConfig does not call Xray API when filters remove all entries', as
           filters: {
             countryAllowlist: ['US'],
           },
-          targets: [createTargetConfig()],
+          target: createTargetConfig(),
         },
       ],
       runtime: {
@@ -1189,7 +1239,7 @@ test('syncWithConfig does not call Xray API when filters remove all entries', as
             content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
             encoding: 'plain' as const,
             filters: loadedConfig.config.subscriptions[0]!.filters,
-            targets: loadedConfig.config.subscriptions[0]!.targets,
+            target: loadedConfig.config.subscriptions[0]!.target,
           },
         ],
         failed: [],

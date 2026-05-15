@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
-import { once } from 'node:events';
 import { isIP } from 'node:net';
 import * as net from 'node:net';
+import { performance } from 'node:perf_hooks';
 import * as tls from 'node:tls';
 
 import type { MonitorHttpMethod } from '../types.ts';
@@ -12,6 +12,12 @@ interface SocksHttpRequestOptions {
   url: string;
   method: MonitorHttpMethod;
   timeoutMs: number;
+}
+
+interface SocksHttpDependencies {
+  createConnection?: (options: net.NetConnectOpts) => net.Socket;
+  tlsConnect?: (options: tls.ConnectionOptions) => tls.TLSSocket;
+  nowFn?: () => number;
 }
 
 export interface SocksHttpResponse {
@@ -25,20 +31,36 @@ class BufferedReader {
   private readonly pending: Array<{ size: number; resolve: (buffer: Buffer) => void; reject: (error: Error) => void }> = [];
   private ended = false;
   private error?: Error;
+  private readonly onData: (chunk: Buffer) => void;
+  private readonly onEnd: () => void;
+  private readonly onError: (error: Error) => void;
+  private readonly onTimeout: () => void;
+  private readonly socket: net.Socket;
 
-  constructor(socket: net.Socket) {
-    socket.on('data', (chunk: Buffer) => {
+  constructor(socket: net.Socket, timeoutMs: number) {
+    this.socket = socket;
+    this.onData = (chunk: Buffer) => {
       this.buffer = Buffer.concat([this.buffer, chunk]);
       this.flush();
-    });
-    socket.on('end', () => {
+    };
+    this.onEnd = () => {
       this.ended = true;
       this.flush();
-    });
-    socket.on('error', (error) => {
+    };
+    this.onError = (error) => {
       this.error = error;
       this.flush();
-    });
+    };
+    this.onTimeout = () => {
+      this.error = new Error(`SOCKS5 handshake timed out after ${timeoutMs}ms.`);
+      socket.destroy();
+      this.flush();
+    };
+
+    socket.on('data', this.onData);
+    socket.on('end', this.onEnd);
+    socket.on('error', this.onError);
+    socket.on('timeout', this.onTimeout);
   }
 
   async readExactly(size: number): Promise<Buffer> {
@@ -57,6 +79,13 @@ class BufferedReader {
     return await new Promise<Buffer>((resolve, reject) => {
       this.pending.push({ size, resolve, reject });
     });
+  }
+
+  dispose(): void {
+    this.socket.off('data', this.onData);
+    this.socket.off('end', this.onEnd);
+    this.socket.off('error', this.onError);
+    this.socket.off('timeout', this.onTimeout);
   }
 
   private flush(): void {
@@ -110,64 +139,156 @@ function buildSocksConnectRequest(hostname: string, port: number): Buffer {
   ]);
 }
 
+async function waitForEventWithTimeout(
+  stream: net.Socket | tls.TLSSocket,
+  eventName: string,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<void> {
+  stream.setTimeout(timeoutMs);
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = () => {
+      stream.off(eventName, onEvent);
+      stream.off('error', onError);
+      stream.off('timeout', onTimeout);
+    };
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const onEvent = () => {
+      settle(resolve);
+    };
+
+    const onError = (error: Error) => {
+      settle(() => reject(error));
+    };
+
+    const onTimeout = () => {
+      const error = new Error(timeoutMessage);
+      settle(() => {
+        stream.destroy();
+        reject(error);
+      });
+    };
+
+    stream.once(eventName, onEvent);
+    stream.once('error', onError);
+    stream.once('timeout', onTimeout);
+  });
+}
+
 async function connectViaSocks(
   proxyHost: string,
   proxyPort: number,
   hostname: string,
   port: number,
   timeoutMs: number,
+  createConnection: NonNullable<SocksHttpDependencies['createConnection']>,
 ): Promise<net.Socket> {
-  const socket = net.createConnection({
+  const socket = createConnection({
     host: proxyHost,
     port: proxyPort,
   });
-  socket.setTimeout(timeoutMs);
-  await once(socket, 'connect');
+  await waitForEventWithTimeout(
+    socket,
+    'connect',
+    timeoutMs,
+    `SOCKS5 proxy connection timed out after ${timeoutMs}ms.`,
+  );
 
-  const reader = new BufferedReader(socket);
-  socket.write(Buffer.from([0x05, 0x01, 0x00]));
-  const greeting = await reader.readExactly(2);
-  if (greeting[0] !== 0x05 || greeting[1] !== 0x00) {
-    socket.destroy();
-    throw new Error('SOCKS5 proxy does not accept no-auth authentication.');
-  }
+  const reader = new BufferedReader(socket, timeoutMs);
+  try {
+    socket.write(Buffer.from([0x05, 0x01, 0x00]));
+    const greeting = await reader.readExactly(2);
+    if (greeting[0] !== 0x05 || greeting[1] !== 0x00) {
+      socket.destroy();
+      throw new Error('SOCKS5 proxy does not accept no-auth authentication.');
+    }
 
-  socket.write(buildSocksConnectRequest(hostname, port));
-  const replyHead = await reader.readExactly(4);
-  if (replyHead[0] !== 0x05 || replyHead[1] !== 0x00) {
-    socket.destroy();
-    throw new Error(`SOCKS5 connect failed with code ${replyHead[1]}.`);
-  }
+    socket.write(buildSocksConnectRequest(hostname, port));
+    const replyHead = await reader.readExactly(4);
+    if (replyHead[0] !== 0x05 || replyHead[1] !== 0x00) {
+      socket.destroy();
+      throw new Error(`SOCKS5 connect failed with code ${replyHead[1]}.`);
+    }
 
-  if (replyHead[3] === 0x01) {
-    await reader.readExactly(4 + 2);
-  } else if (replyHead[3] === 0x03) {
-    const domainLength = await reader.readExactly(1);
-    await reader.readExactly(domainLength[0] + 2);
-  } else if (replyHead[3] === 0x04) {
-    await reader.readExactly(16 + 2);
+    if (replyHead[3] === 0x01) {
+      await reader.readExactly(4 + 2);
+    } else if (replyHead[3] === 0x03) {
+      const domainLength = await reader.readExactly(1);
+      await reader.readExactly(domainLength[0] + 2);
+    } else if (replyHead[3] === 0x04) {
+      await reader.readExactly(16 + 2);
+    }
+  } finally {
+    reader.dispose();
   }
 
   return socket;
 }
 
-async function collectResponse(stream: net.Socket | tls.TLSSocket, timeoutMs: number): Promise<Buffer> {
+export async function collectResponseHead(stream: net.Socket | tls.TLSSocket, timeoutMs: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let totalLength = 0;
   stream.setTimeout(timeoutMs);
 
   return await new Promise<Buffer>((resolve, reject) => {
-    stream.on('data', (chunk: Buffer) => {
+    let settled = false;
+
+    const cleanup = () => {
+      stream.off('data', onData);
+      stream.off('end', onEnd);
+      stream.off('error', onError);
+      stream.off('timeout', onTimeout);
+    };
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const onData = (chunk: Buffer) => {
       chunks.push(chunk);
-    });
-    stream.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
-    stream.on('error', (error) => {
-      reject(error);
-    });
-    stream.on('timeout', () => {
-      reject(new Error(`SOCKS HTTP request timed out after ${timeoutMs}ms.`));
-    });
+      totalLength += chunk.length;
+      const buffered = Buffer.concat(chunks, totalLength);
+      if (buffered.indexOf('\r\n\r\n') >= 0) {
+        settle(() => resolve(buffered));
+      }
+    };
+
+    const onEnd = () => {
+      settle(() => resolve(Buffer.concat(chunks, totalLength)));
+    };
+
+    const onError = (error: Error) => {
+      settle(() => reject(error));
+    };
+
+    const onTimeout = () => {
+      settle(() => {
+        stream.destroy();
+        reject(new Error(`SOCKS HTTP request timed out after ${timeoutMs}ms.`));
+      });
+    };
+
+    stream.on('data', onData);
+    stream.on('end', onEnd);
+    stream.on('error', onError);
+    stream.on('timeout', onTimeout);
   });
 }
 
@@ -190,21 +311,37 @@ function parseHttpResponse(response: Buffer): { statusCode: number; bodyBytes: n
   };
 }
 
-export async function requestViaSocks(options: SocksHttpRequestOptions): Promise<SocksHttpResponse> {
+export async function requestViaSocks(
+  options: SocksHttpRequestOptions,
+  dependencies: SocksHttpDependencies = {},
+): Promise<SocksHttpResponse> {
   const url = parseProxyTarget(options.url);
   const port = url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
   const path = `${url.pathname || '/'}${url.search}`;
-  const startedAt = Date.now();
-  const rawSocket = await connectViaSocks(options.proxyHost, options.proxyPort, url.hostname, port, options.timeoutMs);
+  const nowFn = dependencies.nowFn ?? (() => performance.now());
+  const createConnection = dependencies.createConnection ?? net.createConnection;
+  const tlsConnect = dependencies.tlsConnect ?? tls.connect;
+  const rawSocket = await connectViaSocks(
+    options.proxyHost,
+    options.proxyPort,
+    url.hostname,
+    port,
+    options.timeoutMs,
+    createConnection,
+  );
 
   let stream: net.Socket | tls.TLSSocket = rawSocket;
   if (url.protocol === 'https:') {
-    stream = tls.connect({
+    stream = tlsConnect({
       socket: rawSocket,
       servername: url.hostname,
     });
-    stream.setTimeout(options.timeoutMs);
-    await once(stream, 'secureConnect');
+    await waitForEventWithTimeout(
+      stream,
+      'secureConnect',
+      options.timeoutMs,
+      `SOCKS HTTPS TLS handshake timed out after ${options.timeoutMs}ms.`,
+    );
   }
 
   const body = options.method === 'POST' ? '' : undefined;
@@ -217,14 +354,20 @@ export async function requestViaSocks(options: SocksHttpRequestOptions): Promise
     body ?? '',
   ].join('\r\n');
 
-  stream.write(request);
-  const response = await collectResponse(stream, options.timeoutMs);
-  stream.destroy();
+  const responsePromise = collectResponseHead(stream, options.timeoutMs);
+  const requestStartedAt = nowFn();
+  let response: Buffer;
+  try {
+    stream.write(request);
+    response = await responsePromise;
+  } finally {
+    stream.destroy();
+  }
 
   const parsed = parseHttpResponse(response);
   return {
     statusCode: parsed.statusCode,
     bodyBytes: parsed.bodyBytes,
-    latencyMs: Date.now() - startedAt,
+    latencyMs: Math.round(nowFn() - requestStartedAt),
   };
 }

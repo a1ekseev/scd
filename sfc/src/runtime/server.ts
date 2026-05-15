@@ -3,7 +3,6 @@ import { Buffer } from 'node:buffer';
 
 import type { AppState, LoadedConfig } from '../types.ts';
 import type { Logger } from '../logging/create-logger.ts';
-import { buildOutputPath } from './output-path.ts';
 
 export interface ResponsePayload {
   statusCode: number;

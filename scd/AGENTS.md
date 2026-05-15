@@ -1,4 +1,4 @@
-# scd: AI Agent Context
+# scd: Agent Context
 
 ## Current Shape
 - Runtime baseline: Node `24.14.0+`
@@ -22,7 +22,7 @@
   - orchestration entry for one-shot sync
   - loads subscriptions
   - builds resource plans per subscription
-  - applies them to each `subscription.targets[]`
+  - applies them to each `subscription.target`
   - keeps memory-only ownership state per `subscription + target + resource kind`
   - resets topology/monitor state only when a valid target manifest changed
   - keeps memory-only overlap guard for one process
@@ -31,7 +31,7 @@
   - uses `cron-parser`
   - loads config once on startup
   - calls `syncWithConfig()` on each tick
-  - runs optional monitoring and speedtest cron loops per target
+  - runs optional monitoring cron loops per target
   - runs optional balancer monitor cron loops per target
   - can start the built-in read-only status server
   - does not hot-reload YAML; restart required for config changes
@@ -56,8 +56,7 @@
 - `src/runtime/monitoring.ts`
   - HTTP health-check through generated SOCKS inbounds
   - per-target repair flow
-  - simple telemetry speedtest
-  - speedtest supports ordered fallback URLs
+  - optional target-level balancer monitor via external SOCKS5
 - `src/runtime/status-server.ts`
   - HTML + JSON read-only view over in-memory monitoring state
 - `src/api/xray-handler-client.ts`
@@ -71,7 +70,7 @@ Main config file:
 - `./config.yml`
 
 Compose config file:
-- `../docker/config.yml`
+- `../docker/scd/config.yml`
 
 Current schema:
 - `subscriptions[]`
@@ -83,7 +82,7 @@ Current schema:
   - `filters?`
     - `countryAllowlist?`
     - `labelIncludeRegex?`
-  - `targets[]`
+  - `target`
     - `address`
     - `timeoutMs`
     - `fixedOutbounds[]`
@@ -94,7 +93,6 @@ Current schema:
     - `inboundSocks?`
     - `monitor`
     - `balancerMonitor`
-    - `speedtest`
 - `runtime.mode`
 - `runtime.schedule`
 - `logging.level`
@@ -128,15 +126,14 @@ Defaults are applied by the schema. Relative paths are normalized during config 
   - HTTP checks through generated SOCKS inbounds
   - tunnel-local repair that recreates `routing + outbound`
   - optional target-level balancer monitor via external SOCKS5
-  - simple HTTP download speedtest telemetry
-  - speedtest URLs can be configured as ordered fallback list
-  - speedtest concurrency is limited per target via `speedtest.maxParallel`
   - monitor probes run with bounded concurrency per target via `monitor.maxParallel`
   - balancer monitor is observe-only and does not trigger repair or apply
   - built-in read-only status page
-  - grouped HTML status view by `subscription -> target`
+  - grouped HTML dashboard by `subscription -> target`
+  - balancer-first target blocks and latency-sorted tunnel cards
   - target-specific runtime JSON dump via `/api/runtime-state`
-  - runtime JSON is redacted by default unless `statusServer.runtimeState.includeRaw/includeSecrets` explicitly enable more detail
+  - HTML dashboard does not expose `/api/runtime-state` links; use the JSON endpoint directly for diagnostics or automation
+  - runtime JSON redacts subscription URLs and target monitor request URLs by default unless `statusServer.runtimeState.includeSecrets` explicitly enables secrets
 
 Strict rules still apply:
 - non-`vless://` => skipped
@@ -175,13 +172,13 @@ Important event names:
 ## Runtime State
 - Managed outbound ownership state is memory-only
 - It is keyed by `subscriptionId + target.address + resource kind`
-- Topology, monitor and speedtest state are also memory-only
+- Topology and monitor state are also memory-only
 - After restart, memory state is empty again
 - `SyncReport.unchanged` counts skipped resource plans, not individual outbound entries
 - Overlap protection is memory-only and does not coordinate separate processes
 - If `observatorySubjectSelectorPrefix` is set on a target, it is prepended to every applied outbound tag on that target
 - During monitor-triggered repair, recreated outbound is applied without `observatorySubjectSelectorPrefix`
-- Empty input or `parsed === 0` is fail-closed for that source; its targets are marked failed and receive no Xray API calls
+- Empty input or `parsed === 0` is fail-closed for that source; its target is marked failed and receives no Xray API calls
 - Subscription filters run once after parsing and before target-specific prefixing; they do not contribute to `skipped`
 
 ## Docker
@@ -189,20 +186,24 @@ Important event names:
 - Compose service is in `../docker-compose.yml`
 - Xray service stays separate
 - Control-plane service mounts:
-  - `../docker/config.yml`
+  - `../docker/scd/config.yml`
   - root `../vpn`
 
 The compose stack was verified with:
-- `xray`: `ghcr.io/xtls/xray-core:26.2.6`
+- `xray`: `ghcr.io/xtls/xray-core:26.3.27`
 - `scd`: local Docker build
 
-## Validation / Verification Status
-- `npm run typecheck` passes
-- `npm run build` passes
-- `npm test` passes
-- `sync --config ./config.yml` works against live Docker Xray
-- `docker compose up -d --build` starts both `xray` and `scd`
-- `scd` daemon performs an initial sync successfully
+## Verification Commands
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `node ./dist/cli.js validate-config --config ./config.yml`
+- `node ./dist/cli.js validate-config --config ../docker/scd/config.yml`
+- Runtime smoke from repo root:
+  - `docker compose up -d --build xray scd`
+  - `docker compose ps`
+  - `docker compose logs scd`
+  - `curl http://127.0.0.1:9090/api/status`
 
 ## Important Design Constraints
 - Keep the API client simple; do not add session pooling unless there is a proven need.
