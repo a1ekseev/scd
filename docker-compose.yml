@@ -1,6 +1,6 @@
 services:
   xray:
-    image: ghcr.io/xtls/xray-core:26.2.6
+    image: ghcr.io/xtls/xray-core:26.3.27
     container_name: xray-test
     restart: unless-stopped
     ports:
@@ -29,3 +29,13 @@ services:
       - "127.0.0.1:9091:8080"
     volumes:
       - ./docker/sfc/config.yml:/app/config/config.yml:ro
+
+  gtl:
+    build:
+      context: ./gtl
+    container_name: gtl
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:8080"
+    volumes:
+      - ./docker/gtl/config.yml:/app/config/config.yml:ro

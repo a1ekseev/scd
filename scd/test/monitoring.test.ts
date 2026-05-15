@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildManifest } from '../src/manifest.ts';
-import { runTargetBalancerMonitorTick, runTargetMonitorTick, runTargetSpeedtestTick } from '../src/runtime/monitoring.ts';
+import { runTargetBalancerMonitorTick, runTargetMonitorTick } from '../src/runtime/monitoring.ts';
 import {
   buildTargetStateKey,
   createSyncMemoryState,
@@ -41,14 +41,6 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     },
     balancerMonitor: {
       enabled: false,
-    },
-    speedtest: {
-      enabled: true,
-      schedule: '*/10 * * * *',
-      urls: ['https://example.test/10mb.bin'],
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 3,
     },
     ...overrides,
   };
@@ -194,6 +186,95 @@ test('runTargetMonitorTick respects monitor.maxParallel and does not let one bus
   assert.ok(Object.values(targetState.tunnels).some((item) => item.monitor.state === 'healthy'));
 });
 
+test('runTargetMonitorTick clears current check on failure and preserves last successful check', async () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  );
+  const target = createTarget();
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async () => ({
+      statusCode: 200,
+      latencyMs: 25,
+      bodyBytes: 100,
+    }),
+  });
+
+  const runtimeState = Object.values(targetState.tunnels)[0]!;
+  assert.equal(runtimeState.monitor.state, 'healthy');
+  assert.equal(runtimeState.monitor.lastStatusCode, 200);
+  assert.equal(runtimeState.monitor.lastLatencyMs, 25);
+  assert.equal(runtimeState.monitor.lastSuccessStatusCode, 200);
+  assert.equal(runtimeState.monitor.lastSuccessLatencyMs, 25);
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      throw new Error('probe failed');
+    },
+    repairTunnelFn: async () => undefined,
+  });
+
+  assert.equal(runtimeState.monitor.state, 'degraded');
+  assert.equal(runtimeState.monitor.lastStatusCode, undefined);
+  assert.equal(runtimeState.monitor.lastLatencyMs, undefined);
+  assert.equal(runtimeState.monitor.lastSuccessStatusCode, 200);
+  assert.equal(runtimeState.monitor.lastSuccessLatencyMs, 25);
+  assert.match(runtimeState.monitor.lastError ?? '', /probe failed/);
+});
+
+test('runTargetMonitorTick treats unexpected status as failure without stale current success', async () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  );
+  const target = createTarget();
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async () => ({
+      statusCode: 204,
+      latencyMs: 31,
+      bodyBytes: 0,
+    }),
+    repairTunnelFn: async () => undefined,
+  });
+
+  const runtimeState = Object.values(targetState.tunnels)[0]!;
+  assert.equal(runtimeState.monitor.state, 'degraded');
+  assert.equal(runtimeState.monitor.lastStatusCode, undefined);
+  assert.equal(runtimeState.monitor.lastLatencyMs, undefined);
+  assert.equal(runtimeState.monitor.lastSuccessStatusCode, undefined);
+  assert.match(runtimeState.monitor.lastError ?? '', /Expected HTTP 200, got 204/);
+});
+
 test('runTargetMonitorTick propagates unexpected exceptions after probe settlement', async () => {
   const manifest = buildManifest(
     'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
@@ -227,120 +308,7 @@ test('runTargetMonitorTick propagates unexpected exceptions after probe settleme
   );
 });
 
-test('runTargetSpeedtestTick respects maxParallel and keeps URL fallback sequential per tunnel', async () => {
-  const manifest = buildManifest(
-    [
-      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
-      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇧🇪 Брюссель, Бельгия, Extra',
-      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf7@example.com:443?type=tcp&security=tls#🇧🇬 София, Болгария, Extra',
-    ].join('\n'),
-    'inline',
-  );
-  const target = createTarget({
-    speedtest: {
-      enabled: true,
-      schedule: '*/10 * * * *',
-      urls: ['https://example.test/primary.bin', 'https://example.test/fallback.bin'],
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 2,
-    },
-  });
-  const memoryState = createSyncMemoryState();
-  const targetKey = buildTargetStateKey('source-1', target.address);
-  const targetState = getOrCreateTargetState(memoryState, targetKey);
-  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
-    outbound: 'hash-a',
-    inbound: 'hash-b',
-    routing: 'hash-c',
-  });
-
-  let inFlight = 0;
-  let maxConcurrent = 0;
-  const calls: Array<{ tunnelId: string; url: string }> = [];
-
-  await runTargetSpeedtestTick('source-1', target, memoryState, {
-    requestViaSocksFn: async ({ proxyPort, url }) => {
-      const tunnelId = `port-${proxyPort}`;
-      calls.push({ tunnelId, url });
-      inFlight += 1;
-      maxConcurrent = Math.max(maxConcurrent, inFlight);
-      await wait(10);
-      inFlight -= 1;
-
-      if (proxyPort === 20000 && url.includes('primary')) {
-        throw new Error('primary failed');
-      }
-
-      return {
-        statusCode: 200,
-        latencyMs: 25,
-        bodyBytes: 1_000_000,
-      };
-    },
-  });
-
-  assert.equal(maxConcurrent, 2);
-  assert.deepEqual(
-    calls.filter((item) => item.tunnelId === 'port-20000').map((item) => item.url),
-    ['https://example.test/primary.bin', 'https://example.test/fallback.bin'],
-  );
-  assert.deepEqual(
-    Array.from(new Set(calls.map((item) => item.tunnelId))).sort(),
-    ['port-20000', 'port-20001', 'port-20002'],
-  );
-  assert.ok(calls.some((item) => item.tunnelId === 'port-20001'));
-  assert.ok(calls.some((item) => item.tunnelId === 'port-20002'));
-});
-
-test('runTargetSpeedtestTick propagates unexpected worker exceptions', async () => {
-  const manifest = buildManifest(
-    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
-    'inline',
-  );
-  const target = createTarget({
-    speedtest: {
-      enabled: true,
-      schedule: '*/10 * * * *',
-      urls: ['https://example.test/primary.bin'],
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 1,
-    },
-  });
-  const memoryState = createSyncMemoryState();
-  const targetKey = buildTargetStateKey('source-1', target.address);
-  const targetState = getOrCreateTargetState(memoryState, targetKey);
-  const topology = buildTargetTopology(manifest, target);
-  replaceTargetTopology(targetState, topology, {
-    outbound: 'hash-a',
-    inbound: 'hash-b',
-    routing: 'hash-c',
-  });
-  const tunnelId = topology.tunnels[0]!.baseTunnelId;
-  Object.defineProperty(targetState.tunnels[tunnelId]!, 'speedtest', {
-    configurable: true,
-    get() {
-      throw new Error('unexpected speedtest state failure');
-    },
-  });
-
-  await assert.rejects(
-    () =>
-      runTargetSpeedtestTick('source-1', target, memoryState, {
-        requestViaSocksFn: async () => {
-          return {
-            statusCode: 200,
-            latencyMs: 10,
-            bodyBytes: 100,
-          };
-        },
-      }),
-    /Concurrent task execution failed/,
-  );
-});
-
-test('runTargetBalancerMonitorTick performs main request via configured external socks and runs optional successGet best-effort', async () => {
+test('runTargetBalancerMonitorTick performs main request via configured external socks', async () => {
   const target = createTarget({
     balancerMonitor: {
       enabled: true,
@@ -352,11 +320,6 @@ test('runTargetBalancerMonitorTick performs main request via configured external
       request: {
         url: 'https://example.test/health',
         method: 'GET',
-        expectedStatus: 200,
-        timeoutMs: 5000,
-      },
-      successGet: {
-        url: 'https://example.test/ping.txt',
         expectedStatus: 200,
         timeoutMs: 5000,
       },
@@ -383,10 +346,6 @@ test('runTargetBalancerMonitorTick performs main request via configured external
   } as never, {
     requestViaSocksFn: async ({ proxyHost, proxyPort, url, method }) => {
       calls.push({ host: proxyHost, port: proxyPort, url, method });
-      if (url.endsWith('ping.txt')) {
-        throw new Error('success get failed');
-      }
-
       return {
         statusCode: 200,
         latencyMs: 33,
@@ -397,14 +356,14 @@ test('runTargetBalancerMonitorTick performs main request via configured external
 
   assert.deepEqual(calls, [
     { host: '127.0.0.10', port: 1080, url: 'https://example.test/health', method: 'GET' },
-    { host: '127.0.0.10', port: 1080, url: 'https://example.test/ping.txt', method: 'GET' },
   ]);
   assert.equal(targetState.balancerMonitor.state, 'healthy');
   assert.equal(targetState.balancerMonitor.lastStatusCode, 200);
-  assert.equal(targetState.balancerMonitor.successGetLastError, 'success get failed');
+  assert.equal(targetState.balancerMonitor.lastSuccessStatusCode, 200);
+  assert.equal(targetState.balancerMonitor.lastSuccessLatencyMs, 33);
 });
 
-test('runTargetBalancerMonitorTick marks target degraded on failed main check and skips successGet', async () => {
+test('runTargetBalancerMonitorTick marks target degraded on failed main check without stale current success', async () => {
   const target = createTarget({
     balancerMonitor: {
       enabled: true,
@@ -417,11 +376,6 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check an
         url: 'https://example.test/health',
         method: 'GET',
         expectedStatus: 204,
-        timeoutMs: 5000,
-      },
-      successGet: {
-        url: 'https://example.test/ping.txt',
-        expectedStatus: 200,
         timeoutMs: 5000,
       },
     },
@@ -439,6 +393,15 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check an
   });
 
   const calls: string[] = [];
+  targetState.balancerMonitor = {
+    state: 'healthy',
+    consecutiveFailures: 0,
+    lastStatusCode: 204,
+    lastLatencyMs: 12,
+    lastSuccessStatusCode: 204,
+    lastSuccessLatencyMs: 12,
+  };
+
   await runTargetBalancerMonitorTick('source-1', target, memoryState, {
     info() {},
     warn() {},
@@ -456,5 +419,9 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check an
 
   assert.deepEqual(calls, ['https://example.test/health']);
   assert.equal(targetState.balancerMonitor.state, 'degraded');
+  assert.equal(targetState.balancerMonitor.lastStatusCode, undefined);
+  assert.equal(targetState.balancerMonitor.lastLatencyMs, undefined);
+  assert.equal(targetState.balancerMonitor.lastSuccessStatusCode, 204);
+  assert.equal(targetState.balancerMonitor.lastSuccessLatencyMs, 12);
   assert.match(targetState.balancerMonitor.lastError ?? '', /Expected HTTP 204, got 200/);
 });

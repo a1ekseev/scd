@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ApiRequestError } from '../src/errors.ts';
-import { createSyncMemoryState } from '../src/runtime/run-state.ts';
+import { buildTargetStateKey, createSyncMemoryState, getOrCreateTargetState } from '../src/runtime/run-state.ts';
 import { handleStatusServerRequest } from '../src/runtime/status-server.ts';
-import type { LoadedConfig } from '../src/types.ts';
+import type { LoadedConfig, TargetTopology, TunnelMapping } from '../src/types.ts';
 
 function createLoadedConfig(): LoadedConfig {
   return {
@@ -18,36 +18,28 @@ function createLoadedConfig(): LoadedConfig {
           format: 'plain',
           fetchTimeoutMs: 5000,
           filters: undefined,
-          targets: [
-            {
-              address: '127.0.0.1:8080',
-              timeoutMs: 5000,
-              fixedOutbounds: [],
-              fixedInbounds: [],
-              fixedRouting: [],
-              visionUdp443Override: false,
-              inboundSocks: {
-                listen: '127.0.0.1',
-                portRange: {
-                  start: 20000,
-                  end: 20010,
-                },
-              },
-              monitor: {
-                enabled: false,
-                maxParallel: 10,
-              },
-              balancerMonitor: {
-                enabled: false,
-              },
-              speedtest: {
-                enabled: false,
-                method: 'GET',
-                timeoutMs: 15000,
-                maxParallel: 3,
+          target: {
+            address: '127.0.0.1:8080',
+            timeoutMs: 5000,
+            fixedOutbounds: [],
+            fixedInbounds: [],
+            fixedRouting: [],
+            visionUdp443Override: false,
+            inboundSocks: {
+              listen: '127.0.0.1',
+              portRange: {
+                start: 20000,
+                end: 20010,
               },
             },
-          ],
+            monitor: {
+              enabled: false,
+              maxParallel: 10,
+            },
+            balancerMonitor: {
+              enabled: false,
+            },
+          },
         },
       ],
       runtime: {
@@ -74,6 +66,238 @@ function createLoadedConfig(): LoadedConfig {
     },
   };
 }
+
+function createLoadedConfigWithDisabledSubscription(): LoadedConfig {
+  const loadedConfig = createLoadedConfig();
+  return {
+    ...loadedConfig,
+    config: {
+      ...loadedConfig.config,
+      subscriptions: [
+        ...loadedConfig.config.subscriptions,
+        {
+          ...loadedConfig.config.subscriptions[0]!,
+          id: 'sub-disabled',
+          enabled: false,
+          target: {
+            ...loadedConfig.config.subscriptions[0]!.target,
+            address: '127.0.0.1:9999',
+          },
+        },
+      ],
+    },
+  };
+}
+
+function createTunnel(overrides: Partial<TunnelMapping> = {}): TunnelMapping {
+  return {
+    baseTunnelId: 'tunnel-a',
+    displayName: 'Alpha',
+    countryIso2: 'AT',
+    baseOutboundTag: 'out-a',
+    outboundTagInitial: 'out-a',
+    outboundTagCurrent: 'out-a',
+    inboundTag: 'in-a',
+    routeTag: 'route-a',
+    listen: '127.0.0.1',
+    port: 20000,
+    outboundInitial: {} as TunnelMapping['outboundInitial'],
+    outboundWithoutPrefix: { tag: 'out-a' } as TunnelMapping['outboundWithoutPrefix'],
+    ...overrides,
+  };
+}
+
+test('status server renders HTML dashboard without JSON links and with state cards', async () => {
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('sub-1', '127.0.0.1:8080');
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const tunnel = createTunnel({
+    baseTunnelId: 'alpha',
+    displayName: 'Alpha',
+    countryIso2: 'AT',
+    port: 20000,
+  });
+  targetState.topology = { tunnels: [tunnel] } as TargetTopology;
+  targetState.tunnels = {
+    alpha: {
+      tunnel,
+      monitor: {
+        state: 'healthy',
+        consecutiveFailures: 0,
+        lastStatusCode: 204,
+        lastLatencyMs: 42,
+        lastSuccessStatusCode: 204,
+        lastSuccessLatencyMs: 42,
+      },
+    },
+  };
+  targetState.balancerMonitor = {
+    state: 'degraded',
+    consecutiveFailures: 1,
+    lastError: 'balancer failed',
+    lastSuccessStatusCode: 204,
+    lastSuccessLatencyMs: 90,
+  };
+
+  const result = await handleStatusServerRequest('/', createLoadedConfig(), memoryState);
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.contentType, 'text/html; charset=utf-8');
+  assert.match(result.body, /<title>Subscription Control Daemon Status<\/title>/);
+  assert.match(result.body, /class="balancer-card state-degraded"/);
+  assert.match(result.body, /class="node-card state-healthy"/);
+  assert.match(result.body, /Last Check/);
+  assert.match(result.body, />42 ms</);
+  assert.doesNotMatch(result.body, /HTTP 204/);
+  assert.doesNotMatch(result.body, /Last success/);
+  assert.match(result.body, /Balancer/);
+  assert.match(result.body, /class="nodes-grid"/);
+  assert.ok(
+    result.body.indexOf('class="balancer-card state-degraded"') < result.body.indexOf('class="nodes-grid"'),
+    'expected balancer card to render before tunnel grid',
+  );
+  assert.doesNotMatch(result.body, /Current runtime state \(JSON\)/);
+  assert.doesNotMatch(result.body, /\/api\/runtime-state/);
+  assert.doesNotMatch(result.body, /<table>/);
+});
+
+test('status server renders degraded current error separately from last success and balancer status', async () => {
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('sub-1', '127.0.0.1:8080');
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const tunnel = createTunnel({
+    baseTunnelId: 'alpha',
+    displayName: 'Alpha',
+    outboundTagInitial: 'x-observe-out-a',
+    outboundTagCurrent: 'out-a',
+  });
+  targetState.topology = { tunnels: [tunnel] } as TargetTopology;
+  targetState.tunnels = {
+    alpha: {
+      tunnel,
+      monitor: {
+        state: 'degraded',
+        consecutiveFailures: 1,
+        lastError: 'probe failed',
+        lastSuccessStatusCode: 204,
+        lastSuccessLatencyMs: 42,
+      },
+    },
+  };
+
+  const result = await handleStatusServerRequest('/status', createLoadedConfig(), memoryState);
+
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body, /class="node-card state-degraded"/);
+  assert.match(result.body, /Error: probe failed/);
+  assert.doesNotMatch(result.body, /HTTP 204/);
+  assert.match(result.body, />removed</);
+});
+
+test('status server renders configured target and balancer card even without tunnel rows', async () => {
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('sub-1', '127.0.0.1:8080');
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  targetState.balancerMonitor = {
+    state: 'healthy',
+    consecutiveFailures: 0,
+    lastStatusCode: 204,
+    lastLatencyMs: 17,
+  };
+
+  const result = await handleStatusServerRequest('/status', createLoadedConfig(), memoryState);
+
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body, /127\.0\.0\.1:8080/);
+  assert.match(result.body, /class="balancer-card state-healthy"/);
+  assert.match(result.body, /No tunnel data\./);
+  assert.match(result.body, />17 ms</);
+  assert.doesNotMatch(result.body, /HTTP 204/);
+});
+
+test('status server does not render disabled subscriptions from config', async () => {
+  const result = await handleStatusServerRequest('/status', createLoadedConfigWithDisabledSubscription(), createSyncMemoryState());
+
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body, /sub-1/);
+  assert.doesNotMatch(result.body, /sub-disabled/);
+  assert.doesNotMatch(result.body, /127\.0\.0\.1:9999/);
+});
+
+test('status server keeps api status wire format as flat tunnels array', async () => {
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('sub-1', '127.0.0.1:8080');
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const tunnel = createTunnel({
+    baseTunnelId: 'alpha',
+    displayName: 'Alpha',
+  });
+  targetState.topology = { tunnels: [tunnel] } as TargetTopology;
+  targetState.tunnels = {
+    alpha: {
+      tunnel,
+      monitor: {
+        state: 'idle',
+        consecutiveFailures: 0,
+      },
+    },
+  };
+
+  const result = await handleStatusServerRequest('/api/status', createLoadedConfig(), memoryState);
+  const payload = JSON.parse(result.body) as { tunnels?: unknown[]; subscriptions?: unknown };
+
+  assert.equal(result.statusCode, 200);
+  assert.ok(Array.isArray(payload.tunnels));
+  assert.equal(payload.tunnels.length, 1);
+  assert.equal(payload.subscriptions, undefined);
+});
+
+test('status server api status exposes monitor history and balancer participation fields', async () => {
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('sub-1', '127.0.0.1:8080');
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const tunnel = createTunnel({
+    baseTunnelId: 'alpha',
+    displayName: 'Alpha',
+    outboundTagInitial: 'x-observe-out-a',
+    outboundTagCurrent: 'out-a',
+  });
+  targetState.topology = { tunnels: [tunnel] } as TargetTopology;
+  targetState.tunnels = {
+    alpha: {
+      tunnel,
+      monitor: {
+        state: 'degraded',
+        consecutiveFailures: 1,
+        lastError: 'probe failed',
+        lastCheckedAt: '2026-01-01T00:00:00.000Z',
+        lastFailureAt: '2026-01-01T00:00:00.000Z',
+        lastSuccessAt: '2025-12-31T23:59:00.000Z',
+        lastSuccessStatusCode: 204,
+        lastSuccessLatencyMs: 42,
+      },
+    },
+  };
+
+  const result = await handleStatusServerRequest('/api/status', createLoadedConfig(), memoryState);
+  const payload = JSON.parse(result.body) as {
+    tunnels: Array<{
+      lastHttpStatus?: number;
+      lastLatencyMs?: number;
+      lastError?: string;
+      lastSuccessHttpStatus?: number;
+      lastSuccessLatencyMs?: number;
+      balanced?: boolean;
+    }>;
+  };
+
+  assert.equal(payload.tunnels[0]?.lastHttpStatus, undefined);
+  assert.equal(payload.tunnels[0]?.lastLatencyMs, undefined);
+  assert.equal(payload.tunnels[0]?.lastError, 'probe failed');
+  assert.equal(payload.tunnels[0]?.lastSuccessHttpStatus, 204);
+  assert.equal(payload.tunnels[0]?.lastSuccessLatencyMs, 42);
+  assert.equal(payload.tunnels[0]?.balanced, false);
+});
 
 test('status server returns 400 for runtime-state endpoint without required query params', async () => {
   const result = await handleStatusServerRequest('/api/runtime-state', createLoadedConfig(), createSyncMemoryState());
@@ -128,7 +352,7 @@ test('status server runtime-state endpoint uses redacted builder output', async 
             ...loadedConfig.config.subscriptions[0]!,
             input: options?.includeSecrets ? 'https://example.test/token' : 'https://example.test/<redacted>',
           },
-          target: loadedConfig.config.subscriptions[0]!.targets[0]!,
+          target: loadedConfig.config.subscriptions[0]!.target,
           resources: loadedConfig.config.resources,
         },
         serviceState: {

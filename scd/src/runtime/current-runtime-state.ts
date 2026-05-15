@@ -99,6 +99,46 @@ function redactSubscriptionInput(input: string, includeSecrets: boolean): string
   }
 }
 
+function redactUrl(value: string, includeSecrets: boolean): string {
+  if (includeSecrets) {
+    return value;
+  }
+
+  try {
+    const url = new URL(value);
+    return `${url.origin}/<redacted>`;
+  } catch {
+    return '<redacted>';
+  }
+}
+
+function redactTargetConfig(
+  target: SubscriptionTargetConfig,
+  includeSecrets: boolean,
+): SubscriptionTargetConfig {
+  return {
+    ...target,
+    monitor: {
+      ...target.monitor,
+      request: target.monitor.request
+        ? {
+            ...target.monitor.request,
+            url: redactUrl(target.monitor.request.url, includeSecrets),
+          }
+        : undefined,
+    },
+    balancerMonitor: {
+      ...target.balancerMonitor,
+      request: target.balancerMonitor.request
+        ? {
+            ...target.balancerMonitor.request,
+            url: redactUrl(target.balancerMonitor.request.url, includeSecrets),
+          }
+        : undefined,
+    },
+  };
+}
+
 function redactParsedOutbound(
   parsed: ReturnType<typeof decodeGeneratedOutbound>,
   includeSecrets: boolean,
@@ -362,12 +402,11 @@ function findSubscriptionAndTarget(
     return undefined;
   }
 
-  const target = subscription.targets.find((item) => item.address === targetAddress);
-  if (!target) {
+  if (subscription.target.address !== targetAddress) {
     return undefined;
   }
 
-  return { subscription, target };
+  return { subscription, target: subscription.target };
 }
 
 export async function buildCurrentRuntimeStateSnapshot(
@@ -412,7 +451,7 @@ export async function buildCurrentRuntimeStateSnapshot(
         ...subscription,
         input: redactSubscriptionInput(subscription.input, runtimeStateOptions.includeSecrets),
       },
-      target,
+      target: redactTargetConfig(target, runtimeStateOptions.includeSecrets),
       resources: loadedConfig.config.resources,
     },
     serviceState: {

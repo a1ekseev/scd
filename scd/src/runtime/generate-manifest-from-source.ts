@@ -12,7 +12,7 @@ export interface LoadedSubscription {
   content: string;
   encoding: 'plain' | 'base64';
   filters?: SubscriptionFiltersConfig;
-  targets: SubscriptionTargetConfig[];
+  target: SubscriptionTargetConfig;
 }
 
 export interface FailedSubscriptionLoad {
@@ -20,7 +20,7 @@ export interface FailedSubscriptionLoad {
   input: string;
   source: string;
   error: string;
-  targets: SubscriptionTargetConfig[];
+  target: SubscriptionTargetConfig;
 }
 
 export interface LoadSubscriptionsResult {
@@ -43,6 +43,7 @@ function buildNoValidEntriesMessage(manifest: OutboundManifest, sourceId: string
     `unsupportedCombo=${summary.unsupportedCombo}`,
     `invalidUri=${summary.invalidUri}`,
     `missingRequiredField=${summary.missingRequiredField}`,
+    `duplicateTag=${summary.duplicateTag}`,
   ].join(' ');
 }
 
@@ -75,7 +76,7 @@ export async function loadSubscriptions(sources: SubscriptionConfig[]): Promise<
         content: input.content,
         encoding: input.encoding,
         filters: source.filters,
-        targets: source.targets,
+        target: source.target,
       });
     } catch (error) {
       failed.push({
@@ -83,7 +84,7 @@ export async function loadSubscriptions(sources: SubscriptionConfig[]): Promise<
         input: source.input,
         source: source.input,
         error: error instanceof Error ? error.message : String(error),
-        targets: source.targets,
+        target: source.target,
       });
     }
   }

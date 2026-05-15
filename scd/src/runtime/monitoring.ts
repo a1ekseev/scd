@@ -8,7 +8,6 @@ import {
   getOrCreateTargetState,
   setTargetBalancerMonitorState,
   setTunnelMonitorState,
-  setTunnelSpeedtestState,
   withTargetMutationLock,
   type SyncMemoryState,
 } from './run-state.ts';
@@ -35,16 +34,11 @@ function hasMonitorRequest(target: SubscriptionTargetConfig): target is Subscrip
   return Boolean(target.monitor.enabled && target.monitor.request);
 }
 
-function hasSpeedtestUrls(target: SubscriptionTargetConfig): target is SubscriptionTargetConfig & { speedtest: { enabled: true; urls: string[] } } {
-  return Boolean(target.speedtest.enabled && target.speedtest.urls && target.speedtest.urls.length > 0);
-}
-
 function hasBalancerMonitorRequest(target: SubscriptionTargetConfig): target is SubscriptionTargetConfig & {
   balancerMonitor: {
     enabled: true;
     socks5: NonNullable<SubscriptionTargetConfig['balancerMonitor']['socks5']>;
     request: NonNullable<SubscriptionTargetConfig['balancerMonitor']['request']>;
-    successGet?: SubscriptionTargetConfig['balancerMonitor']['successGet'];
   };
 } {
   return Boolean(target.balancerMonitor.enabled && target.balancerMonitor.socks5 && target.balancerMonitor.request);
@@ -136,8 +130,10 @@ async function repairTunnel(
         monitor: {
           ...current.monitor,
           state: 'degraded',
+          lastStatusCode: undefined,
+          lastLatencyMs: undefined,
           consecutiveFailures: 0,
-          lastError: undefined,
+          lastError: 'Tunnel repaired; awaiting next successful monitor check.',
         },
       };
 
@@ -212,6 +208,8 @@ export async function runTargetMonitorTick(
         state: 'degraded',
         lastCheckedAt: failedAt,
         lastFailureAt: failedAt,
+        lastStatusCode: undefined,
+        lastLatencyMs: undefined,
         lastError: error instanceof Error ? error.message : String(error),
         consecutiveFailures: monitor.consecutiveFailures + 1,
       }));
@@ -228,6 +226,8 @@ export async function runTargetMonitorTick(
         state: 'degraded',
         lastCheckedAt: failedAt,
         lastFailureAt: failedAt,
+        lastStatusCode: undefined,
+        lastLatencyMs: undefined,
         lastError: error.message,
         consecutiveFailures: monitor.consecutiveFailures + 1,
       }));
@@ -244,75 +244,11 @@ export async function runTargetMonitorTick(
       lastSuccessAt: checkedAt,
       lastStatusCode: response.statusCode,
       lastLatencyMs: response.latencyMs,
+      lastSuccessStatusCode: response.statusCode,
+      lastSuccessLatencyMs: response.latencyMs,
       lastError: undefined,
       consecutiveFailures: 0,
     }));
-  });
-}
-
-export async function runTargetSpeedtestTick(
-  subscriptionId: string,
-  target: SubscriptionTargetConfig,
-  memoryState: SyncMemoryState,
-  dependencies: MonitoringDependencies = {},
-): Promise<void> {
-  if (!hasSpeedtestUrls(target)) {
-    return;
-  }
-
-  const targetKey = buildTargetStateKey(subscriptionId, target.address);
-  const targetState = memoryState.targets[targetKey];
-  if (!targetState) {
-    return;
-  }
-
-  const snapshot = Object.values(targetState.tunnels);
-  const requestViaSocksFn = dependencies.requestViaSocksFn ?? requestViaSocks;
-
-  await runWithConcurrencyLimit(snapshot, target.speedtest.maxParallel, async (runtimeState) => {
-    let lastError: unknown;
-    let completed = false;
-
-    for (const url of target.speedtest.urls) {
-      const startedAt = Date.now();
-
-      try {
-        const response = await executeRequestViaSocks(requestViaSocksFn, {
-          proxyHost: resolveProxyHost(runtimeState.tunnel.listen, target.address),
-          proxyPort: runtimeState.tunnel.port,
-          url,
-          method: target.speedtest.method,
-          timeoutMs: target.speedtest.timeoutMs,
-        });
-        const finishedAt = now();
-        const durationMs = Math.max(1, Date.now() - startedAt);
-        const bitsPerSecond = Math.round((response.bodyBytes * 8 * 1000) / durationMs);
-
-        setTunnelSpeedtestState(targetState, runtimeState.tunnel.baseTunnelId, (speedtest) => ({
-          ...speedtest,
-          lastRunAt: finishedAt,
-          lastSuccessAt: finishedAt,
-          lastBytes: response.bodyBytes,
-          lastDurationMs: durationMs,
-          lastBitsPerSecond: bitsPerSecond,
-          lastError: undefined,
-        }));
-        completed = true;
-        break;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (!completed) {
-      const failedAt = now();
-      setTunnelSpeedtestState(targetState, runtimeState.tunnel.baseTunnelId, (speedtest) => ({
-        ...speedtest,
-        lastRunAt: failedAt,
-        lastFailureAt: failedAt,
-        lastError: lastError instanceof Error ? lastError.message : String(lastError),
-      }));
-    }
   });
 }
 
@@ -320,7 +256,7 @@ export async function runTargetBalancerMonitorTick(
   subscriptionId: string,
   target: SubscriptionTargetConfig,
   memoryState: SyncMemoryState,
-  logger: Logger,
+  _logger: Logger,
   dependencies: Pick<MonitoringDependencies, 'requestViaSocksFn'> = {},
 ): Promise<void> {
   if (!hasBalancerMonitorRequest(target)) {
@@ -351,6 +287,8 @@ export async function runTargetBalancerMonitorTick(
       state: 'degraded',
       lastCheckedAt: failedAt,
       lastFailureAt: failedAt,
+      lastStatusCode: undefined,
+      lastLatencyMs: undefined,
       lastError: error instanceof Error ? error.message : String(error),
       consecutiveFailures: current.consecutiveFailures + 1,
     }));
@@ -364,8 +302,8 @@ export async function runTargetBalancerMonitorTick(
       state: 'degraded',
       lastCheckedAt: failedAt,
       lastFailureAt: failedAt,
-      lastStatusCode: response.statusCode,
-      lastLatencyMs: response.latencyMs,
+      lastStatusCode: undefined,
+      lastLatencyMs: undefined,
       lastError: `Expected HTTP ${target.balancerMonitor.request.expectedStatus}, got ${response.statusCode}.`,
       consecutiveFailures: current.consecutiveFailures + 1,
     }));
@@ -380,47 +318,10 @@ export async function runTargetBalancerMonitorTick(
     lastSuccessAt: checkedAt,
     lastStatusCode: response.statusCode,
     lastLatencyMs: response.latencyMs,
+    lastSuccessStatusCode: response.statusCode,
+    lastSuccessLatencyMs: response.latencyMs,
     lastError: undefined,
     consecutiveFailures: 0,
   }));
 
-  if (!target.balancerMonitor.successGet) {
-    return;
-  }
-
-  try {
-    const successResponse = await executeRequestViaSocks(requestViaSocksFn, {
-      proxyHost: target.balancerMonitor.socks5.host,
-      proxyPort: target.balancerMonitor.socks5.port,
-      url: target.balancerMonitor.successGet.url,
-      method: 'GET',
-      timeoutMs: target.balancerMonitor.successGet.timeoutMs,
-    });
-
-    setTargetBalancerMonitorState(targetState, (current) => ({
-      ...current,
-      successGetLastRunAt: now(),
-      successGetLastStatusCode: successResponse.statusCode,
-      successGetLastLatencyMs: successResponse.latencyMs,
-      successGetLastError:
-        successResponse.statusCode === target.balancerMonitor.successGet!.expectedStatus
-          ? undefined
-          : `Expected HTTP ${target.balancerMonitor.successGet!.expectedStatus}, got ${successResponse.statusCode}.`,
-    }));
-  } catch (error) {
-    setTargetBalancerMonitorState(targetState, (current) => ({
-      ...current,
-      successGetLastRunAt: now(),
-      successGetLastError: error instanceof Error ? error.message : String(error),
-    }));
-    logger.warn(
-      {
-        event: 'balancer_monitor_success_get_failed',
-        subscriptionId,
-        targetAddress: target.address,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Balancer monitor successGet failed.',
-    );
-  }
 }

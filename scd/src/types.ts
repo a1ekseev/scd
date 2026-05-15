@@ -20,7 +20,8 @@ export type SkipReasonCode =
   | 'missing_required_field'
   | 'unsupported_param'
   | 'unsupported_value'
-  | 'unsupported_combo';
+  | 'unsupported_combo'
+  | 'duplicate_tag';
 
 export interface SkippedEntry {
   line: number;
@@ -127,6 +128,7 @@ export interface ManifestSummary {
   unsupportedCombo: number;
   invalidUri: number;
   missingRequiredField: number;
+  duplicateTag: number;
 }
 
 export interface OutboundManifest {
@@ -217,18 +219,11 @@ export interface BalancerMonitorSocks5Config {
   port: number;
 }
 
-export interface BalancerMonitorSuccessGetConfig {
-  url: string;
-  expectedStatus: number;
-  timeoutMs: number;
-}
-
 export interface TargetBalancerMonitorConfig {
   enabled: boolean;
   schedule?: string;
   socks5?: BalancerMonitorSocks5Config;
   request?: TargetMonitorRequestConfig;
-  successGet?: BalancerMonitorSuccessGetConfig;
 }
 
 export interface TargetMonitorConfig {
@@ -236,16 +231,6 @@ export interface TargetMonitorConfig {
   schedule?: string;
   maxParallel: number;
   request?: TargetMonitorRequestConfig;
-}
-
-export interface TargetSpeedtestConfig {
-  enabled: boolean;
-  schedule?: string;
-  urls?: string[];
-  method: 'GET';
-  expectedSizeBytes?: number;
-  timeoutMs: number;
-  maxParallel: number;
 }
 
 export interface SubscriptionTargetConfig {
@@ -258,7 +243,6 @@ export interface SubscriptionTargetConfig {
   inboundSocks?: InboundSocksConfig;
   monitor: TargetMonitorConfig;
   balancerMonitor: TargetBalancerMonitorConfig;
-  speedtest: TargetSpeedtestConfig;
   observatorySubjectSelectorPrefix?: string;
 }
 
@@ -274,7 +258,7 @@ export interface SubscriptionConfig {
   format: SubscriptionInputFormat;
   fetchTimeoutMs: number;
   filters?: SubscriptionFiltersConfig;
-  targets: SubscriptionTargetConfig[];
+  target: SubscriptionTargetConfig;
 }
 
 export interface RuntimeConfig {
@@ -356,18 +340,10 @@ export interface TunnelMonitorState {
   lastFailureAt?: string;
   lastStatusCode?: number;
   lastLatencyMs?: number;
+  lastSuccessStatusCode?: number;
+  lastSuccessLatencyMs?: number;
   lastError?: string;
   consecutiveFailures: number;
-}
-
-export interface TunnelSpeedtestState {
-  lastRunAt?: string;
-  lastSuccessAt?: string;
-  lastFailureAt?: string;
-  lastBytes?: number;
-  lastDurationMs?: number;
-  lastBitsPerSecond?: number;
-  lastError?: string;
 }
 
 export interface TargetBalancerMonitorState {
@@ -377,18 +353,15 @@ export interface TargetBalancerMonitorState {
   lastFailureAt?: string;
   lastStatusCode?: number;
   lastLatencyMs?: number;
+  lastSuccessStatusCode?: number;
+  lastSuccessLatencyMs?: number;
   lastError?: string;
   consecutiveFailures: number;
-  successGetLastRunAt?: string;
-  successGetLastStatusCode?: number;
-  successGetLastLatencyMs?: number;
-  successGetLastError?: string;
 }
 
 export interface TunnelRuntimeState {
   tunnel: TunnelMapping;
   monitor: TunnelMonitorState;
-  speedtest: TunnelSpeedtestState;
 }
 
 export interface StatusSnapshotTunnel {
@@ -400,11 +373,22 @@ export interface StatusSnapshotTunnel {
   state: TunnelMonitorStatus;
   lastHttpStatus?: number;
   lastLatencyMs?: number;
-  lastBitsPerSecond?: number;
+  lastError?: string;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastSuccessHttpStatus?: number;
+  lastSuccessLatencyMs?: number;
+  balanced?: boolean;
   balancerMonitorState?: TargetBalancerMonitorState['state'];
   balancerMonitorLastStatusCode?: number;
   balancerMonitorLastLatencyMs?: number;
-  balancerMonitorSuccessGetLastStatusCode?: number;
+  balancerMonitorLastError?: string;
+  balancerMonitorLastCheckedAt?: string;
+  balancerMonitorLastSuccessAt?: string;
+  balancerMonitorLastFailureAt?: string;
+  balancerMonitorLastSuccessStatusCode?: number;
+  balancerMonitorLastSuccessLatencyMs?: number;
 }
 
 export interface GroupedStatusTarget {
@@ -415,7 +399,12 @@ export interface GroupedStatusTarget {
     state: TargetBalancerMonitorState['state'];
     lastStatusCode?: number;
     lastLatencyMs?: number;
-    successGetLastStatusCode?: number;
+    lastError?: string;
+    lastCheckedAt?: string;
+    lastSuccessAt?: string;
+    lastFailureAt?: string;
+    lastSuccessStatusCode?: number;
+    lastSuccessLatencyMs?: number;
   };
 }
 

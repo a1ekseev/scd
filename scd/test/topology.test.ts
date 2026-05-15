@@ -28,12 +28,6 @@ function createTarget(overrides: Partial<SubscriptionTargetConfig> = {}): Subscr
     balancerMonitor: {
       enabled: false,
     },
-    speedtest: {
-      enabled: false,
-      method: 'GET',
-      timeoutMs: 15000,
-      maxParallel: 3,
-    },
     ...overrides,
   };
 }
@@ -129,4 +123,31 @@ test('buildStatusSnapshot exposes display name, country and endpoint from memory
   assert.equal(snapshot[0]?.countryIso2, 'AT');
   assert.equal(snapshot[0]?.endpoint, '127.0.0.1:20000');
   assert.match(snapshot[0]?.displayName ?? '', /Вена/);
+});
+
+test('buildStatusSnapshot exposes whether tunnel is still selected by balancer prefix', () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
+    'inline',
+  );
+  const memoryState = createSyncMemoryState();
+  const targetKey = 'source-1::127.0.0.1:8080';
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  const topology = buildTargetTopology(
+    manifest,
+    createTarget({
+      observatorySubjectSelectorPrefix: 'x-observe-',
+    }),
+  );
+  replaceTargetTopology(targetState, topology, { outbound: 'hash-a', inbound: 'hash-b', routing: 'hash-c' });
+
+  assert.equal(buildStatusSnapshot(memoryState)[0]?.balanced, true);
+
+  const tunnel = Object.values(targetState.tunnels)[0]!;
+  tunnel.tunnel = {
+    ...tunnel.tunnel,
+    outboundTagCurrent: tunnel.tunnel.outboundWithoutPrefix.tag,
+  };
+
+  assert.equal(buildStatusSnapshot(memoryState)[0]?.balanced, false);
 });

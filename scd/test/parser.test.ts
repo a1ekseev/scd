@@ -47,7 +47,16 @@ test('generateManifestFromSubscription filters by country allowlist', () => {
     filters: {
       countryAllowlist: ['DE'],
     },
-    targets: [],
+    target: {
+      address: '127.0.0.1:8080',
+      timeoutMs: 5000,
+      fixedOutbounds: [],
+      fixedInbounds: [],
+      fixedRouting: [],
+      visionUdp443Override: false,
+      monitor: { enabled: false, maxParallel: 10 },
+      balancerMonitor: { enabled: false },
+    },
     content: [
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия, Extra',
@@ -71,7 +80,16 @@ test('generateManifestFromSubscription filters by label regex', () => {
     filters: {
       labelIncludeRegex: '/,\\s*Extra(?!\\s*Whitelist)\\s*$/i',
     },
-    targets: [],
+    target: {
+      address: '127.0.0.1:8080',
+      timeoutMs: 5000,
+      fixedOutbounds: [],
+      fixedInbounds: [],
+      fixedRouting: [],
+      visionUdp443Override: false,
+      monitor: { enabled: false, maxParallel: 10 },
+      balancerMonitor: { enabled: false },
+    },
     content: [
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия, Extra Whitelist#2',
@@ -96,7 +114,16 @@ test('generateManifestFromSubscription applies country and label filters sequent
       countryAllowlist: ['DE', 'NL'],
       labelIncludeRegex: '/,\\s*Extra(?!\\s*Whitelist)\\s*$/i',
     },
-    targets: [],
+    target: {
+      address: '127.0.0.1:8080',
+      timeoutMs: 5000,
+      fixedOutbounds: [],
+      fixedInbounds: [],
+      fixedRouting: [],
+      visionUdp443Override: false,
+      monitor: { enabled: false, maxParallel: 10 },
+      balancerMonitor: { enabled: false },
+    },
     content: [
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
       'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия, Extra',
@@ -130,6 +157,17 @@ test('same country with different cities yields different tags', () => {
   const manifest = buildManifest(source, 'inline');
   assert.equal(manifest.entries.length, 2);
   assert.notEqual(manifest.entries[0]?.tag, manifest.entries[1]?.tag);
+});
+
+test('buildManifest skips duplicate generated tags', () => {
+  const line = 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇩🇪 Берлин, Германия, Extra';
+  const manifest = buildManifest([line, line].join('\n'), 'inline');
+
+  assert.equal(manifest.entries.length, 1);
+  assert.equal(manifest.summary.parsed, 1);
+  assert.equal(manifest.summary.skipped, 1);
+  assert.equal(manifest.summary.duplicateTag, 1);
+  assert.equal(manifest.skipped[0]?.reasonCode, 'duplicate_tag');
 });
 
 test('non-vless scheme is skipped as unsupported', () => {

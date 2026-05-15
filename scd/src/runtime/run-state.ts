@@ -3,9 +3,9 @@ import type {
   StatusSnapshotTunnel,
   TargetBalancerMonitorState,
   TargetTopology,
+  TunnelMapping,
   TunnelMonitorState,
   TunnelRuntimeState,
-  TunnelSpeedtestState,
 } from '../types.ts';
 
 export interface ManagedResourceState {
@@ -31,10 +31,6 @@ function createIdleMonitorState(): TunnelMonitorState {
     state: 'idle',
     consecutiveFailures: 0,
   };
-}
-
-function createEmptySpeedtestState(): TunnelSpeedtestState {
-  return {};
 }
 
 function createIdleBalancerMonitorState(): TargetBalancerMonitorState {
@@ -81,7 +77,6 @@ export function replaceTargetTopology(
       {
         tunnel,
         monitor: createIdleMonitorState(),
-        speedtest: createEmptySpeedtestState(),
       },
     ]),
   );
@@ -105,19 +100,6 @@ export function setTunnelMonitorState(
   }
 
   current.monitor = updater(current.monitor);
-}
-
-export function setTunnelSpeedtestState(
-  targetState: TargetApplyState,
-  tunnelId: string,
-  updater: (current: TunnelSpeedtestState) => TunnelSpeedtestState,
-): void {
-  const current = targetState.tunnels[tunnelId];
-  if (!current) {
-    return;
-  }
-
-  current.speedtest = updater(current.speedtest);
 }
 
 export async function withTargetMutationLock<T>(
@@ -144,6 +126,24 @@ export async function withTargetMutationLock<T>(
   }
 }
 
+function getTunnelBalanced(tunnel: TunnelMapping): boolean | undefined {
+  const unprefixedTag = tunnel.outboundWithoutPrefix.tag || tunnel.baseOutboundTag;
+  if (!unprefixedTag || tunnel.outboundTagInitial === unprefixedTag) {
+    return undefined;
+  }
+
+  if (!tunnel.outboundTagInitial.endsWith(unprefixedTag)) {
+    return undefined;
+  }
+
+  const prefix = tunnel.outboundTagInitial.slice(0, -unprefixedTag.length);
+  if (!prefix) {
+    return undefined;
+  }
+
+  return tunnel.outboundTagCurrent.startsWith(prefix);
+}
+
 export function buildStatusSnapshot(memoryState: SyncMemoryState): StatusSnapshotTunnel[] {
   const tunnels: StatusSnapshotTunnel[] = [];
 
@@ -162,11 +162,22 @@ export function buildStatusSnapshot(memoryState: SyncMemoryState): StatusSnapsho
         state: runtimeState.monitor.state,
         lastHttpStatus: runtimeState.monitor.lastStatusCode,
         lastLatencyMs: runtimeState.monitor.lastLatencyMs,
-        lastBitsPerSecond: runtimeState.speedtest.lastBitsPerSecond,
+        lastError: runtimeState.monitor.lastError,
+        lastCheckedAt: runtimeState.monitor.lastCheckedAt,
+        lastSuccessAt: runtimeState.monitor.lastSuccessAt,
+        lastFailureAt: runtimeState.monitor.lastFailureAt,
+        lastSuccessHttpStatus: runtimeState.monitor.lastSuccessStatusCode,
+        lastSuccessLatencyMs: runtimeState.monitor.lastSuccessLatencyMs,
+        balanced: getTunnelBalanced(runtimeState.tunnel),
         balancerMonitorState: targetState.balancerMonitor.state,
         balancerMonitorLastStatusCode: targetState.balancerMonitor.lastStatusCode,
         balancerMonitorLastLatencyMs: targetState.balancerMonitor.lastLatencyMs,
-        balancerMonitorSuccessGetLastStatusCode: targetState.balancerMonitor.successGetLastStatusCode,
+        balancerMonitorLastError: targetState.balancerMonitor.lastError,
+        balancerMonitorLastCheckedAt: targetState.balancerMonitor.lastCheckedAt,
+        balancerMonitorLastSuccessAt: targetState.balancerMonitor.lastSuccessAt,
+        balancerMonitorLastFailureAt: targetState.balancerMonitor.lastFailureAt,
+        balancerMonitorLastSuccessStatusCode: targetState.balancerMonitor.lastSuccessStatusCode,
+        balancerMonitorLastSuccessLatencyMs: targetState.balancerMonitor.lastSuccessLatencyMs,
       });
     }
   }

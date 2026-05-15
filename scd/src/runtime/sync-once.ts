@@ -302,7 +302,7 @@ async function syncSubscriptionTarget(
 function buildManifestFailureTargetReports(
   subscriptionId: string,
   sourceId: string,
-  targets: SubscriptionTargetConfig[],
+  target: SubscriptionTargetConfig,
   services: SyncServices,
   loadedConfig: LoadedConfig,
   logger: Logger,
@@ -317,23 +317,20 @@ function buildManifestFailureTargetReports(
       subscriptionId,
       sourceId,
       error: errorMessage,
-      targets: targets.map((target) => target.address),
+      targetAddress: target.address,
     },
     'Manifest validation failed.',
   );
 
-  for (const target of targets) {
-    const resourceReports = applicators.map((applicator) =>
-      createFailedApplyReport(applicator.kind, subscriptionId, target.address, sourceId, [], errorMessage),
-    );
+  const resourceReports = applicators.map((applicator) =>
+    createFailedApplyReport(applicator.kind, subscriptionId, target.address, sourceId, [], errorMessage),
+  );
 
-    for (const report of resourceReports) {
-      logApplyResult(logger, report);
-    }
-
-    reports.push(buildFailedTargetSyncReport(subscriptionId, target.address, sourceId, resourceReports));
+  for (const report of resourceReports) {
+    logApplyResult(logger, report);
   }
 
+  reports.push(buildFailedTargetSyncReport(subscriptionId, target.address, sourceId, resourceReports));
   return reports;
 }
 
@@ -352,30 +349,27 @@ function buildFailedSubscriptionTargetReports(
       subscriptionId: failedSubscription.id,
       source: failedSubscription.source,
       error: failedSubscription.error,
-      targets: failedSubscription.targets.map((target) => target.address),
+      targetAddress: failedSubscription.target.address,
     },
     'Subscription fetch failed.',
   );
 
-  for (const target of failedSubscription.targets) {
-    const resourceReports = applicators.map((applicator) =>
-      createFailedApplyReport(
-        applicator.kind,
-        failedSubscription.id,
-        target.address,
-        failedSubscription.id,
-        [],
-        failedSubscription.error,
-      ),
-    );
+  const resourceReports = applicators.map((applicator) =>
+    createFailedApplyReport(
+      applicator.kind,
+      failedSubscription.id,
+      failedSubscription.target.address,
+      failedSubscription.id,
+      [],
+      failedSubscription.error,
+    ),
+  );
 
-    for (const report of resourceReports) {
-      logApplyResult(logger, report);
-    }
-
-    reports.push(buildFailedTargetSyncReport(failedSubscription.id, target.address, failedSubscription.id, resourceReports));
+  for (const report of resourceReports) {
+    logApplyResult(logger, report);
   }
 
+  reports.push(buildFailedTargetSyncReport(failedSubscription.id, failedSubscription.target.address, failedSubscription.id, resourceReports));
   return reports;
 }
 
@@ -392,12 +386,12 @@ async function performSync(
   logger.info(
     {
       event: 'subscription_fetched',
-      subscriptions: subscriptionResult.loaded.map((subscription) => ({
-        id: subscription.id,
-        source: subscription.source,
-        encoding: subscription.encoding,
-        targets: subscription.targets.map((target) => target.address),
-      })),
+        subscriptions: subscriptionResult.loaded.map((subscription) => ({
+          id: subscription.id,
+          source: subscription.source,
+          encoding: subscription.encoding,
+          targetAddress: subscription.target.address,
+        })),
     },
     'Subscriptions loaded.',
   );
@@ -418,7 +412,7 @@ async function performSync(
         ...buildManifestFailureTargetReports(
           subscription.id,
           subscription.id,
-          subscription.targets,
+          subscription.target,
           services,
           loadedConfig,
           logger,
@@ -449,15 +443,13 @@ async function performSync(
           managedCount: plan.managedIds.length,
           skipped: plan.skipped.length,
           ...filteredSummary,
-          targetCount: subscription.targets.length,
+          targetAddress: subscription.target.address,
         },
         'Manifest built.',
       );
     }
 
-    for (const target of subscription.targets) {
-      targetReports.push(await syncSubscriptionTarget(subscription, target, builtPlans, memoryState, logger));
-    }
+    targetReports.push(await syncSubscriptionTarget(subscription, subscription.target, builtPlans, memoryState, logger));
   }
 
   return aggregateReports(targetReports, skippedEntries, startedAt);
