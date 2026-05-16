@@ -12,7 +12,8 @@
 - Background refresh is driven by one global cron schedule.
 - Output serving is read-only and never fetches upstream on demand.
 - Server lookup uses cached outputs by `pathRoute + "/" + output.id`.
-- Last good payload is kept in memory and survives refresh failures until process restart.
+- Last good output payload is kept in memory.
+- Last successful decoded source subscription is persisted in `.sfc-cache` next to the active config file and is used as refresh fallback when upstream input fails.
 
 ## Output rules
 - Filter only successfully parsed supported VLESS lines.
@@ -21,7 +22,8 @@
 - Repack the filtered plain text to base64 before exposing it publicly.
 
 ## Failure rules
-- If upstream fetch fails, keep previous successful output payloads.
+- If upstream fetch fails, try disk source cache first; if it exists, rebuild outputs from it.
+- If upstream fetch fails and disk source cache is missing, keep previous successful output payloads.
 - If a filtered output becomes empty, mark the refresh as failed for that output and keep the previous successful payload.
 - If no successful payload exists yet, `GET <pathRoute>/<output-id>` must return `502`.
 
@@ -32,7 +34,6 @@
 ## Non-goals in v1
 - no admin UI
 - no auth
-- no persistence
 - no country filter
 - no shared library refactor with `scd`
 
