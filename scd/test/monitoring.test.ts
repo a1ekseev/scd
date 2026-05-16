@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildManifest } from '../src/manifest.ts';
-import { runTargetBalancerMonitorTick, runTargetMonitorTick } from '../src/runtime/monitoring.ts';
+import { buildRemotePingUrl, pushRemotePingDirect, runTargetBalancerMonitorTick, runTargetMonitorTick } from '../src/runtime/monitoring.ts';
 import {
   buildTargetStateKey,
   createSyncMemoryState,
@@ -395,6 +395,7 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check wi
   const calls: string[] = [];
   targetState.balancerMonitor = {
     state: 'healthy',
+    remotePingState: 'idle',
     consecutiveFailures: 0,
     lastStatusCode: 204,
     lastLatencyMs: 12,
@@ -424,4 +425,335 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check wi
   assert.equal(targetState.balancerMonitor.lastSuccessStatusCode, 204);
   assert.equal(targetState.balancerMonitor.lastSuccessLatencyMs, 12);
   assert.match(targetState.balancerMonitor.lastError ?? '', /Expected HTTP 204, got 200/);
+});
+
+test('runTargetBalancerMonitorTick starts remote ping asynchronously after successful primary check', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://kuma.example.test/api/push/token?keep=1',
+        timeoutMs: 5000,
+        viaSocks: false,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  let releaseRemotePing!: () => void;
+  const remotePingGate = new Promise<void>((resolve) => {
+    releaseRemotePing = resolve;
+  });
+  const remoteCalls: Array<{ url: string }> = [];
+  let socksCallCount = 0;
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    info() {},
+    warn() {},
+    error() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      socksCallCount += 1;
+      return {
+        statusCode: 200,
+        latencyMs: 33,
+        bodyBytes: 128,
+      };
+    },
+    directRemotePingFn: async ({ url }) => {
+      remoteCalls.push({ url });
+      await remotePingGate;
+      return { statusCode: 200 };
+    },
+  });
+
+  assert.equal(targetState.balancerMonitor.state, 'healthy');
+  assert.equal(targetState.balancerMonitor.remotePingState, 'pending');
+  assert.deepEqual(remoteCalls, [
+    { url: 'https://kuma.example.test/api/push/token?keep=1&status=up&msg=OK&ping=33' },
+  ]);
+  assert.equal(socksCallCount, 1);
+
+  releaseRemotePing();
+  await wait(0);
+
+  assert.equal(targetState.balancerMonitor.remotePingState, 'ok');
+  assert.equal(targetState.balancerMonitor.remotePingLastStatusCode, 200);
+});
+
+test('runTargetBalancerMonitorTick starts remote ping down after primary failure without changing health state on push failure', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 204,
+        timeoutMs: 5000,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://kuma.example.test/api/push/token',
+        timeoutMs: 5000,
+        viaSocks: false,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  const remoteCalls: Array<{ url: string }> = [];
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    info() {},
+    warn() {},
+    error() {},
+  } as never, {
+    requestViaSocksFn: async () => ({
+      statusCode: 200,
+      latencyMs: 40,
+      bodyBytes: 10,
+    }),
+    directRemotePingFn: async ({ url }) => {
+      remoteCalls.push({ url });
+      return { statusCode: 500 };
+    },
+  });
+  await wait(0);
+
+  assert.equal(targetState.balancerMonitor.state, 'degraded');
+  assert.equal(targetState.balancerMonitor.remotePingState, 'failed');
+  assert.equal(targetState.balancerMonitor.remotePingLastStatusCode, 500);
+  assert.match(targetState.balancerMonitor.remotePingLastError ?? '', /HTTP 500/);
+  assert.deepEqual(remoteCalls, [
+    { url: 'https://kuma.example.test/api/push/token?status=down&msg=Expected+HTTP+204%2C+got+200.' },
+  ]);
+});
+
+test('runTargetBalancerMonitorTick skips overlapping remote ping pushes', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://kuma.example.test/api/push/token',
+        timeoutMs: 5000,
+        viaSocks: false,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+  targetState.balancerMonitor.remotePingState = 'pending';
+
+  const events: string[] = [];
+  let remoteCallCount = 0;
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    info() {},
+    warn(payload: { event?: string }) {
+      if (payload.event) {
+        events.push(payload.event);
+      }
+    },
+    error() {},
+  } as never, {
+    requestViaSocksFn: async () => ({
+      statusCode: 200,
+      latencyMs: 33,
+      bodyBytes: 128,
+    }),
+    directRemotePingFn: async () => {
+      remoteCallCount += 1;
+      return { statusCode: 200 };
+    },
+  });
+
+  assert.equal(remoteCallCount, 0);
+  assert.ok(events.includes('balancer_monitor_remote_ping_skipped_overrun'));
+});
+
+test('runTargetBalancerMonitorTick sends remote ping through balancer socks when viaSocks is enabled', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://kuma.example.test/api/push/token',
+        timeoutMs: 3000,
+        viaSocks: true,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  const calls: Array<{ proxyHost: string; proxyPort: number; url: string; method: string; timeoutMs: number }> = [];
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    info() {},
+    warn() {},
+    error() {},
+  } as never, {
+    requestViaSocksFn: async (config) => {
+      calls.push(config);
+      return calls.length === 1
+        ? {
+            statusCode: 200,
+            latencyMs: 33,
+            bodyBytes: 128,
+          }
+        : {
+            statusCode: 502,
+            latencyMs: 12,
+            bodyBytes: 0,
+          };
+    },
+    directRemotePingFn: async () => {
+      throw new Error('direct remote ping must not be called');
+    },
+  });
+  await wait(0);
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], {
+    proxyHost: '127.0.0.10',
+    proxyPort: 1080,
+    url: 'https://kuma.example.test/api/push/token?status=up&msg=OK&ping=33',
+    method: 'GET',
+    timeoutMs: 3000,
+  });
+  assert.equal(targetState.balancerMonitor.state, 'healthy');
+  assert.equal(targetState.balancerMonitor.remotePingState, 'failed');
+  assert.equal(targetState.balancerMonitor.remotePingLastStatusCode, 502);
+});
+
+test('pushRemotePingDirect records status and cancels response body without downloading it', async () => {
+  const originalFetch = globalThis.fetch;
+  let cancelCalled = false;
+  const calls: Array<{ url: string; method?: string }> = [];
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), method: init?.method });
+    return {
+      status: 204,
+      body: {
+        cancel: async () => {
+          cancelCalled = true;
+        },
+      },
+      arrayBuffer: async () => {
+        throw new Error('response body must not be downloaded');
+      },
+    } as unknown as Response;
+  }) as typeof fetch;
+
+  try {
+    const response = await pushRemotePingDirect({
+      url: 'https://kuma.example.test/api/push/token?status=up',
+      timeoutMs: 5000,
+    });
+
+    assert.equal(response.statusCode, 204);
+    assert.equal(cancelCalled, true);
+    assert.deepEqual(calls, [
+      { url: 'https://kuma.example.test/api/push/token?status=up', method: 'GET' },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('buildRemotePingUrl preserves existing query params and overwrites push params', () => {
+  assert.equal(
+    buildRemotePingUrl('https://kuma.example.test/api/push/token?keep=1&status=down&msg=old&ping=999', {
+      status: 'up',
+      msg: 'OK',
+      pingMs: 42,
+    }),
+    'https://kuma.example.test/api/push/token?keep=1&status=up&msg=OK&ping=42',
+  );
+  assert.equal(
+    buildRemotePingUrl('https://kuma.example.test/api/push/token?keep=1&ping=999', {
+      status: 'down',
+      msg: 'failed',
+    }),
+    'https://kuma.example.test/api/push/token?keep=1&status=down&msg=failed',
+  );
 });

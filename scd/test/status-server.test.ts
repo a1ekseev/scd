@@ -133,10 +133,12 @@ test('status server renders HTML dashboard without JSON links and with state car
   };
   targetState.balancerMonitor = {
     state: 'degraded',
+    remotePingState: 'failed',
     consecutiveFailures: 1,
     lastError: 'balancer failed',
     lastSuccessStatusCode: 204,
     lastSuccessLatencyMs: 90,
+    remotePingLastError: 'push failed',
   };
 
   const result = await handleStatusServerRequest('/', createLoadedConfig(), memoryState);
@@ -148,6 +150,8 @@ test('status server renders HTML dashboard without JSON links and with state car
   assert.match(result.body, /class="node-card state-healthy"/);
   assert.match(result.body, /Last Check/);
   assert.match(result.body, />42 ms</);
+  assert.match(result.body, /Remote Ping/);
+  assert.match(result.body, />failed</);
   assert.doesNotMatch(result.body, /HTTP 204/);
   assert.doesNotMatch(result.body, /Last success/);
   assert.match(result.body, /Balancer/);
@@ -200,9 +204,11 @@ test('status server renders configured target and balancer card even without tun
   const targetState = getOrCreateTargetState(memoryState, targetKey);
   targetState.balancerMonitor = {
     state: 'healthy',
+    remotePingState: 'ok',
     consecutiveFailures: 0,
     lastStatusCode: 204,
     lastLatencyMs: 17,
+    remotePingLastStatusCode: 200,
   };
 
   const result = await handleStatusServerRequest('/status', createLoadedConfig(), memoryState);
@@ -212,6 +218,7 @@ test('status server renders configured target and balancer card even without tun
   assert.match(result.body, /class="balancer-card state-healthy"/);
   assert.match(result.body, /No tunnel data\./);
   assert.match(result.body, />17 ms</);
+  assert.match(result.body, />ok</);
   assert.doesNotMatch(result.body, /HTTP 204/);
 });
 
@@ -278,6 +285,8 @@ test('status server api status exposes monitor history and balancer participatio
       },
     },
   };
+  targetState.balancerMonitor.remotePingState = 'failed';
+  targetState.balancerMonitor.remotePingLastError = 'push failed';
 
   const result = await handleStatusServerRequest('/api/status', createLoadedConfig(), memoryState);
   const payload = JSON.parse(result.body) as {
@@ -288,6 +297,8 @@ test('status server api status exposes monitor history and balancer participatio
       lastSuccessHttpStatus?: number;
       lastSuccessLatencyMs?: number;
       balanced?: boolean;
+      balancerMonitorRemotePingState?: string;
+      balancerMonitorRemotePingLastError?: string;
     }>;
   };
 
@@ -297,6 +308,8 @@ test('status server api status exposes monitor history and balancer participatio
   assert.equal(payload.tunnels[0]?.lastSuccessHttpStatus, 204);
   assert.equal(payload.tunnels[0]?.lastSuccessLatencyMs, 42);
   assert.equal(payload.tunnels[0]?.balanced, false);
+  assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingState, 'failed');
+  assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastError, 'push failed');
 });
 
 test('status server returns 400 for runtime-state endpoint without required query params', async () => {
@@ -358,6 +371,7 @@ test('status server runtime-state endpoint uses redacted builder output', async 
         serviceState: {
           balancerMonitor: {
             state: 'healthy',
+            remotePingState: 'idle',
             consecutiveFailures: 0,
             lastStatusCode: 204,
           },

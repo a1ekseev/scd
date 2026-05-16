@@ -135,6 +135,14 @@ function redactTargetConfig(
             url: redactUrl(target.balancerMonitor.request.url, includeSecrets),
           }
         : undefined,
+      remotePing: target.balancerMonitor.remotePing
+        ? {
+            ...target.balancerMonitor.remotePing,
+            url: target.balancerMonitor.remotePing.url
+              ? redactUrl(target.balancerMonitor.remotePing.url, includeSecrets)
+              : undefined,
+          }
+        : undefined,
     },
   };
 }

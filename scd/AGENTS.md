@@ -93,6 +93,7 @@ Current schema:
     - `inboundSocks?`
     - `monitor`
     - `balancerMonitor`
+      - optional group-level `remotePing` for Uptime Kuma Push reporting, with `viaSocks` support
 - `runtime.mode`
 - `runtime.schedule`
 - `logging.level`

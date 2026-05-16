@@ -16,7 +16,7 @@ export { buildManifest } from './manifest.ts';
 export { createLogger } from './logging/create-logger.ts';
 export { normalizeVless } from './normalize/normalize-vless.ts';
 export { generateManifestFromSubscription, loadSubscriptions } from './runtime/generate-manifest-from-source.ts';
-export { runTargetBalancerMonitorTick, runTargetMonitorTick } from './runtime/monitoring.ts';
+export { buildRemotePingUrl, pushRemotePingDirect, runTargetBalancerMonitorTick, runTargetMonitorTick } from './runtime/monitoring.ts';
 export { runDaemon } from './runtime/run-daemon.ts';
 export { buildStatusSnapshot, createSyncMemoryState } from './runtime/run-state.ts';
 export { requestViaSocks } from './runtime/socks-http.ts';
@@ -48,6 +48,7 @@ export type {
   SkippedEntry,
   SourceLine,
   TargetMonitorConfig,
+  TargetBalancerRemotePingConfig,
   TargetBalancerMonitorConfig,
   TargetBalancerMonitorState,
   SyncReport,

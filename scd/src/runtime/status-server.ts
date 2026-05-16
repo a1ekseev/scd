@@ -65,6 +65,10 @@ function formatBalancerStatus(value?: boolean): string {
   return 'n/a';
 }
 
+function formatRemotePingStatus(value?: string): string {
+  return value ?? 'idle';
+}
+
 function compareLatencyThenName(left: StatusSnapshotTunnel, right: StatusSnapshotTunnel): number {
   const leftLatency = left.state === 'idle' || left.lastLatencyMs === undefined ? Number.POSITIVE_INFINITY : left.lastLatencyMs;
   const rightLatency = right.state === 'idle' || right.lastLatencyMs === undefined ? Number.POSITIVE_INFINITY : right.lastLatencyMs;
@@ -129,6 +133,12 @@ function buildConfiguredStatusGroups(
           lastFailureAt: targetState.balancerMonitor.lastFailureAt,
           lastSuccessStatusCode: targetState.balancerMonitor.lastSuccessStatusCode,
           lastSuccessLatencyMs: targetState.balancerMonitor.lastSuccessLatencyMs,
+          remotePingState: targetState.balancerMonitor.remotePingState,
+          remotePingLastRunAt: targetState.balancerMonitor.remotePingLastRunAt,
+          remotePingLastSuccessAt: targetState.balancerMonitor.remotePingLastSuccessAt,
+          remotePingLastFailureAt: targetState.balancerMonitor.remotePingLastFailureAt,
+          remotePingLastStatusCode: targetState.balancerMonitor.remotePingLastStatusCode,
+          remotePingLastError: targetState.balancerMonitor.remotePingLastError,
         }
       : existingTarget?.balancerMonitor ?? { state: 'idle' as const };
 
@@ -182,6 +192,7 @@ function renderHtml(
       <div class="node-metrics">
         ${renderMetric('State', balancerState)}
         ${renderMetric('Last Check', formatLastCheck(target.balancerMonitor?.lastLatencyMs, target.balancerMonitor?.lastError))}
+        ${renderMetric('Remote Ping', formatRemotePingStatus(target.balancerMonitor?.remotePingState))}
       </div>
     </div>
   </article>
@@ -335,6 +346,12 @@ export function groupStatusSnapshot(snapshot: StatusSnapshotTunnel[]): GroupedSt
                 lastFailureAt: tunnels[0].balancerMonitorLastFailureAt,
                 lastSuccessStatusCode: tunnels[0].balancerMonitorLastSuccessStatusCode,
                 lastSuccessLatencyMs: tunnels[0].balancerMonitorLastSuccessLatencyMs,
+                remotePingState: tunnels[0].balancerMonitorRemotePingState,
+                remotePingLastRunAt: tunnels[0].balancerMonitorRemotePingLastRunAt,
+                remotePingLastSuccessAt: tunnels[0].balancerMonitorRemotePingLastSuccessAt,
+                remotePingLastFailureAt: tunnels[0].balancerMonitorRemotePingLastFailureAt,
+                remotePingLastStatusCode: tunnels[0].balancerMonitorRemotePingLastStatusCode,
+                remotePingLastError: tunnels[0].balancerMonitorRemotePingLastError,
               }
             : undefined,
         })),
