@@ -2,7 +2,7 @@ import { Writable } from "node:stream";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildResponse, writeRepeatedPayload } from "../src/runtime/server.ts";
+import { buildResponse, fillDeterministicPayload, writeRepeatedPayload } from "../src/runtime/server.ts";
 import type { AppConfig } from "../src/types.ts";
 
 const config: AppConfig = {
@@ -74,12 +74,22 @@ test("unknown route returns 404", () => {
   assert.equal(response.statusCode, 404);
 });
 
-test("writeRepeatedPayload streams exact deterministic bytes", async () => {
+test("writeRepeatedPayload streams exact deterministic non-trivial bytes", async () => {
   const writable = new CaptureResponse();
   await writeRepeatedPayload(writable, 96 * 1024 + 7);
   assert.equal(writable.bytes.length, 96 * 1024 + 7);
-  assert.equal(writable.bytes.toString("utf8", 0, 8), "aaaaaaaa");
+  assert.notEqual(writable.bytes.toString("utf8", 0, 8), "aaaaaaaa");
+  assert.ok(new Set(writable.bytes.subarray(0, 256)).size > 128);
   assert.equal(writable.ended, true);
+});
+
+test("fillDeterministicPayload depends on absolute offset", () => {
+  const first = Buffer.alloc(64);
+  const second = Buffer.alloc(64);
+  fillDeterministicPayload(first, 0);
+  fillDeterministicPayload(second, 64);
+
+  assert.notDeepEqual(first, second);
 });
 
 class CaptureResponse extends Writable {
