@@ -12,6 +12,8 @@ import { buildManifest } from '../src/manifest.ts';
 import { loadSubscriptions } from '../src/runtime/generate-manifest-from-source.ts';
 import { createSyncMemoryState } from '../src/runtime/run-state.ts';
 import { syncWithConfig } from '../src/runtime/sync-once.ts';
+import type { ResourceApplicator } from '../src/apply/resource-applicator.ts';
+import type { Logger } from '../src/logging/create-logger.ts';
 import type { LoadedConfig, ResourceConfig, StatusServerConfig, SubscriptionTargetConfig } from '../src/types.ts';
 
 function createTargetConfig(overrides: Partial<SubscriptionTargetConfig> = {}): SubscriptionTargetConfig {
@@ -1064,6 +1066,124 @@ test('syncWithConfig applies multiple subscriptions independently', async () => 
   );
 
   await rm(tempDir, { recursive: true, force: true });
+});
+
+test('syncWithConfig logs failed apply item messages for diagnostics', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-apply-failed-log-'));
+  const errorPayloads: Array<Record<string, unknown>> = [];
+  const logger = {
+    info() {
+      return undefined;
+    },
+    warn() {
+      return undefined;
+    },
+    error(payload: Record<string, unknown>) {
+      errorPayloads.push(payload);
+    },
+  } as unknown as Logger;
+  const target = createTargetConfig();
+  const loadedConfig: LoadedConfig = {
+    configPath: join(tempDir, 'config.yml'),
+    config: {
+      subscriptions: [
+        {
+          id: 'source-1',
+          input: resolve(tempDir, 'subscription.txt'),
+          enabled: true,
+          format: 'auto',
+          fetchTimeoutMs: 5000,
+          target,
+        },
+      ],
+      runtime: {
+        mode: 'run-once',
+      },
+      logging: {
+        level: 'silent',
+        format: 'json',
+      },
+      resources: createResourcesConfig(),
+      statusServer: createStatusServerConfig(),
+    },
+  };
+  const failingApplicator: ResourceApplicator = {
+    kind: 'outbound',
+    isEnabled() {
+      return true;
+    },
+    buildPlan(subscription) {
+      return {
+        kind: 'outbound',
+        sourceId: subscription.id,
+        skipped: [],
+        manifestHash: 'hash-1',
+        managedIds: ['managed-1'],
+      };
+    },
+    preparePlanForTarget(plan) {
+      return plan;
+    },
+    async applyPlan(plan, context) {
+      return {
+        kind: 'outbound',
+        sourceId: plan.sourceId,
+        subscriptionId: context.subscriptionId,
+        targetAddress: context.target.address,
+        appliedAt: new Date().toISOString(),
+        durationMs: 1,
+        added: 0,
+        replaced: 0,
+        removed: 0,
+        failed: 1,
+        deletedIds: [],
+        appliedIds: [],
+        items: [
+          {
+            id: 'managed-1',
+            status: 'failed',
+            message: 'xray api rejected dynamic routing rule',
+          },
+        ],
+        skipped: [],
+      };
+    },
+  };
+
+  try {
+    const report = await syncWithConfig(loadedConfig, logger, createSyncMemoryState(), {
+      async loadSubscriptionsFn() {
+        return {
+          loaded: [
+            {
+              id: 'source-1',
+              input: resolve(tempDir, 'subscription.txt'),
+              source: resolve(tempDir, 'subscription.txt'),
+              content: 'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия',
+              encoding: 'plain' as const,
+              target,
+            },
+          ],
+          failed: [],
+        };
+      },
+      applicators: [failingApplicator],
+    });
+
+    assert.equal(report.failed, 1);
+    const applyFailedPayload = errorPayloads.find((payload) => payload.event === 'apply_failed');
+    assert.ok(applyFailedPayload);
+    assert.deepEqual(applyFailedPayload.errorMessages, ['xray api rejected dynamic routing rule']);
+    assert.deepEqual(applyFailedPayload.failedItems, [
+      {
+        id: 'managed-1',
+        status: 'failed',
+        message: 'xray api rejected dynamic routing rule',
+      },
+    ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('syncWithConfig skips overlapping runs inside one process', async () => {

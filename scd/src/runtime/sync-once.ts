@@ -168,6 +168,10 @@ function buildPlans(subscription: LoadedSubscription, services: SyncServices, lo
 }
 
 function logApplyResult(logger: Logger, report: ApplyReport): void {
+  const failedItems = report.items.filter((item) => item.status === 'failed');
+  const errorMessages = failedItems
+    .map((item) => item.message)
+    .filter((message): message is string => typeof message === 'string' && message.length > 0);
   const payload = {
     event: report.failed > 0 ? 'apply_failed' : 'apply_finished',
     kind: report.kind,
@@ -181,6 +185,12 @@ function logApplyResult(logger: Logger, report: ApplyReport): void {
     deletedIds: report.deletedIds,
     appliedIds: report.appliedIds,
     durationMs: report.durationMs,
+    ...(report.failed > 0
+      ? {
+          errorMessages,
+          failedItems,
+        }
+      : {}),
   };
 
   if (report.failed > 0) {
