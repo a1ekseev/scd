@@ -103,6 +103,7 @@ export interface RefreshOutputReport {
   matchedLines: number;
   ok: boolean;
   usedCachedValue: boolean;
+  usedSourceCache?: boolean;
   error?: string;
 }
 

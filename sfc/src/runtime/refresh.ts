@@ -16,6 +16,7 @@ import { createLogger, type Logger } from '../logging/create-logger.ts';
 import { parseSubscriptionLine } from '../subscription/parse-subscription-line.ts';
 import { scanLines } from '../subscription/scan-lines.ts';
 import { buildOutputPath } from './output-path.ts';
+import { buildSourceCachePath, readSourceCache, writeSourceCache } from './source-cache.ts';
 
 function now(): string {
   return new Date().toISOString();
@@ -74,6 +75,7 @@ function updateOutputFailure(
   subscription: SubscriptionConfig,
   output: OutputConfig,
   error: string,
+  options: { usedSourceCache?: boolean } = {},
 ): RefreshOutputReport {
   const current = state.outputs[output.id] ?? createOutputState(subscription, output);
   const nextState = {
@@ -97,6 +99,7 @@ function updateOutputFailure(
     matchedLines: 0,
     ok: false,
     usedCachedValue: Boolean(current.lastGoodBase64),
+    usedSourceCache: options.usedSourceCache,
     error,
   };
 }
@@ -106,6 +109,7 @@ function updateOutputSuccess(
   subscription: SubscriptionConfig,
   output: OutputConfig,
   matched: ParsedSubscriptionEntry[],
+  options: { usedSourceCache?: boolean } = {},
 ): RefreshOutputReport {
   const plain = matched.map((entry) => entry.raw).join('\n');
   const base64 = Buffer.from(plain, 'utf8').toString('base64');
@@ -134,6 +138,7 @@ function updateOutputSuccess(
     matchedLines: matched.length,
     ok: true,
     usedCachedValue: false,
+    usedSourceCache: options.usedSourceCache,
   };
 }
 
@@ -141,6 +146,7 @@ function buildOutputReports(
   state: AppState,
   subscription: SubscriptionConfig,
   parsedEntries: ParsedSubscriptionEntry[],
+  options: { usedSourceCache?: boolean } = {},
 ): RefreshOutputReport[] {
   const reports: RefreshOutputReport[] = [];
 
@@ -152,11 +158,11 @@ function buildOutputReports(
     });
 
     if (matched.length === 0) {
-      reports.push(updateOutputFailure(state, subscription, output, 'Filtered output is empty.'));
+      reports.push(updateOutputFailure(state, subscription, output, 'Filtered output is empty.', options));
       continue;
     }
 
-    reports.push(updateOutputSuccess(state, subscription, output, matched));
+    reports.push(updateOutputSuccess(state, subscription, output, matched, options));
   }
 
   return reports;
@@ -178,6 +184,26 @@ export async function refreshWithConfig(
           format: subscription.format,
           fetchTimeoutMs: subscription.fetchTimeoutMs,
         });
+        try {
+          const cachePath = await writeSourceCache(loadedConfig.configPath, subscription.id, input.content);
+          logger.info(
+            {
+              event: 'subscription_source_cache_written',
+              subscriptionId: subscription.id,
+              path: cachePath,
+            },
+            'Subscription source cache written.',
+          );
+        } catch (cacheError) {
+          logger.warn(
+            {
+              event: 'subscription_source_cache_write_failed',
+              subscriptionId: subscription.id,
+              error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+            },
+            'Subscription source cache write failed; continuing with fresh input.',
+          );
+        }
         const parsedEntries = parseSupportedEntries(input.content.trim());
         reports.push(...buildOutputReports(state, subscription, parsedEntries));
         logger.info(
@@ -192,16 +218,43 @@ export async function refreshWithConfig(
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error(
-          {
-            event: 'subscription_refresh_failed',
-            subscriptionId: subscription.id,
-            error: message,
-          },
-          'Subscription refresh failed.',
-        );
-        for (const output of subscription.outputs.filter((item) => item.enabled)) {
-          reports.push(updateOutputFailure(state, subscription, output, message));
+        try {
+          const cached = await readSourceCache(loadedConfig.configPath, subscription.id);
+          const parsedEntries = parseSupportedEntries(cached.content.trim());
+          reports.push(...buildOutputReports(state, subscription, parsedEntries, { usedSourceCache: true }));
+          logger.warn(
+            {
+              event: 'subscription_source_cache_used',
+              subscriptionId: subscription.id,
+              path: cached.path,
+              error: message,
+              parsedEntries: parsedEntries.length,
+            },
+            'Subscription refresh used source cache after input load failed.',
+          );
+        } catch (cacheError) {
+          const cachePath = buildSourceCachePath(loadedConfig.configPath, subscription.id);
+          logger.error(
+            {
+              event: 'subscription_source_cache_missed',
+              subscriptionId: subscription.id,
+              error: message,
+              cachePath,
+              cacheError: cacheError instanceof Error ? cacheError.message : String(cacheError),
+            },
+            'Subscription source cache is not available after input load failed.',
+          );
+          logger.error(
+            {
+              event: 'subscription_refresh_failed',
+              subscriptionId: subscription.id,
+              error: message,
+            },
+            'Subscription refresh failed.',
+          );
+          for (const output of subscription.outputs.filter((item) => item.enabled)) {
+            reports.push(updateOutputFailure(state, subscription, output, message));
+          }
         }
       }
     }

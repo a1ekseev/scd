@@ -136,4 +136,6 @@ Response semantics for `GET <pathRoute>/<output-id>`:
   - `profile-update-interval: <1..24>`
 
 `sfc` always serves the last good cached payload. A refresh failure does not delete the previous successful cache entry.
+After every successful source download, `sfc` also stores the decoded source subscription in `.sfc-cache` next to the active `config.yml`.
+If the next source download fails or times out, refresh falls back to that disk source cache before marking outputs failed.
 The background refresh loop does not overlap with itself. If one refresh is still running when the next cron slot arrives, `sfc` skips that slot and logs `refresh_tick_skipped_overrun`.
