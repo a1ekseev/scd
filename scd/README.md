@@ -115,6 +115,11 @@ subscriptions:
       #     method: GET
       #     expectedStatus: 200
       #     timeoutMs: 5000
+      #   remotePing:
+      #     enabled: true
+      #     url: https://uptime.example.com/api/push/<token>
+      #     timeoutMs: 5000
+      #     viaSocks: true
 
 runtime:
   mode: run-once
@@ -175,6 +180,7 @@ Parameters:
 - `subscriptions[].target.balancerMonitor.schedule`: cron expression for balancer monitor ticks.
 - `subscriptions[].target.balancerMonitor.socks5.host` / `port`: external SOCKS5 endpoint used for balancer checks.
 - `subscriptions[].target.balancerMonitor.request`: primary request definition executed through that SOCKS5 proxy.
+- `subscriptions[].target.balancerMonitor.remotePing`: optional Uptime Kuma Push report for the balancer/group check. `url` is the base `/api/push/<token>` URL; `scd` adds `status`, `msg` and `ping`. `viaSocks` defaults to `false`; when `true`, the push is sent through `balancerMonitor.socks5`.
 - `runtime.mode`: service mode. Allowed values: `run-once`, `daemon`. Default: `run-once`.
 - `runtime.schedule`: cron expression for daemon mode. Required only when `runtime.mode: daemon`. Example: `"*/5 * * * *"`.
 - `logging.level`: log verbosity. Allowed values: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. Default: `info`.
@@ -244,6 +250,7 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
 - Every generated tunnel is checked through its generated SOCKS inbound.
 - The current implementation performs HTTP checks and expects a configured response status code.
 - `balancerMonitor` is separate from tunnel monitoring and runs through a configured external SOCKS5 proxy.
+- `balancerMonitor.remotePing` starts after the primary balancer check resolves and runs asynchronously; it reports one group-level `up` or `down` to Uptime Kuma and can use the balancer SOCKS endpoint when `viaSocks: true`.
 - If a monitor check fails, `scd` keeps the SOCKS inbound stable, removes that tunnel's generated routing rule and outbound, and recreates them.
 - Recreated outbound during repair is applied **without** `observatorySubjectSelectorPrefix`.
 - Sync and repair use the same per-target in-memory mutex, so they do not mutate one target concurrently.

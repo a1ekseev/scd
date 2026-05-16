@@ -249,6 +249,7 @@ test('buildCurrentRuntimeStateSnapshot does not refetch remote subscriptions and
         tunnels: {},
         balancerMonitor: {
           state: 'healthy' as const,
+          remotePingState: 'idle' as const,
           consecutiveFailures: 0,
           lastStatusCode: 204,
         },
@@ -303,6 +304,12 @@ test('buildCurrentRuntimeStateSnapshot redacts target monitor URLs by default an
         expectedStatus: 204,
         timeoutMs: 5000,
       },
+      remotePing: {
+        enabled: true,
+        url: 'https://kuma.example.test/api/push/token?secret=abc',
+        timeoutMs: 5000,
+        viaSocks: true,
+      },
     },
   });
   const subscription: SubscriptionConfig = {
@@ -335,8 +342,11 @@ test('buildCurrentRuntimeStateSnapshot redacts target monitor URLs by default an
 
   assert.equal(redacted?.config.target.monitor.request?.url, 'https://monitor.example.test/<redacted>');
   assert.equal(redacted?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/<redacted>');
+  assert.equal(redacted?.config.target.balancerMonitor.remotePing?.url, 'https://kuma.example.test/<redacted>');
+  assert.equal(redacted?.config.target.balancerMonitor.remotePing?.viaSocks, true);
   assert.equal(exposed?.config.target.monitor.request?.url, 'https://monitor.example.test/health?token=secret');
   assert.equal(exposed?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/check?token=secret');
+  assert.equal(exposed?.config.target.balancerMonitor.remotePing?.url, 'https://kuma.example.test/api/push/token?secret=abc');
 });
 
 test('buildCurrentRuntimeStateSnapshot exposes raw and secrets only when explicitly enabled', async () => {

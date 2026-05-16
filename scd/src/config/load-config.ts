@@ -128,6 +128,7 @@ const targetSchema = z.object({
         })
         .optional(),
     })
+    .strict()
     .default({ enabled: false, maxParallel: 10 }),
   balancerMonitor: z
     .object({
@@ -147,9 +148,18 @@ const targetSchema = z.object({
           timeoutMs: z.number().int().positive().default(5000),
         })
         .optional(),
+      remotePing: z
+        .object({
+          enabled: z.boolean().default(false),
+          url: z.string().trim().url().optional(),
+          timeoutMs: z.number().int().positive().default(5000),
+          viaSocks: z.boolean().default(false),
+        })
+        .strict()
+        .default({ enabled: false, timeoutMs: 5000, viaSocks: false }),
     })
     .strict()
-    .default({ enabled: false }),
+    .default({ enabled: false, remotePing: { enabled: false, timeoutMs: 5000, viaSocks: false } }),
   observatorySubjectSelectorPrefix: optionalTrimmedStringSchema,
 }).strict();
 
@@ -347,6 +357,22 @@ const appConfigSchema = z.object({
           path: ['subscriptions'],
         });
       }
+    }
+
+    if (target.balancerMonitor.remotePing?.enabled && !target.balancerMonitor.remotePing.url) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'balancerMonitor.remotePing.url is required when balancerMonitor.remotePing.enabled is true.',
+        path: ['subscriptions'],
+      });
+    }
+
+    if (target.balancerMonitor.remotePing?.enabled && !target.balancerMonitor.enabled) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'balancerMonitor.remotePing.enabled requires balancerMonitor.enabled to be true.',
+        path: ['subscriptions'],
+      });
     }
   }
 

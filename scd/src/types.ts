@@ -224,6 +224,7 @@ export interface TargetBalancerMonitorConfig {
   schedule?: string;
   socks5?: BalancerMonitorSocks5Config;
   request?: TargetMonitorRequestConfig;
+  remotePing?: TargetBalancerRemotePingConfig;
 }
 
 export interface TargetMonitorConfig {
@@ -231,6 +232,13 @@ export interface TargetMonitorConfig {
   schedule?: string;
   maxParallel: number;
   request?: TargetMonitorRequestConfig;
+}
+
+export interface TargetBalancerRemotePingConfig {
+  enabled: boolean;
+  url?: string;
+  timeoutMs: number;
+  viaSocks: boolean;
 }
 
 export interface SubscriptionTargetConfig {
@@ -348,6 +356,7 @@ export interface TunnelMonitorState {
 
 export interface TargetBalancerMonitorState {
   state: 'idle' | 'healthy' | 'degraded';
+  remotePingState: 'idle' | 'pending' | 'ok' | 'failed';
   lastCheckedAt?: string;
   lastSuccessAt?: string;
   lastFailureAt?: string;
@@ -356,6 +365,11 @@ export interface TargetBalancerMonitorState {
   lastSuccessStatusCode?: number;
   lastSuccessLatencyMs?: number;
   lastError?: string;
+  remotePingLastRunAt?: string;
+  remotePingLastSuccessAt?: string;
+  remotePingLastFailureAt?: string;
+  remotePingLastStatusCode?: number;
+  remotePingLastError?: string;
   consecutiveFailures: number;
 }
 
@@ -389,6 +403,12 @@ export interface StatusSnapshotTunnel {
   balancerMonitorLastFailureAt?: string;
   balancerMonitorLastSuccessStatusCode?: number;
   balancerMonitorLastSuccessLatencyMs?: number;
+  balancerMonitorRemotePingState?: TargetBalancerMonitorState['remotePingState'];
+  balancerMonitorRemotePingLastRunAt?: string;
+  balancerMonitorRemotePingLastSuccessAt?: string;
+  balancerMonitorRemotePingLastFailureAt?: string;
+  balancerMonitorRemotePingLastStatusCode?: number;
+  balancerMonitorRemotePingLastError?: string;
 }
 
 export interface GroupedStatusTarget {
@@ -405,6 +425,12 @@ export interface GroupedStatusTarget {
     lastFailureAt?: string;
     lastSuccessStatusCode?: number;
     lastSuccessLatencyMs?: number;
+    remotePingState?: TargetBalancerMonitorState['remotePingState'];
+    remotePingLastRunAt?: string;
+    remotePingLastSuccessAt?: string;
+    remotePingLastFailureAt?: string;
+    remotePingLastStatusCode?: number;
+    remotePingLastError?: string;
   };
 }
 

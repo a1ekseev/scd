@@ -36,6 +36,7 @@ function createIdleMonitorState(): TunnelMonitorState {
 function createIdleBalancerMonitorState(): TargetBalancerMonitorState {
   return {
     state: 'idle',
+    remotePingState: 'idle',
     consecutiveFailures: 0,
   };
 }
@@ -178,6 +179,12 @@ export function buildStatusSnapshot(memoryState: SyncMemoryState): StatusSnapsho
         balancerMonitorLastFailureAt: targetState.balancerMonitor.lastFailureAt,
         balancerMonitorLastSuccessStatusCode: targetState.balancerMonitor.lastSuccessStatusCode,
         balancerMonitorLastSuccessLatencyMs: targetState.balancerMonitor.lastSuccessLatencyMs,
+        balancerMonitorRemotePingState: targetState.balancerMonitor.remotePingState,
+        balancerMonitorRemotePingLastRunAt: targetState.balancerMonitor.remotePingLastRunAt,
+        balancerMonitorRemotePingLastSuccessAt: targetState.balancerMonitor.remotePingLastSuccessAt,
+        balancerMonitorRemotePingLastFailureAt: targetState.balancerMonitor.remotePingLastFailureAt,
+        balancerMonitorRemotePingLastStatusCode: targetState.balancerMonitor.remotePingLastStatusCode,
+        balancerMonitorRemotePingLastError: targetState.balancerMonitor.remotePingLastError,
       });
     }
   }

@@ -9,13 +9,21 @@ import {
   setTargetBalancerMonitorState,
   setTunnelMonitorState,
   withTargetMutationLock,
+  type TargetApplyState,
   type SyncMemoryState,
 } from './run-state.ts';
 import { requestViaSocks } from './socks-http.ts';
 
 interface MonitoringDependencies {
   requestViaSocksFn?: typeof requestViaSocks;
+  directRemotePingFn?: typeof pushRemotePingDirect;
   repairTunnelFn?: typeof repairTunnel;
+}
+
+interface RemotePingPayload {
+  status: 'up' | 'down';
+  msg: string;
+  pingMs?: number;
 }
 
 function now(): string {
@@ -42,6 +50,58 @@ function hasBalancerMonitorRequest(target: SubscriptionTargetConfig): target is 
   };
 } {
   return Boolean(target.balancerMonitor.enabled && target.balancerMonitor.socks5 && target.balancerMonitor.request);
+}
+
+function hasRemotePing(target: SubscriptionTargetConfig): target is SubscriptionTargetConfig & {
+  balancerMonitor: SubscriptionTargetConfig['balancerMonitor'] & {
+    remotePing: {
+      enabled: true;
+      url: string;
+      timeoutMs: number;
+      viaSocks: boolean;
+    };
+    socks5: NonNullable<SubscriptionTargetConfig['balancerMonitor']['socks5']>;
+  };
+} {
+  return Boolean(target.balancerMonitor.remotePing?.enabled && target.balancerMonitor.remotePing.url && target.balancerMonitor.socks5);
+}
+
+export function buildRemotePingUrl(baseUrl: string, payload: RemotePingPayload): string {
+  const url = new URL(baseUrl);
+  url.searchParams.set('status', payload.status);
+  url.searchParams.set('msg', payload.msg);
+  url.searchParams.delete('ping');
+  if (payload.pingMs !== undefined) {
+    url.searchParams.set('ping', String(payload.pingMs));
+  }
+  return url.toString();
+}
+
+export async function pushRemotePingDirect(config: {
+  url: string;
+  timeoutMs: number;
+}): Promise<{ statusCode: number }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, config.timeoutMs);
+
+  try {
+    const response = await fetch(config.url, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    const statusCode = response.status;
+    await response.body?.cancel().catch(() => undefined);
+    return { statusCode };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Remote ping timed out after ${config.timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function executeRequestViaSocks(
@@ -256,8 +316,8 @@ export async function runTargetBalancerMonitorTick(
   subscriptionId: string,
   target: SubscriptionTargetConfig,
   memoryState: SyncMemoryState,
-  _logger: Logger,
-  dependencies: Pick<MonitoringDependencies, 'requestViaSocksFn'> = {},
+  logger: Logger,
+  dependencies: Pick<MonitoringDependencies, 'requestViaSocksFn' | 'directRemotePingFn'> = {},
 ): Promise<void> {
   if (!hasBalancerMonitorRequest(target)) {
     return;
@@ -270,6 +330,7 @@ export async function runTargetBalancerMonitorTick(
   }
 
   const requestViaSocksFn = dependencies.requestViaSocksFn ?? requestViaSocks;
+  const directRemotePingFn = dependencies.directRemotePingFn ?? pushRemotePingDirect;
 
   let response: Awaited<ReturnType<typeof requestViaSocksFn>>;
   try {
@@ -282,6 +343,7 @@ export async function runTargetBalancerMonitorTick(
     });
   } catch (error) {
     const failedAt = now();
+    const message = error instanceof Error ? error.message : String(error);
     setTargetBalancerMonitorState(targetState, (current) => ({
       ...current,
       state: 'degraded',
@@ -289,14 +351,19 @@ export async function runTargetBalancerMonitorTick(
       lastFailureAt: failedAt,
       lastStatusCode: undefined,
       lastLatencyMs: undefined,
-      lastError: error instanceof Error ? error.message : String(error),
+      lastError: message,
       consecutiveFailures: current.consecutiveFailures + 1,
     }));
+    scheduleRemotePing(subscriptionId, target, targetState, logger, requestViaSocksFn, directRemotePingFn, {
+      status: 'down',
+      msg: message,
+    });
     return;
   }
 
   if (response.statusCode !== target.balancerMonitor.request.expectedStatus) {
     const failedAt = now();
+    const message = `Expected HTTP ${target.balancerMonitor.request.expectedStatus}, got ${response.statusCode}.`;
     setTargetBalancerMonitorState(targetState, (current) => ({
       ...current,
       state: 'degraded',
@@ -304,9 +371,13 @@ export async function runTargetBalancerMonitorTick(
       lastFailureAt: failedAt,
       lastStatusCode: undefined,
       lastLatencyMs: undefined,
-      lastError: `Expected HTTP ${target.balancerMonitor.request.expectedStatus}, got ${response.statusCode}.`,
+      lastError: message,
       consecutiveFailures: current.consecutiveFailures + 1,
     }));
+    scheduleRemotePing(subscriptionId, target, targetState, logger, requestViaSocksFn, directRemotePingFn, {
+      status: 'down',
+      msg: message,
+    });
     return;
   }
 
@@ -324,4 +395,134 @@ export async function runTargetBalancerMonitorTick(
     consecutiveFailures: 0,
   }));
 
+  scheduleRemotePing(subscriptionId, target, targetState, logger, requestViaSocksFn, directRemotePingFn, {
+    status: 'up',
+    msg: 'OK',
+    pingMs: response.latencyMs,
+  });
+}
+
+function scheduleRemotePing(
+  subscriptionId: string,
+  target: SubscriptionTargetConfig,
+  targetState: TargetApplyState,
+  logger: Logger,
+  requestViaSocksFn: typeof requestViaSocks,
+  directRemotePingFn: NonNullable<MonitoringDependencies['directRemotePingFn']>,
+  payload: RemotePingPayload,
+): void {
+  if (!hasRemotePing(target)) {
+    return;
+  }
+
+  if (targetState.balancerMonitor.remotePingState === 'pending') {
+    logger.warn(
+      {
+        event: 'balancer_monitor_remote_ping_skipped_overrun',
+        subscriptionId,
+        targetAddress: target.address,
+      },
+      'Balancer monitor remote ping skipped because previous push is still in progress.',
+    );
+    return;
+  }
+
+  const startedAt = now();
+  setTargetBalancerMonitorState(targetState, (current) => ({
+    ...current,
+    remotePingState: 'pending',
+    remotePingLastRunAt: startedAt,
+    remotePingLastError: undefined,
+  }));
+
+  logger.info(
+    {
+      event: 'balancer_monitor_remote_ping_started',
+      subscriptionId,
+      targetAddress: target.address,
+      status: payload.status,
+    },
+    'Balancer monitor remote ping started.',
+  );
+
+  void (async () => {
+    try {
+      const pushUrl = buildRemotePingUrl(target.balancerMonitor.remotePing.url, payload);
+      const response = target.balancerMonitor.remotePing.viaSocks
+        ? await requestViaSocksFn({
+            proxyHost: target.balancerMonitor.socks5.host,
+            proxyPort: target.balancerMonitor.socks5.port,
+            url: pushUrl,
+            method: 'GET',
+            timeoutMs: target.balancerMonitor.remotePing.timeoutMs,
+          })
+        : await directRemotePingFn({
+            url: pushUrl,
+            timeoutMs: target.balancerMonitor.remotePing.timeoutMs,
+          });
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        const failedAt = now();
+        const message = `Remote ping returned HTTP ${response.statusCode}.`;
+        setTargetBalancerMonitorState(targetState, (current) => ({
+          ...current,
+          remotePingState: 'failed',
+          remotePingLastFailureAt: failedAt,
+          remotePingLastStatusCode: response.statusCode,
+          remotePingLastError: message,
+        }));
+
+        logger.warn(
+          {
+            event: 'balancer_monitor_remote_ping_failed',
+            subscriptionId,
+            targetAddress: target.address,
+            statusCode: response.statusCode,
+            error: message,
+          },
+          'Balancer monitor remote ping failed.',
+        );
+        return;
+      }
+
+      const completedAt = now();
+      setTargetBalancerMonitorState(targetState, (current) => ({
+        ...current,
+        remotePingState: 'ok',
+        remotePingLastSuccessAt: completedAt,
+        remotePingLastStatusCode: response.statusCode,
+        remotePingLastError: undefined,
+      }));
+
+      logger.info(
+        {
+          event: 'balancer_monitor_remote_ping_succeeded',
+          subscriptionId,
+          targetAddress: target.address,
+          statusCode: response.statusCode,
+        },
+        'Balancer monitor remote ping succeeded.',
+      );
+    } catch (error) {
+      const failedAt = now();
+      const message = error instanceof Error ? error.message : String(error);
+      setTargetBalancerMonitorState(targetState, (current) => ({
+        ...current,
+        remotePingState: 'failed',
+        remotePingLastFailureAt: failedAt,
+        remotePingLastStatusCode: undefined,
+        remotePingLastError: message,
+      }));
+
+      logger.warn(
+        {
+          event: 'balancer_monitor_remote_ping_failed',
+          subscriptionId,
+          targetAddress: target.address,
+          error: message,
+        },
+        'Balancer monitor remote ping failed.',
+      );
+    }
+  })();
 }

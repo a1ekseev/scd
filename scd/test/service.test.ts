@@ -482,6 +482,11 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
         '          method: GET',
         '          expectedStatus: 200',
         '          timeoutMs: 5000',
+        '        remotePing:',
+        '          enabled: true',
+        '          url: https://kuma.example.com/api/push/token',
+        '          timeoutMs: 3000',
+        '          viaSocks: true',
         'runtime:',
         '  mode: run-once',
         'logging:',
@@ -496,6 +501,9 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
     const loaded = await loadConfig(validPath);
     assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.enabled, true);
     assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.socks5?.port, 1080);
+    assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.remotePing?.enabled, true);
+    assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.remotePing?.timeoutMs, 3000);
+    assert.equal(loaded.config.subscriptions[0]?.target.balancerMonitor.remotePing?.viaSocks, true);
 
     const invalidPath = join(tempDir, 'invalid.yml');
     await writeFile(
@@ -520,6 +528,135 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
     );
 
     await assert.rejects(() => loadConfig(invalidPath), /balancerMonitor\.(schedule|socks5|request)/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig validates balancerMonitor remotePing config', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-balancer-remote-ping-config-'));
+
+  try {
+    const missingUrlPath = join(tempDir, 'missing-url.yml');
+    await writeFile(
+      missingUrlPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        socks5:',
+        '          host: 127.0.0.1',
+        '          port: 1080',
+        '        request:',
+        '          url: https://example.com/health',
+        '          expectedStatus: 200',
+        '        remotePing:',
+        '          enabled: true',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(missingUrlPath), /remotePing\.url/);
+
+    const invalidTimeoutPath = join(tempDir, 'invalid-timeout.yml');
+    await writeFile(
+      invalidTimeoutPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        socks5:',
+        '          host: 127.0.0.1',
+        '          port: 1080',
+        '        request:',
+        '          url: https://example.com/health',
+        '          expectedStatus: 200',
+        '        remotePing:',
+        '          enabled: true',
+        '          url: https://kuma.example.com/api/push/token',
+        '          timeoutMs: 0',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(invalidTimeoutPath), /timeoutMs/);
+
+    const remotePingWithoutBalancerPath = join(tempDir, 'remote-without-balancer.yml');
+    await writeFile(
+      remotePingWithoutBalancerPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        remotePing:',
+        '          enabled: true',
+        '          url: https://kuma.example.com/api/push/token',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(remotePingWithoutBalancerPath), /requires balancerMonitor\.enabled/);
+
+    const wrongPlacementPath = join(tempDir, 'wrong-placement.yml');
+    await writeFile(
+      wrongPlacementPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      monitor:',
+        '        enabled: false',
+        '        remotePing:',
+        '          enabled: true',
+        '          url: https://kuma.example.com/api/push/token',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(wrongPlacementPath), /remotePing/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
