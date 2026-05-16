@@ -17,7 +17,7 @@ Example:
 curl -i http://127.0.0.1:9092/load/32
 ```
 
-If `load.path` is `/load`, `/load/32` returns a `200` response with exactly `32 * 1024` bytes. Payload is streamed in 64 KiB chunks and uses deterministic ASCII `a` bytes.
+If `load.path` is `/load`, `/load/32` returns a `200` response with exactly `32 * 1024` bytes. Payload is streamed in 64 KiB chunks and uses deterministic pseudo-random bytes.
 
 Diagnostic headers:
 

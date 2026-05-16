@@ -72,18 +72,32 @@ export async function writeResponse(response: ServerResponse, built: BuiltRespon
 }
 
 export async function writeRepeatedPayload(response: NodeJS.WritableStream, totalBytes: number): Promise<void> {
-  const chunk = Buffer.alloc(Math.min(CHUNK_SIZE_BYTES, Math.max(totalBytes, 1)), "a");
+  const chunk = Buffer.alloc(Math.min(CHUNK_SIZE_BYTES, Math.max(totalBytes, 1)));
   let remaining = totalBytes;
+  let offset = 0;
 
   while (remaining > 0) {
     const current = remaining >= chunk.length ? chunk : chunk.subarray(0, remaining);
+    fillDeterministicPayload(current, offset);
     if (!response.write(current)) {
       await once(response, "drain");
     }
+    offset += current.length;
     remaining -= current.length;
   }
 
   response.end();
+}
+
+export function fillDeterministicPayload(chunk: Buffer, offset: number): void {
+  let state = (0x9e3779b9 ^ offset) >>> 0;
+
+  for (let index = 0; index < chunk.length; index += 1) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    chunk[index] = state & 0xff;
+  }
 }
 
 export function startServer(config: AppConfig): Server {
