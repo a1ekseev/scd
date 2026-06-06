@@ -92,7 +92,9 @@ Current schema:
     - `observatorySubjectSelectorPrefix?`
     - `inboundSocks?`
     - `monitor`
+      - optional `retry` for per-tunnel checks
     - `balancerMonitor`
+      - optional `retry` for the primary balancer check
       - optional group-level `remotePing` for Remote Push reporting, with `viaSocks` support
 - `runtime.mode`
 - `runtime.schedule`
@@ -128,6 +130,7 @@ Defaults are applied by the schema. Relative paths are normalized during config 
   - tunnel-local repair that recreates `routing + outbound`
   - optional target-level balancer monitor via external SOCKS5
   - monitor probes run with bounded concurrency per target via `monitor.maxParallel`
+  - monitor and balancer monitor retry is per check and must not retry whole cron ticks
   - failed tunnel probes repair the tunnel outside balancer selection; a later successful probe automatically rejoins it to the Xray balancer
   - balancer monitor is observe-only and does not trigger repair or apply
   - built-in read-only status page

@@ -318,6 +318,233 @@ test('runTargetMonitorTick clears current check on failure and preserves last su
   assert.match(runtimeState.monitor.lastError ?? '', /probe failed/);
 });
 
+test('runTargetMonitorTick retries failed tunnel check before marking degraded or repairing', async () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  );
+  const target = createTarget({
+    monitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      maxParallel: 10,
+      retry: {
+        attempts: 2,
+        delayMs: 0,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+  const retryLogs: Array<{ attempt?: number; attempts?: number; event?: string; error?: string }> = [];
+  let calls = 0;
+  let repairCalls = 0;
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    debug(payload: { attempt?: number; attempts?: number; event?: string; error?: string }) {
+      retryLogs.push(payload);
+    },
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('temporary probe failure');
+      }
+      return {
+        statusCode: 200,
+        latencyMs: 25,
+        bodyBytes: 100,
+      };
+    },
+    repairTunnelFn: async () => {
+      repairCalls += 1;
+    },
+  });
+
+  const runtimeState = Object.values(targetState.tunnels)[0]!;
+  assert.equal(calls, 2);
+  assert.equal(repairCalls, 0);
+  assert.equal(runtimeState.monitor.state, 'healthy');
+  assert.equal(runtimeState.monitor.lastLatencyMs, 25);
+  assert.equal(runtimeState.monitor.consecutiveFailures, 0);
+  assert.deepEqual(
+    retryLogs.map((entry) => ({
+      event: entry.event,
+      attempt: entry.attempt,
+      attempts: entry.attempts,
+      error: entry.error,
+    })),
+    [{
+      event: 'monitor_check_retry',
+      attempt: 1,
+      attempts: 2,
+      error: 'temporary probe failure',
+    }],
+  );
+});
+
+test('runTargetMonitorTick retries unexpected status and repairs only after all attempts fail', async () => {
+  const manifest = buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  );
+  const target = createTarget({
+    monitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      maxParallel: 10,
+      retry: {
+        attempts: 2,
+        delayMs: 0,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 204,
+        timeoutMs: 5000,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+  const retryLogs: Array<{ attempt?: number; attempts?: number; statusCode?: number; error?: string; event?: string }> = [];
+  let calls = 0;
+  let repairCalls = 0;
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    debug(payload: { attempt?: number; attempts?: number; statusCode?: number; error?: string; event?: string }) {
+      retryLogs.push(payload);
+    },
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      calls += 1;
+      return {
+        statusCode: 200,
+        latencyMs: 25,
+        bodyBytes: 100,
+      };
+    },
+    repairTunnelFn: async () => {
+      repairCalls += 1;
+    },
+  });
+
+  const runtimeState = Object.values(targetState.tunnels)[0]!;
+  assert.equal(calls, 2);
+  assert.equal(repairCalls, 1);
+  assert.equal(runtimeState.monitor.state, 'degraded');
+  assert.equal(runtimeState.monitor.lastLatencyMs, undefined);
+  assert.match(runtimeState.monitor.lastError ?? '', /Expected HTTP 204, got 200/);
+  assert.deepEqual(
+    retryLogs.map((entry) => ({
+      event: entry.event,
+      attempt: entry.attempt,
+      attempts: entry.attempts,
+      statusCode: entry.statusCode,
+      error: entry.error,
+    })),
+    [{
+      event: 'monitor_check_retry',
+      attempt: 1,
+      attempts: 2,
+      statusCode: 200,
+      error: 'Expected HTTP 204, got 200.',
+    }],
+  );
+});
+
+test('runTargetMonitorTick keeps retry attempts inside monitor.maxParallel worker slots', async () => {
+  const manifest = buildManifest(
+    [
+      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf6@example.com:443?type=tcp&security=tls#🇧🇪 Брюссель, Бельгия, Extra',
+      'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf7@example.com:443?type=tcp&security=tls#🇧🇬 София, Болгария, Extra',
+    ].join('\n'),
+    'inline',
+  );
+  const target = createTarget({
+    monitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      maxParallel: 2,
+      retry: {
+        attempts: 2,
+        delayMs: 0,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(manifest, target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+  const callsByPort = new Map<number, number>();
+  let inFlight = 0;
+  let maxConcurrent = 0;
+
+  await runTargetMonitorTick('source-1', target, memoryState, {
+    debug() {},
+    info() {},
+    error() {},
+    warn() {},
+  } as never, {
+    requestViaSocksFn: async ({ proxyPort }) => {
+      inFlight += 1;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      await wait(5);
+      inFlight -= 1;
+
+      const calls = (callsByPort.get(proxyPort) ?? 0) + 1;
+      callsByPort.set(proxyPort, calls);
+      if (calls === 1) {
+        throw new Error('temporary probe failure');
+      }
+      return {
+        statusCode: 200,
+        latencyMs: 25,
+        bodyBytes: 100,
+      };
+    },
+  });
+
+  assert.equal(maxConcurrent, 2);
+  assert.deepEqual([...callsByPort.values()], [2, 2, 2]);
+  assert.ok(Object.values(targetState.tunnels).every((item) => item.monitor.state === 'healthy'));
+});
+
 test('runTargetMonitorTick real repair path uses injected mutation client and switches to unprefixed outbound', async () => {
   const manifest = buildManifest(
     'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
@@ -843,6 +1070,189 @@ test('runTargetBalancerMonitorTick marks target degraded on failed main check wi
   assert.equal(targetState.balancerMonitor.lastSuccessStatusCode, 204);
   assert.equal(targetState.balancerMonitor.lastSuccessLatencyMs, 12);
   assert.match(targetState.balancerMonitor.lastError ?? '', /Expected HTTP 204, got 200/);
+});
+
+test('runTargetBalancerMonitorTick retries primary check and sends one up remote push after final success', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 200,
+        timeoutMs: 5000,
+      },
+      retry: {
+        attempts: 2,
+        delayMs: 0,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://push.example.test/api/push/token',
+        timeoutMs: 5000,
+        viaSocks: false,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  let calls = 0;
+  const remoteCalls: Array<{ url: string }> = [];
+  const retryLogs: Array<{ event?: string; attempt?: number; attempts?: number; error?: string }> = [];
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    debug(payload: { event?: string; attempt?: number; attempts?: number; error?: string }) {
+      retryLogs.push(payload);
+    },
+    info() {},
+    warn() {},
+    error() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('temporary balancer failure');
+      }
+      return {
+        statusCode: 200,
+        latencyMs: 33,
+        bodyBytes: 128,
+      };
+    },
+    directRemotePingFn: async ({ url }) => {
+      remoteCalls.push({ url });
+      return { statusCode: 200 };
+    },
+  });
+  await wait(0);
+
+  assert.equal(calls, 2);
+  assert.equal(targetState.balancerMonitor.state, 'healthy');
+  assert.equal(targetState.balancerMonitor.lastLatencyMs, 33);
+  assert.equal(targetState.balancerMonitor.remotePingState, 'ok');
+  assert.deepEqual(remoteCalls, [
+    { url: 'https://push.example.test/api/push/token?status=up&msg=OK&ping=33' },
+  ]);
+  assert.deepEqual(
+    retryLogs.map((entry) => ({
+      event: entry.event,
+      attempt: entry.attempt,
+      attempts: entry.attempts,
+      error: entry.error,
+    })),
+    [{
+      event: 'balancer_monitor_check_retry',
+      attempt: 1,
+      attempts: 2,
+      error: 'temporary balancer failure',
+    }],
+  );
+});
+
+test('runTargetBalancerMonitorTick sends one down remote push after all retry attempts fail', async () => {
+  const target = createTarget({
+    balancerMonitor: {
+      enabled: true,
+      schedule: '*/2 * * * *',
+      socks5: {
+        host: '127.0.0.10',
+        port: 1080,
+      },
+      request: {
+        url: 'https://example.test/health',
+        method: 'GET',
+        expectedStatus: 204,
+        timeoutMs: 5000,
+      },
+      retry: {
+        attempts: 2,
+        delayMs: 0,
+      },
+      remotePing: {
+        enabled: true,
+        url: 'https://push.example.test/api/push/token',
+        timeoutMs: 5000,
+        viaSocks: false,
+      },
+    },
+  });
+  const memoryState = createSyncMemoryState();
+  const targetKey = buildTargetStateKey('source-1', target.address);
+  const targetState = getOrCreateTargetState(memoryState, targetKey);
+  replaceTargetTopology(targetState, buildTargetTopology(buildManifest(
+    'vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@example.com:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra',
+    'inline',
+  ), target), {
+    outbound: 'hash-a',
+    inbound: 'hash-b',
+    routing: 'hash-c',
+  });
+
+  let calls = 0;
+  const remoteCalls: Array<{ url: string }> = [];
+  const retryLogs: Array<{ event?: string; attempt?: number; attempts?: number; statusCode?: number; error?: string }> = [];
+
+  await runTargetBalancerMonitorTick('source-1', target, memoryState, {
+    debug(payload: { event?: string; attempt?: number; attempts?: number; statusCode?: number; error?: string }) {
+      retryLogs.push(payload);
+    },
+    info() {},
+    warn() {},
+    error() {},
+  } as never, {
+    requestViaSocksFn: async () => {
+      calls += 1;
+      return {
+        statusCode: 200,
+        latencyMs: 40,
+        bodyBytes: 10,
+      };
+    },
+    directRemotePingFn: async ({ url }) => {
+      remoteCalls.push({ url });
+      return { statusCode: 200 };
+    },
+  });
+  await wait(0);
+
+  assert.equal(calls, 2);
+  assert.equal(targetState.balancerMonitor.state, 'degraded');
+  assert.match(targetState.balancerMonitor.lastError ?? '', /Expected HTTP 204, got 200/);
+  assert.equal(targetState.balancerMonitor.remotePingState, 'ok');
+  assert.deepEqual(remoteCalls, [
+    { url: 'https://push.example.test/api/push/token?status=down&msg=Expected+HTTP+204%2C+got+200.' },
+  ]);
+  assert.deepEqual(
+    retryLogs.map((entry) => ({
+      event: entry.event,
+      attempt: entry.attempt,
+      attempts: entry.attempts,
+      statusCode: entry.statusCode,
+      error: entry.error,
+    })),
+    [{
+      event: 'balancer_monitor_check_retry',
+      attempt: 1,
+      attempts: 2,
+      statusCode: 200,
+      error: 'Expected HTTP 204, got 200.',
+    }],
+  );
 });
 
 test('runTargetBalancerMonitorTick starts remote ping asynchronously after successful primary check', async () => {

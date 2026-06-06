@@ -20,6 +20,11 @@ const optionalTrimmedStringSchema = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
+const retrySchema = z.object({
+  attempts: z.number().int().min(1).default(1),
+  delayMs: z.number().int().min(0).default(250),
+}).strict().default({ attempts: 1, delayMs: 250 });
+
 const supportedIso2Codes = new Set(Object.values(FLAG_COUNTRY_MAP).map((country) => country.iso2));
 
 function parseRegexLiteral(value: string): RegExp {
@@ -119,6 +124,7 @@ const targetSchema = z.object({
       enabled: z.boolean().default(false),
       schedule: z.string().trim().optional(),
       maxParallel: z.number().int().positive().default(10),
+      retry: retrySchema,
       request: z
         .object({
           url: z.string().trim().url(),
@@ -129,7 +135,7 @@ const targetSchema = z.object({
         .optional(),
     })
     .strict()
-    .default({ enabled: false, maxParallel: 10 }),
+    .default({ enabled: false, maxParallel: 10, retry: { attempts: 1, delayMs: 250 } }),
   balancerMonitor: z
     .object({
       enabled: z.boolean().default(false),
@@ -148,6 +154,7 @@ const targetSchema = z.object({
           timeoutMs: z.number().int().positive().default(5000),
         })
         .optional(),
+      retry: retrySchema,
       remotePing: z
         .object({
           enabled: z.boolean().default(false),
@@ -159,7 +166,7 @@ const targetSchema = z.object({
         .default({ enabled: false, timeoutMs: 5000, viaSocks: false }),
     })
     .strict()
-    .default({ enabled: false, remotePing: { enabled: false, timeoutMs: 5000, viaSocks: false } }),
+    .default({ enabled: false, retry: { attempts: 1, delayMs: 250 }, remotePing: { enabled: false, timeoutMs: 5000, viaSocks: false } }),
   observatorySubjectSelectorPrefix: optionalTrimmedStringSchema,
 }).strict();
 

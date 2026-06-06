@@ -452,6 +452,7 @@ test('loadConfig accepts monitor.maxParallel and statusServer.runtimeState defau
 
     const loaded = await loadConfig(configPath);
     assert.equal(loaded.config.subscriptions[0]?.target.monitor.maxParallel, 4);
+    assert.deepEqual(loaded.config.subscriptions[0]?.target.monitor.retry, { attempts: 1, delayMs: 250 });
     assert.equal(loaded.config.statusServer.runtimeState.enabled, true);
     assert.equal(loaded.config.statusServer.runtimeState.includeRaw, false);
     assert.equal(loaded.config.statusServer.runtimeState.includeSecrets, false);
@@ -530,6 +531,119 @@ test('loadConfig accepts balancerMonitor config and rejects incomplete balancerM
     );
 
     await assert.rejects(() => loadConfig(invalidPath), /balancerMonitor\.(schedule|socks5|request)/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig validates monitor and balancerMonitor retry config', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'scd-monitor-retry-config-'));
+
+  try {
+    const validPath = join(tempDir, 'valid.yml');
+    await writeFile(
+      validPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      inboundSocks:',
+        '        listen: 127.0.0.1',
+        '        portRange:',
+        '          start: 20000',
+        '          end: 20010',
+        '      monitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        maxParallel: 4',
+        '        retry:',
+        '          attempts: 2',
+        '          delayMs: 100',
+        '        request:',
+        '          url: https://example.com/health',
+        '          expectedStatus: 200',
+        '      balancerMonitor:',
+        '        enabled: true',
+        '        schedule: "*/2 * * * *"',
+        '        socks5:',
+        '          host: 127.0.0.1',
+        '          port: 1080',
+        '        retry:',
+        '          attempts: 3',
+        '          delayMs: 150',
+        '        request:',
+        '          url: https://example.com/health',
+        '          expectedStatus: 200',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+        '  inbounds:',
+        '    enabled: true',
+        '  routing:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    const loaded = await loadConfig(validPath);
+    assert.deepEqual(loaded.config.subscriptions[0]?.target.monitor.retry, { attempts: 2, delayMs: 100 });
+    assert.deepEqual(loaded.config.subscriptions[0]?.target.balancerMonitor.retry, { attempts: 3, delayMs: 150 });
+
+    const invalidAttemptsPath = join(tempDir, 'invalid-attempts.yml');
+    await writeFile(
+      invalidAttemptsPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      monitor:',
+        '        retry:',
+        '          attempts: 0',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(invalidAttemptsPath), /attempts/);
+
+    const invalidDelayPath = join(tempDir, 'invalid-delay.yml');
+    await writeFile(
+      invalidDelayPath,
+      [
+        'subscriptions:',
+        '  - id: source-1',
+        '    input: ./subscription.txt',
+        '    target:',
+        '      address: 127.0.0.1:8080',
+        '      balancerMonitor:',
+        '        retry:',
+        '          delayMs: -1',
+        'runtime:',
+        '  mode: run-once',
+        'logging:',
+        '  level: info',
+        '  format: json',
+        'resources:',
+        '  outbounds:',
+        '    enabled: true',
+      ].join('\n'),
+    );
+
+    await assert.rejects(() => loadConfig(invalidDelayPath), /delayMs/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

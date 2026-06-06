@@ -214,6 +214,11 @@ export interface TargetMonitorRequestConfig {
   timeoutMs: number;
 }
 
+export interface TargetMonitorRetryConfig {
+  attempts: number;
+  delayMs: number;
+}
+
 export interface BalancerMonitorSocks5Config {
   host: string;
   port: number;
@@ -224,6 +229,7 @@ export interface TargetBalancerMonitorConfig {
   schedule?: string;
   socks5?: BalancerMonitorSocks5Config;
   request?: TargetMonitorRequestConfig;
+  retry?: TargetMonitorRetryConfig;
   remotePing?: TargetBalancerRemotePingConfig;
 }
 
@@ -231,6 +237,7 @@ export interface TargetMonitorConfig {
   enabled: boolean;
   schedule?: string;
   maxParallel: number;
+  retry?: TargetMonitorRetryConfig;
   request?: TargetMonitorRequestConfig;
 }
 
