@@ -170,6 +170,7 @@ Parameters:
 - `subscriptions[].target.monitor.enabled`: enables monitoring for this target. Default: `false`.
 - `subscriptions[].target.monitor.schedule`: cron expression for monitor ticks. Required only when monitoring is enabled.
 - `subscriptions[].target.monitor.maxParallel`: maximum number of monitor probes that may run at the same time for one target. Default: `10`.
+- `subscriptions[].target.monitor.retry.attempts` / `delayMs`: optional per-tunnel check retry. Default: `attempts: 1`, `delayMs: 250`.
 - `subscriptions[].target.monitor.request`: request definition used through each generated SOCKS tunnel.
 - `subscriptions[].target.monitor.request.url`: monitored URL.
 - `subscriptions[].target.monitor.request.method`: `GET`, `HEAD` or `POST`. Default: `GET`.
@@ -179,6 +180,7 @@ Parameters:
 - `subscriptions[].target.balancerMonitor.enabled`: enables balancer monitoring for this target. Default: `false`.
 - `subscriptions[].target.balancerMonitor.schedule`: cron expression for balancer monitor ticks.
 - `subscriptions[].target.balancerMonitor.socks5.host` / `port`: external SOCKS5 endpoint used for balancer checks.
+- `subscriptions[].target.balancerMonitor.retry.attempts` / `delayMs`: optional retry for the primary balancer check. Default: `attempts: 1`, `delayMs: 250`.
 - `subscriptions[].target.balancerMonitor.request`: primary request definition executed through that SOCKS5 proxy.
 - `subscriptions[].target.balancerMonitor.remotePing`: optional Remote Push report for the balancer/group check. `url` is the base push endpoint; `scd` adds `status`, `msg` and `ping`. `viaSocks` defaults to `false`; when `true`, the push is sent through `balancerMonitor.socks5`.
 - `runtime.mode`: service mode. Allowed values: `run-once`, `daemon`. Default: `run-once`.
@@ -249,6 +251,7 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
 - Monitor probes run in parallel for all tunnels on one target.
 - Every generated tunnel is checked through its generated SOCKS inbound.
 - The current implementation performs HTTP checks and expects a configured response status code.
+- Retry, when configured, is per check: health state, repair and Remote Push are updated only after the final attempt.
 - `balancerMonitor` is separate from tunnel monitoring and runs through a configured external SOCKS5 proxy.
 - `balancerMonitor.remotePing` starts after the primary balancer check resolves and runs asynchronously; it reports one group-level `up` or `down` to the configured Remote Push endpoint and can use the balancer SOCKS endpoint when `viaSocks: true`.
 - If a monitor check fails, `scd` keeps the SOCKS inbound stable, removes that tunnel's generated routing rule and outbound, and recreates them.

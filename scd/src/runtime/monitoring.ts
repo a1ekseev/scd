@@ -30,6 +30,16 @@ interface RemotePingPayload {
   pingMs?: number;
 }
 
+interface RetryConfig {
+  attempts: number;
+  delayMs: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  attempts: 1,
+  delayMs: 250,
+};
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -133,6 +143,88 @@ async function executeRequestViaSocks(
   },
 ): Promise<Awaited<ReturnType<typeof requestViaSocksFn>>> {
   return await requestViaSocksFn(config);
+}
+
+function getRetryConfig(config?: Partial<RetryConfig>): RetryConfig {
+  return {
+    attempts: Math.max(1, config?.attempts ?? DEFAULT_RETRY_CONFIG.attempts),
+    delayMs: Math.max(0, config?.delayMs ?? DEFAULT_RETRY_CONFIG.delayMs),
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function executeRequestViaSocksWithRetry(
+  requestViaSocksFn: typeof requestViaSocks,
+  config: {
+    proxyHost: string;
+    proxyPort: number;
+    url: string;
+    method: 'GET' | 'HEAD' | 'POST';
+    timeoutMs: number;
+    expectedStatus: number;
+    retry?: Partial<RetryConfig>;
+    retryEvent: string;
+    retryMessage: string;
+    logger: Logger;
+    logContext: Record<string, unknown>;
+  },
+): Promise<Awaited<ReturnType<typeof requestViaSocksFn>>> {
+  const retry = getRetryConfig(config.retry);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= retry.attempts; attempt += 1) {
+    let statusCode: number | undefined;
+
+    try {
+      const response = await executeRequestViaSocks(requestViaSocksFn, {
+        proxyHost: config.proxyHost,
+        proxyPort: config.proxyPort,
+        url: config.url,
+        method: config.method,
+        timeoutMs: config.timeoutMs,
+      });
+      statusCode = response.statusCode;
+
+      if (response.statusCode === config.expectedStatus) {
+        return response;
+      }
+
+      lastError = new Error(`Expected HTTP ${config.expectedStatus}, got ${response.statusCode}.`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < retry.attempts) {
+      config.logger.debug(
+        {
+          event: config.retryEvent,
+          ...config.logContext,
+          attempt,
+          attempts: retry.attempts,
+          delayMs: retry.delayMs,
+          ...(statusCode === undefined ? {} : { statusCode }),
+          error: getErrorMessage(lastError),
+        },
+        config.retryMessage,
+      );
+      await sleep(retry.delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function runWithConcurrencyLimit<T>(
@@ -361,12 +453,22 @@ export async function runTargetMonitorTick(
     let response: Awaited<ReturnType<typeof requestViaSocksFn>>;
 
     try {
-      response = await executeRequestViaSocks(requestViaSocksFn, {
+      response = await executeRequestViaSocksWithRetry(requestViaSocksFn, {
         proxyHost: resolveProxyHost(runtimeState.tunnel.listen, target.address),
         proxyPort: runtimeState.tunnel.port,
         url: target.monitor.request.url,
         method: target.monitor.request.method,
         timeoutMs: target.monitor.request.timeoutMs,
+        expectedStatus: target.monitor.request.expectedStatus,
+        retry: target.monitor.retry,
+        retryEvent: 'monitor_check_retry',
+        retryMessage: 'Monitor check attempt failed; retrying.',
+        logger,
+        logContext: {
+          subscriptionId,
+          targetAddress: target.address,
+          tunnelId: runtimeState.tunnel.baseTunnelId,
+        },
       });
     } catch (error) {
       const failedAt = now();
@@ -378,24 +480,6 @@ export async function runTargetMonitorTick(
         lastStatusCode: undefined,
         lastLatencyMs: undefined,
         lastError: error instanceof Error ? error.message : String(error),
-        consecutiveFailures: monitor.consecutiveFailures + 1,
-      }));
-
-      await repairTunnelFn(subscriptionId, target, memoryState, runtimeState, logger, createMutationClient);
-      return;
-    }
-
-    if (response.statusCode !== target.monitor.request.expectedStatus) {
-      const error = new Error(`Expected HTTP ${target.monitor.request.expectedStatus}, got ${response.statusCode}.`);
-      const failedAt = now();
-      setTunnelMonitorState(targetState, runtimeState.tunnel.baseTunnelId, (monitor) => ({
-        ...monitor,
-        state: 'degraded',
-        lastCheckedAt: failedAt,
-        lastFailureAt: failedAt,
-        lastStatusCode: undefined,
-        lastLatencyMs: undefined,
-        lastError: error.message,
         consecutiveFailures: monitor.consecutiveFailures + 1,
       }));
 
@@ -461,36 +545,25 @@ export async function runTargetBalancerMonitorTick(
 
   let response: Awaited<ReturnType<typeof requestViaSocksFn>>;
   try {
-    response = await executeRequestViaSocks(requestViaSocksFn, {
+    response = await executeRequestViaSocksWithRetry(requestViaSocksFn, {
       proxyHost: target.balancerMonitor.socks5.host,
       proxyPort: target.balancerMonitor.socks5.port,
       url: target.balancerMonitor.request.url,
       method: target.balancerMonitor.request.method,
       timeoutMs: target.balancerMonitor.request.timeoutMs,
+      expectedStatus: target.balancerMonitor.request.expectedStatus,
+      retry: target.balancerMonitor.retry,
+      retryEvent: 'balancer_monitor_check_retry',
+      retryMessage: 'Balancer monitor check attempt failed; retrying.',
+      logger,
+      logContext: {
+        subscriptionId,
+        targetAddress: target.address,
+      },
     });
   } catch (error) {
     const failedAt = now();
-    const message = error instanceof Error ? error.message : String(error);
-    setTargetBalancerMonitorState(targetState, (current) => ({
-      ...current,
-      state: 'degraded',
-      lastCheckedAt: failedAt,
-      lastFailureAt: failedAt,
-      lastStatusCode: undefined,
-      lastLatencyMs: undefined,
-      lastError: message,
-      consecutiveFailures: current.consecutiveFailures + 1,
-    }));
-    scheduleRemotePing(subscriptionId, target, targetState, logger, requestViaSocksFn, directRemotePingFn, {
-      status: 'down',
-      msg: message,
-    });
-    return;
-  }
-
-  if (response.statusCode !== target.balancerMonitor.request.expectedStatus) {
-    const failedAt = now();
-    const message = `Expected HTTP ${target.balancerMonitor.request.expectedStatus}, got ${response.statusCode}.`;
+    const message = getErrorMessage(error);
     setTargetBalancerMonitorState(targetState, (current) => ({
       ...current,
       state: 'degraded',
