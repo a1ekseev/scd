@@ -93,7 +93,7 @@ Current schema:
     - `inboundSocks?`
     - `monitor`
     - `balancerMonitor`
-      - optional group-level `remotePing` for Uptime Kuma Push reporting, with `viaSocks` support
+      - optional group-level `remotePing` for Remote Push reporting, with `viaSocks` support
 - `runtime.mode`
 - `runtime.schedule`
 - `logging.level`
@@ -128,6 +128,7 @@ Defaults are applied by the schema. Relative paths are normalized during config 
   - tunnel-local repair that recreates `routing + outbound`
   - optional target-level balancer monitor via external SOCKS5
   - monitor probes run with bounded concurrency per target via `monitor.maxParallel`
+  - failed tunnel probes repair the tunnel outside balancer selection; a later successful probe automatically rejoins it to the Xray balancer
   - balancer monitor is observe-only and does not trigger repair or apply
   - built-in read-only status page
   - grouped HTML dashboard by `subscription -> target`
@@ -168,6 +169,9 @@ Important event names:
 - `manifest_built`
 - `apply_finished`
 - `daemon_tick`
+- `tunnel_repaired`
+- `tunnel_rejoined_balancer`
+- `tunnel_rejoin_failed`
 - `sync_failed`
 
 ## Runtime State

@@ -116,6 +116,8 @@ test('status server renders HTML dashboard without JSON links and with state car
     displayName: 'Alpha',
     countryIso2: 'AT',
     port: 20000,
+    outboundTagInitial: 'x-observe-out-a',
+    outboundTagCurrent: 'x-observe-out-a',
   });
   targetState.topology = { tunnels: [tunnel] } as TargetTopology;
   targetState.tunnels = {
@@ -139,6 +141,8 @@ test('status server renders HTML dashboard without JSON links and with state car
     lastSuccessStatusCode: 204,
     lastSuccessLatencyMs: 90,
     remotePingLastError: 'push failed',
+    remotePingLastReportedStatus: 'down',
+    remotePingLastReportedMsg: 'balancer failed',
   };
 
   const result = await handleStatusServerRequest('/', createLoadedConfig(), memoryState);
@@ -150,10 +154,15 @@ test('status server renders HTML dashboard without JSON links and with state car
   assert.match(result.body, /class="node-card state-healthy"/);
   assert.match(result.body, /Last Check/);
   assert.match(result.body, />42 ms</);
-  assert.match(result.body, /Remote Ping/);
-  assert.match(result.body, />failed</);
+  assert.match(result.body, /Remote Push/);
+  assert.match(result.body, />failed down</);
+  assert.match(result.body, /metric-state-healthy/);
+  assert.match(result.body, /metric-state-degraded/);
+  assert.match(result.body, /metric-balancer-active/);
   assert.doesNotMatch(result.body, /HTTP 204/);
   assert.doesNotMatch(result.body, /Last success/);
+  assert.doesNotMatch(result.body, /Remote Ping ok/);
+  assert.doesNotMatch(result.body, /Kuma/);
   assert.match(result.body, /Balancer/);
   assert.match(result.body, /class="nodes-grid"/);
   assert.ok(
@@ -196,6 +205,7 @@ test('status server renders degraded current error separately from last success 
   assert.match(result.body, /Error: probe failed/);
   assert.doesNotMatch(result.body, /HTTP 204/);
   assert.match(result.body, />removed</);
+  assert.match(result.body, /metric-balancer-removed/);
 });
 
 test('status server renders configured target and balancer card even without tunnel rows', async () => {
@@ -209,6 +219,9 @@ test('status server renders configured target and balancer card even without tun
     lastStatusCode: 204,
     lastLatencyMs: 17,
     remotePingLastStatusCode: 200,
+    remotePingLastReportedStatus: 'up',
+    remotePingLastReportedMsg: 'OK',
+    remotePingLastReportedPingMs: 17,
   };
 
   const result = await handleStatusServerRequest('/status', createLoadedConfig(), memoryState);
@@ -218,7 +231,8 @@ test('status server renders configured target and balancer card even without tun
   assert.match(result.body, /class="balancer-card state-healthy"/);
   assert.match(result.body, /No tunnel data\./);
   assert.match(result.body, />17 ms</);
-  assert.match(result.body, />ok</);
+  assert.match(result.body, />delivered up</);
+  assert.match(result.body, /metric-remote-up/);
   assert.doesNotMatch(result.body, /HTTP 204/);
 });
 
@@ -287,6 +301,8 @@ test('status server api status exposes monitor history and balancer participatio
   };
   targetState.balancerMonitor.remotePingState = 'failed';
   targetState.balancerMonitor.remotePingLastError = 'push failed';
+  targetState.balancerMonitor.remotePingLastReportedStatus = 'down';
+  targetState.balancerMonitor.remotePingLastReportedMsg = 'probe failed';
 
   const result = await handleStatusServerRequest('/api/status', createLoadedConfig(), memoryState);
   const payload = JSON.parse(result.body) as {
@@ -299,6 +315,8 @@ test('status server api status exposes monitor history and balancer participatio
       balanced?: boolean;
       balancerMonitorRemotePingState?: string;
       balancerMonitorRemotePingLastError?: string;
+      balancerMonitorRemotePingLastReportedStatus?: string;
+      balancerMonitorRemotePingLastReportedMsg?: string;
     }>;
   };
 
@@ -310,6 +328,8 @@ test('status server api status exposes monitor history and balancer participatio
   assert.equal(payload.tunnels[0]?.balanced, false);
   assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingState, 'failed');
   assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastError, 'push failed');
+  assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastReportedStatus, 'down');
+  assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastReportedMsg, 'probe failed');
 });
 
 test('status server returns 400 for runtime-state endpoint without required query params', async () => {
