@@ -14,10 +14,14 @@ import {
 } from './run-state.ts';
 import { requestViaSocks } from './socks-http.ts';
 
+type MutationApiClient = Pick<XrayHandlerClient, 'addOutbound' | 'removeOutbound' | 'addRule' | 'removeRule'>;
+
 interface MonitoringDependencies {
   requestViaSocksFn?: typeof requestViaSocks;
   directRemotePingFn?: typeof pushRemotePingDirect;
   repairTunnelFn?: typeof repairTunnel;
+  rejoinTunnelFn?: typeof rejoinTunnelToBalancer;
+  createMutationClient?: (target: SubscriptionTargetConfig) => MutationApiClient;
 }
 
 interface RemotePingPayload {
@@ -28,6 +32,12 @@ interface RemotePingPayload {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function createDefaultMutationClient(target: SubscriptionTargetConfig): MutationApiClient {
+  return new XrayHandlerClient(target.address, {
+    timeoutMs: target.timeoutMs,
+  });
 }
 
 function resolveProxyHost(listen: string, targetAddress: string): string {
@@ -75,6 +85,14 @@ export function buildRemotePingUrl(baseUrl: string, payload: RemotePingPayload):
     url.searchParams.set('ping', String(payload.pingMs));
   }
   return url.toString();
+}
+
+function getRemoteHost(urlValue: string): string {
+  try {
+    return new URL(urlValue).host;
+  } catch {
+    return '<invalid>';
+  }
 }
 
 export async function pushRemotePingDirect(config: {
@@ -153,6 +171,7 @@ async function repairTunnel(
   memoryState: SyncMemoryState,
   runtimeState: TunnelRuntimeState,
   logger: Logger,
+  createMutationClient: NonNullable<MonitoringDependencies['createMutationClient']>,
 ): Promise<void> {
   const targetKey = buildTargetStateKey(subscriptionId, target.address);
 
@@ -168,9 +187,7 @@ async function repairTunnel(
       state: 'repairing',
     }));
 
-    const client = new XrayHandlerClient(target.address, {
-      timeoutMs: target.timeoutMs,
-    });
+    const client = createMutationClient(target);
 
     try {
       await client.removeRule(current.tunnel.routeTag).catch(() => undefined);
@@ -229,6 +246,94 @@ async function repairTunnel(
   });
 }
 
+function shouldRejoinTunnel(runtimeState: TunnelRuntimeState): boolean {
+  return (
+    runtimeState.tunnel.outboundTagCurrent !== runtimeState.tunnel.outboundTagInitial &&
+    runtimeState.tunnel.outboundTagInitial !== runtimeState.tunnel.outboundWithoutPrefix.tag
+  );
+}
+
+async function rejoinTunnelToBalancer(
+  subscriptionId: string,
+  target: SubscriptionTargetConfig,
+  memoryState: SyncMemoryState,
+  runtimeState: TunnelRuntimeState,
+  logger: Logger,
+  createMutationClient: NonNullable<MonitoringDependencies['createMutationClient']>,
+): Promise<void> {
+  if (!shouldRejoinTunnel(runtimeState)) {
+    return;
+  }
+
+  const targetKey = buildTargetStateKey(subscriptionId, target.address);
+
+  await withTargetMutationLock(memoryState, targetKey, async () => {
+    const targetState = getOrCreateTargetState(memoryState, targetKey);
+    const current = targetState.tunnels[runtimeState.tunnel.baseTunnelId];
+    if (!current || !shouldRejoinTunnel(current)) {
+      return;
+    }
+
+    const client = createMutationClient(target);
+
+    try {
+      const rejoinedTunnel = {
+        ...current.tunnel,
+        outboundTagCurrent: current.tunnel.outboundTagInitial,
+      };
+
+      await client.addOutbound(buildOutboundGrpc(rejoinedTunnel.outboundInitial.normalized).raw);
+      try {
+        await client.removeRule(current.tunnel.routeTag).catch(() => undefined);
+        await client.addRule(buildRoutingGrpc(rejoinedTunnel).raw);
+        await client.removeOutbound(current.tunnel.outboundTagCurrent).catch(() => undefined);
+      } catch (error) {
+        await client.removeRule(current.tunnel.routeTag).catch(() => undefined);
+        await client.addRule(buildRoutingGrpc(current.tunnel).raw).catch(() => undefined);
+        await client.removeOutbound(rejoinedTunnel.outboundTagCurrent).catch(() => undefined);
+        throw error;
+      }
+
+      targetState.tunnels[current.tunnel.baseTunnelId] = {
+        ...current,
+        tunnel: rejoinedTunnel,
+        monitor: {
+          ...current.monitor,
+          lastError: undefined,
+        },
+      };
+
+      logger.info(
+        {
+          event: 'tunnel_rejoined_balancer',
+          subscriptionId,
+          targetAddress: target.address,
+          tunnelId: current.tunnel.baseTunnelId,
+          outboundTag: rejoinedTunnel.outboundTagCurrent,
+        },
+        'Tunnel rejoined Xray balancer after successful monitor probe.',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTunnelMonitorState(targetState, current.tunnel.baseTunnelId, (monitor) => ({
+        ...monitor,
+        lastError: `Tunnel healthy but balancer rejoin failed: ${message}`,
+      }));
+
+      logger.error(
+        {
+          event: 'tunnel_rejoin_failed',
+          subscriptionId,
+          targetAddress: target.address,
+          tunnelId: current.tunnel.baseTunnelId,
+          error: message,
+        },
+        'Tunnel balancer rejoin failed after successful monitor probe.',
+      );
+    }
+  });
+}
+
 export async function runTargetMonitorTick(
   subscriptionId: string,
   target: SubscriptionTargetConfig,
@@ -249,6 +354,8 @@ export async function runTargetMonitorTick(
   const snapshot = Object.values(targetState.tunnels);
   const requestViaSocksFn = dependencies.requestViaSocksFn ?? requestViaSocks;
   const repairTunnelFn = dependencies.repairTunnelFn ?? repairTunnel;
+  const rejoinTunnelFn = dependencies.rejoinTunnelFn ?? rejoinTunnelToBalancer;
+  const createMutationClient = dependencies.createMutationClient ?? createDefaultMutationClient;
 
   await runWithConcurrencyLimit(snapshot, target.monitor.maxParallel, async (runtimeState) => {
     let response: Awaited<ReturnType<typeof requestViaSocksFn>>;
@@ -274,7 +381,7 @@ export async function runTargetMonitorTick(
         consecutiveFailures: monitor.consecutiveFailures + 1,
       }));
 
-      await repairTunnelFn(subscriptionId, target, memoryState, runtimeState, logger);
+      await repairTunnelFn(subscriptionId, target, memoryState, runtimeState, logger, createMutationClient);
       return;
     }
 
@@ -292,7 +399,7 @@ export async function runTargetMonitorTick(
         consecutiveFailures: monitor.consecutiveFailures + 1,
       }));
 
-      await repairTunnelFn(subscriptionId, target, memoryState, runtimeState, logger);
+      await repairTunnelFn(subscriptionId, target, memoryState, runtimeState, logger, createMutationClient);
       return;
     }
 
@@ -309,6 +416,26 @@ export async function runTargetMonitorTick(
       lastError: undefined,
       consecutiveFailures: 0,
     }));
+
+    try {
+      await rejoinTunnelFn(subscriptionId, target, memoryState, runtimeState, logger, createMutationClient);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTunnelMonitorState(targetState, runtimeState.tunnel.baseTunnelId, (monitor) => ({
+        ...monitor,
+        lastError: `Tunnel healthy but balancer rejoin failed: ${message}`,
+      }));
+      logger.error(
+        {
+          event: 'tunnel_rejoin_failed',
+          subscriptionId,
+          targetAddress: target.address,
+          tunnelId: runtimeState.tunnel.baseTunnelId,
+          error: message,
+        },
+        'Tunnel balancer rejoin failed after successful monitor probe.',
+      );
+    }
   });
 }
 
@@ -433,6 +560,9 @@ function scheduleRemotePing(
     remotePingState: 'pending',
     remotePingLastRunAt: startedAt,
     remotePingLastError: undefined,
+    remotePingLastReportedStatus: payload.status,
+    remotePingLastReportedMsg: payload.msg,
+    remotePingLastReportedPingMs: payload.pingMs,
   }));
 
   logger.info(
@@ -441,6 +571,15 @@ function scheduleRemotePing(
       subscriptionId,
       targetAddress: target.address,
       status: payload.status,
+      reportedStatus: payload.status,
+      viaSocks: target.balancerMonitor.remotePing.viaSocks,
+      remoteHost: getRemoteHost(target.balancerMonitor.remotePing.url),
+      ...(target.balancerMonitor.remotePing.viaSocks
+        ? {
+            proxyHost: target.balancerMonitor.socks5.host,
+            proxyPort: target.balancerMonitor.socks5.port,
+          }
+        : {}),
     },
     'Balancer monitor remote ping started.',
   );
@@ -479,6 +618,15 @@ function scheduleRemotePing(
             targetAddress: target.address,
             statusCode: response.statusCode,
             error: message,
+            reportedStatus: payload.status,
+            viaSocks: target.balancerMonitor.remotePing.viaSocks,
+            remoteHost: getRemoteHost(target.balancerMonitor.remotePing.url),
+            ...(target.balancerMonitor.remotePing.viaSocks
+              ? {
+                  proxyHost: target.balancerMonitor.socks5.host,
+                  proxyPort: target.balancerMonitor.socks5.port,
+                }
+              : {}),
           },
           'Balancer monitor remote ping failed.',
         );
@@ -500,6 +648,15 @@ function scheduleRemotePing(
           subscriptionId,
           targetAddress: target.address,
           statusCode: response.statusCode,
+          reportedStatus: payload.status,
+          viaSocks: target.balancerMonitor.remotePing.viaSocks,
+          remoteHost: getRemoteHost(target.balancerMonitor.remotePing.url),
+          ...(target.balancerMonitor.remotePing.viaSocks
+            ? {
+                proxyHost: target.balancerMonitor.socks5.host,
+                proxyPort: target.balancerMonitor.socks5.port,
+              }
+            : {}),
         },
         'Balancer monitor remote ping succeeded.',
       );
@@ -520,6 +677,15 @@ function scheduleRemotePing(
           subscriptionId,
           targetAddress: target.address,
           error: message,
+          reportedStatus: payload.status,
+          viaSocks: target.balancerMonitor.remotePing.viaSocks,
+          remoteHost: getRemoteHost(target.balancerMonitor.remotePing.url),
+          ...(target.balancerMonitor.remotePing.viaSocks
+            ? {
+                proxyHost: target.balancerMonitor.socks5.host,
+                proxyPort: target.balancerMonitor.socks5.port,
+              }
+            : {}),
         },
         'Balancer monitor remote ping failed.',
       );

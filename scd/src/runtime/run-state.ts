@@ -185,6 +185,9 @@ export function buildStatusSnapshot(memoryState: SyncMemoryState): StatusSnapsho
         balancerMonitorRemotePingLastFailureAt: targetState.balancerMonitor.remotePingLastFailureAt,
         balancerMonitorRemotePingLastStatusCode: targetState.balancerMonitor.remotePingLastStatusCode,
         balancerMonitorRemotePingLastError: targetState.balancerMonitor.remotePingLastError,
+        balancerMonitorRemotePingLastReportedStatus: targetState.balancerMonitor.remotePingLastReportedStatus,
+        balancerMonitorRemotePingLastReportedMsg: targetState.balancerMonitor.remotePingLastReportedMsg,
+        balancerMonitorRemotePingLastReportedPingMs: targetState.balancerMonitor.remotePingLastReportedPingMs,
       });
     }
   }

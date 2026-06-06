@@ -306,7 +306,7 @@ test('buildCurrentRuntimeStateSnapshot redacts target monitor URLs by default an
       },
       remotePing: {
         enabled: true,
-        url: 'https://kuma.example.test/api/push/token?secret=abc',
+        url: 'https://push.example.test/api/push/token?secret=abc',
         timeoutMs: 5000,
         viaSocks: true,
       },
@@ -342,11 +342,11 @@ test('buildCurrentRuntimeStateSnapshot redacts target monitor URLs by default an
 
   assert.equal(redacted?.config.target.monitor.request?.url, 'https://monitor.example.test/<redacted>');
   assert.equal(redacted?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/<redacted>');
-  assert.equal(redacted?.config.target.balancerMonitor.remotePing?.url, 'https://kuma.example.test/<redacted>');
+  assert.equal(redacted?.config.target.balancerMonitor.remotePing?.url, 'https://push.example.test/<redacted>');
   assert.equal(redacted?.config.target.balancerMonitor.remotePing?.viaSocks, true);
   assert.equal(exposed?.config.target.monitor.request?.url, 'https://monitor.example.test/health?token=secret');
   assert.equal(exposed?.config.target.balancerMonitor.request?.url, 'https://balancer.example.test/check?token=secret');
-  assert.equal(exposed?.config.target.balancerMonitor.remotePing?.url, 'https://kuma.example.test/api/push/token?secret=abc');
+  assert.equal(exposed?.config.target.balancerMonitor.remotePing?.url, 'https://push.example.test/api/push/token?secret=abc');
 });
 
 test('buildCurrentRuntimeStateSnapshot exposes raw and secrets only when explicitly enabled', async () => {

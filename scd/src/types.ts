@@ -357,6 +357,9 @@ export interface TunnelMonitorState {
 export interface TargetBalancerMonitorState {
   state: 'idle' | 'healthy' | 'degraded';
   remotePingState: 'idle' | 'pending' | 'ok' | 'failed';
+  remotePingLastReportedStatus?: 'up' | 'down';
+  remotePingLastReportedMsg?: string;
+  remotePingLastReportedPingMs?: number;
   lastCheckedAt?: string;
   lastSuccessAt?: string;
   lastFailureAt?: string;
@@ -409,6 +412,9 @@ export interface StatusSnapshotTunnel {
   balancerMonitorRemotePingLastFailureAt?: string;
   balancerMonitorRemotePingLastStatusCode?: number;
   balancerMonitorRemotePingLastError?: string;
+  balancerMonitorRemotePingLastReportedStatus?: TargetBalancerMonitorState['remotePingLastReportedStatus'];
+  balancerMonitorRemotePingLastReportedMsg?: string;
+  balancerMonitorRemotePingLastReportedPingMs?: number;
 }
 
 export interface GroupedStatusTarget {
@@ -431,6 +437,9 @@ export interface GroupedStatusTarget {
     remotePingLastFailureAt?: string;
     remotePingLastStatusCode?: number;
     remotePingLastError?: string;
+    remotePingLastReportedStatus?: TargetBalancerMonitorState['remotePingLastReportedStatus'];
+    remotePingLastReportedMsg?: string;
+    remotePingLastReportedPingMs?: number;
   };
 }
 

@@ -65,8 +65,44 @@ function formatBalancerStatus(value?: boolean): string {
   return 'n/a';
 }
 
-function formatRemotePingStatus(value?: string): string {
-  return value ?? 'idle';
+function formatRemotePushStatus(state?: string, reportedStatus?: 'up' | 'down'): string {
+  const delivery = state === 'ok'
+    ? 'delivered'
+    : state === 'failed'
+      ? 'failed'
+      : state === 'pending'
+        ? 'pending'
+        : 'idle';
+
+  return reportedStatus ? `${delivery} ${reportedStatus}` : delivery;
+}
+
+function metricClass(label: string, value: string): string {
+  if (label === 'State') {
+    return ` metric-state-${stateClass(value)}`;
+  }
+  if (label === 'Balancer') {
+    if (value === 'active') {
+      return ' metric-balancer-active';
+    }
+    if (value === 'removed') {
+      return ' metric-balancer-removed';
+    }
+    return ' metric-balancer-na';
+  }
+  if (label === 'Remote Push') {
+    if (value.includes('delivered up')) {
+      return ' metric-remote-up';
+    }
+    if (value.includes('delivered down') || value.includes('failed')) {
+      return ' metric-remote-down';
+    }
+    if (value.includes('pending')) {
+      return ' metric-remote-pending';
+    }
+    return ' metric-remote-idle';
+  }
+  return '';
 }
 
 function compareLatencyThenName(left: StatusSnapshotTunnel, right: StatusSnapshotTunnel): number {
@@ -76,7 +112,7 @@ function compareLatencyThenName(left: StatusSnapshotTunnel, right: StatusSnapsho
 }
 
 function renderMetric(label: string, value: string): string {
-  return `<span class="metric"><span class="metric-label">${escapeHtml(label)}</span><span class="metric-value">${escapeHtml(value)}</span></span>`;
+  return `<span class="metric${metricClass(label, value)}"><span class="metric-label">${escapeHtml(label)}</span><span class="metric-value">${escapeHtml(value)}</span></span>`;
 }
 
 function renderTunnelCard(item: StatusSnapshotTunnel): string {
@@ -139,6 +175,9 @@ function buildConfiguredStatusGroups(
           remotePingLastFailureAt: targetState.balancerMonitor.remotePingLastFailureAt,
           remotePingLastStatusCode: targetState.balancerMonitor.remotePingLastStatusCode,
           remotePingLastError: targetState.balancerMonitor.remotePingLastError,
+          remotePingLastReportedStatus: targetState.balancerMonitor.remotePingLastReportedStatus,
+          remotePingLastReportedMsg: targetState.balancerMonitor.remotePingLastReportedMsg,
+          remotePingLastReportedPingMs: targetState.balancerMonitor.remotePingLastReportedPingMs,
         }
       : existingTarget?.balancerMonitor ?? { state: 'idle' as const };
 
@@ -192,7 +231,10 @@ function renderHtml(
       <div class="node-metrics">
         ${renderMetric('State', balancerState)}
         ${renderMetric('Last Check', formatLastCheck(target.balancerMonitor?.lastLatencyMs, target.balancerMonitor?.lastError))}
-        ${renderMetric('Remote Ping', formatRemotePingStatus(target.balancerMonitor?.remotePingState))}
+        ${renderMetric('Remote Push', formatRemotePushStatus(
+          target.balancerMonitor?.remotePingState,
+          target.balancerMonitor?.remotePingLastReportedStatus,
+        ))}
       </div>
     </div>
   </article>
@@ -297,6 +339,14 @@ function renderHtml(
     .metric { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 8px; border-radius: 999px; background: rgba(239, 230, 215, .8); }
     .metric-label { color: var(--muted); font-size: 11px; }
     .metric-value { font-size: 12px; font-weight: 750; }
+    .metric-state-healthy, .metric-balancer-active, .metric-remote-up { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+    .metric-state-degraded, .metric-balancer-removed, .metric-remote-down { background: rgba(197, 57, 49, .14); color: #8f241f; }
+    .metric-state-repairing, .metric-remote-pending { background: rgba(194, 122, 18, .16); color: #8a5307; }
+    .metric-state-idle, .metric-balancer-na, .metric-remote-idle { background: rgba(139, 133, 128, .14); color: #5f5a55; }
+    .metric-state-healthy .metric-label, .metric-balancer-active .metric-label, .metric-remote-up .metric-label,
+    .metric-state-degraded .metric-label, .metric-balancer-removed .metric-label, .metric-remote-down .metric-label,
+    .metric-state-repairing .metric-label, .metric-remote-pending .metric-label,
+    .metric-state-idle .metric-label, .metric-balancer-na .metric-label, .metric-remote-idle .metric-label { color: currentColor; opacity: .74; }
     .empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; }
     @media (max-width: 720px) {
       main { padding: 18px; }
@@ -352,6 +402,9 @@ export function groupStatusSnapshot(snapshot: StatusSnapshotTunnel[]): GroupedSt
                 remotePingLastFailureAt: tunnels[0].balancerMonitorRemotePingLastFailureAt,
                 remotePingLastStatusCode: tunnels[0].balancerMonitorRemotePingLastStatusCode,
                 remotePingLastError: tunnels[0].balancerMonitorRemotePingLastError,
+                remotePingLastReportedStatus: tunnels[0].balancerMonitorRemotePingLastReportedStatus,
+                remotePingLastReportedMsg: tunnels[0].balancerMonitorRemotePingLastReportedMsg,
+                remotePingLastReportedPingMs: tunnels[0].balancerMonitorRemotePingLastReportedPingMs,
               }
             : undefined,
         })),
