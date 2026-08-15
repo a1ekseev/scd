@@ -265,8 +265,22 @@ function renderSubscriptionSections(grouped: GroupedStatusSubscription[]): strin
 }
 
 function renderHtml(aggregated: AggregatedStatusSnapshot): string {
+  const tabs = aggregated.instances
+    .map((instance, index) => {
+      const selected = index === 0;
+      return `<button
+  type="button"
+  class="instance-tab${selected ? ' is-active' : ''}"
+  id="instance-tab-${index}"
+  role="tab"
+  aria-selected="${selected}"
+  aria-controls="instance-panel-${index}"
+  tabindex="${selected ? '0' : '-1'}"
+>${escapeHtml(instance.id)}</button>`;
+    })
+    .join('\n');
   const sections = aggregated.instances
-    .map((instance) => {
+    .map((instance, index) => {
       const freshness = instance.lastError
         ? `Last collection failed: ${instance.lastError}`
         : instance.lastSuccessAt
@@ -275,7 +289,13 @@ function renderHtml(aggregated: AggregatedStatusSnapshot): string {
       const subscriptions = instance.snapshot
         ? renderSubscriptionSections(instance.snapshot.subscriptions)
         : '<section class="subscription-card"><p class="empty-state">No snapshot available.</p></section>';
-      return `<section class="instance-card">
+      return `<section
+  class="instance-panel"
+  id="instance-panel-${index}"
+  role="tabpanel"
+  aria-labelledby="instance-tab-${index}"
+  tabindex="0"${index === 0 ? '' : ' hidden'}
+>
   <div class="instance-head"><div><h2>${escapeHtml(instance.id)}</h2><p>${escapeHtml(instance.source)} · ${escapeHtml(freshness)}</p></div></div>
   ${subscriptions}
 </section>`;
@@ -325,7 +345,31 @@ function renderHtml(aggregated: AggregatedStatusSnapshot): string {
       box-shadow: 0 18px 50px rgba(72, 55, 32, .08);
       backdrop-filter: blur(14px);
     }
-    .instance-card { margin: 0 0 34px; }
+    .instance-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin: 0 0 20px;
+      padding: 4px 4px 10px;
+      scrollbar-width: thin;
+    }
+    .instance-tab {
+      flex: 0 0 auto;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: rgba(255, 250, 240, .7);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .instance-tab:hover { background: var(--panel-strong); }
+    .instance-tab:focus-visible { outline: 3px solid rgba(194, 122, 18, .35); outline-offset: 2px; }
+    .instance-tab.is-active { border-color: #b86f08; color: #754604; background: var(--panel-strong); }
+    .instance-panel { margin: 0 0 34px; outline: none; }
+    .instance-panel[hidden] { display: none; }
     .instance-head { margin: 0 0 12px; padding: 0 4px; }
     .target-card {
       margin: 14px 0 0;
@@ -388,8 +432,45 @@ function renderHtml(aggregated: AggregatedStatusSnapshot): string {
 <body>
   <main>
     <h1>Subscription Control Daemon Status</h1>
+    ${tabs ? `<nav class="instance-tabs" role="tablist" aria-label="Instances">${tabs}</nav>` : ''}
     ${sections || '<section class="subscription-card"><div class="subscription-head"><h2>No subscriptions</h2></div></section>'}
   </main>
+  <script>
+    (() => {
+      const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+      const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+
+      const activate = (nextTab, moveFocus) => {
+        const selectedIndex = tabs.indexOf(nextTab);
+        if (selectedIndex < 0) return;
+
+        tabs.forEach((tab, index) => {
+          const selected = index === selectedIndex;
+          tab.classList.toggle('is-active', selected);
+          tab.setAttribute('aria-selected', String(selected));
+          tab.tabIndex = selected ? 0 : -1;
+          panels[index].hidden = !selected;
+        });
+
+        if (moveFocus) nextTab.focus();
+      };
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activate(tab, false));
+        tab.addEventListener('keydown', (event) => {
+          let nextIndex;
+          if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+          if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === 'Home') nextIndex = 0;
+          if (event.key === 'End') nextIndex = tabs.length - 1;
+          if (nextIndex === undefined) return;
+
+          event.preventDefault();
+          activate(tabs[nextIndex], true);
+        });
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
