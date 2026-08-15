@@ -5,6 +5,7 @@ import type { Logger } from '../logging/create-logger.ts';
 import { createLogger } from '../logging/create-logger.ts';
 import { runTargetBalancerMonitorTick, runTargetMonitorTick } from './monitoring.ts';
 import { createSyncMemoryState } from './run-state.ts';
+import { collectRemoteStatus, createStatusAggregationState } from './status-aggregation.ts';
 import { startStatusServer } from './status-server.ts';
 import { syncWithConfig } from './sync-once.ts';
 
@@ -142,6 +143,7 @@ export async function runDaemon(configPath: string): Promise<void> {
   const loadedConfig = await loadConfig(configPath);
   const logger = createLogger(loadedConfig.config.logging);
   const memoryState = createSyncMemoryState();
+  const aggregationState = createStatusAggregationState(loadedConfig.config.statusServer.remoteInstances);
 
   if (loadedConfig.config.runtime.mode !== 'daemon') {
     throw new Error(`Config at ${loadedConfig.configPath} is not in daemon mode.`);
@@ -158,7 +160,9 @@ export async function runDaemon(configPath: string): Promise<void> {
   logger.info({ event: 'config_loaded', configPath: loadedConfig.configPath }, 'Config loaded.');
 
   const statusServer = loadedConfig.config.statusServer.enabled && loadedConfig.config.statusServer.listen
-    ? await startStatusServer(loadedConfig.config.statusServer.listen, loadedConfig, memoryState, logger)
+    ? await startStatusServer(loadedConfig.config.statusServer.listen, loadedConfig, memoryState, logger, {
+        aggregationState,
+      })
     : undefined;
 
   try {
@@ -213,6 +217,20 @@ export async function runDaemon(configPath: string): Promise<void> {
 
           return tasks;
         },
+      ),
+      ...(loadedConfig.config.statusServer.remoteInstances ?? []).map((remote) =>
+        runLoggedCronLoop(remote.schedule, () => stopping, async () => {
+          await collectRemoteStatus(remote, aggregationState, logger);
+        }, logger, {
+          overrunEvent: 'remote_status_tick_skipped_overrun',
+          overrunMessage: 'Remote status tick skipped because previous run is still in progress.',
+          failureEvent: 'remote_status_tick_failed',
+          failureMessage: 'Remote status tick failed.',
+          context: {
+            remoteInstanceId: remote.id,
+            apiUrl: remote.apiUrl,
+          },
+        }),
       ),
     ];
 

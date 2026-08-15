@@ -137,8 +137,14 @@ resources:
     enabled: false
 
 statusServer:
-  enabled: false
-  # listen: 127.0.0.1:9090
+  enabled: true
+  listen: 127.0.0.1:9090
+  # instanceId: control-eu-1
+  # remoteInstances:
+  #   - id: edge-us-1
+  #     apiUrl: http://edge-us-1:9090/api/instance-status
+  #     schedule: "*/1 * * * *"
+  #     timeoutMs: 5000
   runtimeState:
     enabled: true
     includeRaw: false
@@ -190,8 +196,10 @@ Parameters:
 - `resources.outbounds.enabled`: enables generated outbound apply. Default: `true`.
 - `resources.inbounds.enabled`: enables generated SOCKS inbound apply. Default: `false`.
 - `resources.routing.enabled`: enables generated routing rule apply. Default: `false`.
-- `statusServer.enabled`: enables the built-in read-only status page. Default: `false`.
-- `statusServer.listen`: listen address in `host:port` form. Required only when the status server is enabled.
+- `statusServer.enabled`: enables the built-in read-only status API and dashboard. Default: `true`.
+- `statusServer.listen`: listen address in `host:port` form. Default: `127.0.0.1:9090`.
+- `statusServer.instanceId`: optional local instance name exposed by the API and dashboard. Defaults to the OS hostname.
+- `statusServer.remoteInstances`: optional list of other `scd` instances to poll. Each item has a dashboard `id`, full `apiUrl` to its `/api/instance-status`, a cron `schedule`, and `timeoutMs` (default `5000`).
 - `statusServer.runtimeState.enabled`: enables the detailed `/api/runtime-state` JSON endpoint. Default: `true`.
 - `statusServer.runtimeState.includeRaw`: includes `rawBase64` runtime blobs in the detailed JSON endpoint. Default: `false`.
 - `statusServer.runtimeState.includeSecrets`: includes sensitive fields such as subscription URLs and outbound UUID/key material in the detailed JSON endpoint. Default: `false`.
@@ -261,9 +269,11 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
 
 ## Status page
 
-- The built-in status page is optional and available only in daemon mode.
+- The built-in status page and API are enabled by default in daemon mode and can be disabled explicitly.
 - HTML endpoint: `/` or `/status`
 - JSON endpoint: `/api/status`
+- Versioned local instance JSON endpoint: `/api/instance-status`
+- Aggregated local and remote JSON endpoint: `/api/instances`
 - Detailed target runtime JSON endpoint: `/api/runtime-state?subscriptionId=<id>&targetAddress=<addr>`
 - Current UI fields:
   - `displayName`
@@ -273,11 +283,13 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
   - current balancer monitor state
   - last HTTP status
   - last latency
-- HTML output is grouped by `subscription -> target`.
+- HTML output is grouped by `instance -> subscription -> target`.
 - Each target block renders balancer status first, followed by tunnel cards sorted by latency from lowest to highest.
 - Tunnel cards without latency, including idle tunnels, are shown after measured tunnels.
 - The HTML dashboard does not expose JSON/debug links; use the JSON endpoints directly for automation or diagnostics.
-- `/api/status` remains a lightweight in-memory snapshot for the current status page.
+- `/api/status` keeps the original lightweight `{ tunnels }` response for compatibility.
+- `/api/instance-status` exposes the local instance snapshot (`version`, `instanceId`, `capturedAt`, `subscriptions`, `tunnels`) and is the endpoint used by remote collectors.
+- `/api/instances` exposes the latest local snapshot and the last successful snapshot collected from every configured remote instance. A failed poll records `lastError` but does not erase the previous successful snapshot.
 - `/api/runtime-state` is different: it builds a read-only target snapshot from the current loaded config plus live Xray API data.
 - `/api/runtime-state` redacts subscription URLs and target monitor request URLs by default; set `statusServer.runtimeState.includeSecrets: true` only for trusted local diagnostics.
 

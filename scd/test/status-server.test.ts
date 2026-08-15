@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { ApiRequestError } from '../src/errors.ts';
 import { buildTargetStateKey, createSyncMemoryState, getOrCreateTargetState } from '../src/runtime/run-state.ts';
+import { createStatusAggregationState } from '../src/runtime/status-aggregation.ts';
 import { handleStatusServerRequest } from '../src/runtime/status-server.ts';
 import type { LoadedConfig, TargetTopology, TunnelMapping } from '../src/types.ts';
 
@@ -330,6 +331,68 @@ test('status server api status exposes monitor history and balancer participatio
   assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastError, 'push failed');
   assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastReportedStatus, 'down');
   assert.equal(payload.tunnels[0]?.balancerMonitorRemotePingLastReportedMsg, 'probe failed');
+});
+
+test('status server exposes versioned local instance and subscription snapshot', async () => {
+  const result = await handleStatusServerRequest(
+    '/api/instance-status',
+    createLoadedConfig(),
+    createSyncMemoryState(),
+  );
+  const payload = JSON.parse(result.body) as {
+    version: number;
+    instanceId: string;
+    capturedAt: string;
+    subscriptions: Array<{ subscriptionId: string }>;
+    tunnels: unknown[];
+  };
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(payload.version, 1);
+  assert.ok(payload.instanceId.length > 0);
+  assert.ok(Date.parse(payload.capturedAt) > 0);
+  assert.equal(payload.subscriptions[0]?.subscriptionId, 'sub-1');
+  assert.deepEqual(payload.tunnels, []);
+});
+
+test('status server exposes and renders the last stored remote instance snapshot', async () => {
+  const aggregationState = createStatusAggregationState();
+  aggregationState.remotes['edge-eu'] = {
+    id: 'edge-eu',
+    source: 'remote',
+    apiUrl: 'https://edge.example.test/api/instance-status',
+    lastAttemptAt: '2026-08-15T10:02:00.000Z',
+    lastSuccessAt: '2026-08-15T10:00:00.000Z',
+    lastError: 'Remote status API returned HTTP 503.',
+    snapshot: {
+      version: 1,
+      instanceId: 'edge-hostname',
+      capturedAt: '2026-08-15T10:00:00.000Z',
+      subscriptions: [],
+      tunnels: [],
+    },
+  };
+
+  const dependencies = { aggregationState };
+  const apiResult = await handleStatusServerRequest(
+    '/api/instances',
+    createLoadedConfig(),
+    createSyncMemoryState(),
+    dependencies,
+  );
+  const htmlResult = await handleStatusServerRequest(
+    '/',
+    createLoadedConfig(),
+    createSyncMemoryState(),
+    dependencies,
+  );
+  const payload = JSON.parse(apiResult.body) as { instances: Array<{ id: string; lastError?: string; snapshot?: unknown }> };
+  const remote = payload.instances.find((instance) => instance.id === 'edge-eu');
+
+  assert.ok(remote?.snapshot);
+  assert.match(remote?.lastError ?? '', /HTTP 503/);
+  assert.match(htmlResult.body, /edge-eu/);
+  assert.match(htmlResult.body, /Last collection failed/);
 });
 
 test('status server returns 400 for runtime-state endpoint without required query params', async () => {

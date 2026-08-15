@@ -202,14 +202,26 @@ const appConfigSchema = z.object({
     }).default({ enabled: false }),
   }),
   statusServer: z.object({
-    enabled: z.boolean().default(false),
-    listen: z.string().trim().optional(),
+    enabled: z.boolean().default(true),
+    listen: z.string().trim().default('127.0.0.1:9090'),
+    instanceId: optionalTrimmedStringSchema,
+    remoteInstances: z.array(z.object({
+      id: z.string().trim().min(1),
+      apiUrl: z.string().trim().url(),
+      schedule: z.string().trim().min(1),
+      timeoutMs: z.number().int().positive().default(5000),
+    }).strict()).default([]),
     runtimeState: z.object({
       enabled: z.boolean().default(true),
       includeRaw: z.boolean().default(false),
       includeSecrets: z.boolean().default(false),
     }).default({ enabled: true, includeRaw: false, includeSecrets: false }),
-  }).default({ enabled: false, runtimeState: { enabled: true, includeRaw: false, includeSecrets: false } }),
+  }).default({
+    enabled: true,
+    listen: '127.0.0.1:9090',
+    remoteInstances: [],
+    runtimeState: { enabled: true, includeRaw: false, includeSecrets: false },
+  }),
 }).superRefine((config, context) => {
   const enabledSubscriptions = config.subscriptions.filter((subscription) => subscription.enabled);
   if (enabledSubscriptions.length === 0) {
@@ -400,6 +412,28 @@ const appConfigSchema = z.object({
           path: ['statusServer', 'listen'],
         });
       }
+    }
+  }
+
+  const remoteIds = new Set<string>();
+  for (const [index, remote] of config.statusServer.remoteInstances.entries()) {
+    if (remoteIds.has(remote.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate remote instance id "${remote.id}" is not allowed.`,
+        path: ['statusServer', 'remoteInstances', index, 'id'],
+      });
+    }
+    remoteIds.add(remote.id);
+
+    try {
+      CronExpressionParser.parse(remote.schedule);
+    } catch (error) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error instanceof Error ? error.message : 'Invalid cron expression.',
+        path: ['statusServer', 'remoteInstances', index, 'schedule'],
+      });
     }
   }
 });

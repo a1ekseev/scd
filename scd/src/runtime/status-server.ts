@@ -1,14 +1,28 @@
 import { createServer, type Server } from 'node:http';
+import { hostname } from 'node:os';
 import { URL } from 'node:url';
 
 import type { Logger } from '../logging/create-logger.ts';
-import type { GroupedStatusSubscription, LoadedConfig, StatusSnapshotTunnel } from '../types.ts';
+import type {
+  AggregatedStatusSnapshot,
+  GroupedStatusSubscription,
+  InstanceStatusSnapshot,
+  LoadedConfig,
+  StatusSnapshotTunnel,
+} from '../types.ts';
 import { ApiRequestError } from '../errors.ts';
 import { buildCurrentRuntimeStateSnapshot } from './current-runtime-state.ts';
 import { buildStatusSnapshot, buildTargetStateKey, type SyncMemoryState } from './run-state.ts';
+import {
+  buildAggregatedStatusSnapshot,
+  createStatusAggregationState,
+  storeLocalStatusSnapshot,
+  type StatusAggregationState,
+} from './status-aggregation.ts';
 
 interface StatusServerDependencies {
   buildCurrentRuntimeStateSnapshotFn?: typeof buildCurrentRuntimeStateSnapshot;
+  aggregationState?: StatusAggregationState;
 }
 
 interface StatusServerResponse {
@@ -202,13 +216,8 @@ function buildConfiguredStatusGroups(
     }));
 }
 
-function renderHtml(
-  snapshot: StatusSnapshotTunnel[],
-  loadedConfig: LoadedConfig,
-  memoryState: SyncMemoryState,
-): string {
-  const grouped = buildConfiguredStatusGroups(snapshot, loadedConfig, memoryState);
-  const sections = grouped
+function renderSubscriptionSections(grouped: GroupedStatusSubscription[]): string {
+  return grouped
     .map((subscription) => {
       const targets = subscription.targets
         .map((target) => {
@@ -250,6 +259,25 @@ function renderHtml(
     <h2>${escapeHtml(subscription.subscriptionId)}</h2>
   </div>
   ${targets}
+</section>`;
+    })
+    .join('\n');
+}
+
+function renderHtml(aggregated: AggregatedStatusSnapshot): string {
+  const sections = aggregated.instances
+    .map((instance) => {
+      const freshness = instance.lastError
+        ? `Last collection failed: ${instance.lastError}`
+        : instance.lastSuccessAt
+          ? `Updated ${instance.lastSuccessAt}`
+          : 'Waiting for first successful collection';
+      const subscriptions = instance.snapshot
+        ? renderSubscriptionSections(instance.snapshot.subscriptions)
+        : '<section class="subscription-card"><p class="empty-state">No snapshot available.</p></section>';
+      return `<section class="instance-card">
+  <div class="instance-head"><div><h2>${escapeHtml(instance.id)}</h2><p>${escapeHtml(instance.source)} · ${escapeHtml(freshness)}</p></div></div>
+  ${subscriptions}
 </section>`;
     })
     .join('\n');
@@ -297,6 +325,8 @@ function renderHtml(
       box-shadow: 0 18px 50px rgba(72, 55, 32, .08);
       backdrop-filter: blur(14px);
     }
+    .instance-card { margin: 0 0 34px; }
+    .instance-head { margin: 0 0 12px; padding: 0 4px; }
     .target-card {
       margin: 14px 0 0;
       padding: 16px;
@@ -422,6 +452,17 @@ export async function handleStatusServerRequest(
   dependencies: StatusServerDependencies = {},
 ): Promise<StatusServerResponse> {
   const snapshot = buildStatusSnapshot(memoryState);
+  const aggregationState = dependencies.aggregationState
+    ?? createStatusAggregationState(loadedConfig.config.statusServer.remoteInstances);
+  const localSnapshot: InstanceStatusSnapshot = {
+    version: 1,
+    instanceId: loadedConfig.config.statusServer.instanceId ?? hostname(),
+    capturedAt: new Date().toISOString(),
+    subscriptions: buildConfiguredStatusGroups(snapshot, loadedConfig, memoryState),
+    tunnels: snapshot,
+  };
+  storeLocalStatusSnapshot(aggregationState, localSnapshot);
+  const aggregatedSnapshot = buildAggregatedStatusSnapshot(aggregationState);
   const buildCurrentRuntimeStateSnapshotFn =
     dependencies.buildCurrentRuntimeStateSnapshotFn ?? buildCurrentRuntimeStateSnapshot;
 
@@ -430,6 +471,22 @@ export async function handleStatusServerRequest(
       statusCode: 200,
       contentType: 'application/json; charset=utf-8',
       body: JSON.stringify({ tunnels: snapshot }, null, 2),
+    };
+  }
+
+  if (requestUrl === '/api/instance-status') {
+    return {
+      statusCode: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(localSnapshot, null, 2),
+    };
+  }
+
+  if (requestUrl === '/api/instances') {
+    return {
+      statusCode: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(aggregatedSnapshot, null, 2),
     };
   }
 
@@ -495,7 +552,7 @@ export async function handleStatusServerRequest(
   return {
     statusCode: 200,
     contentType: 'text/html; charset=utf-8',
-    body: renderHtml(snapshot, loadedConfig, memoryState),
+    body: renderHtml(aggregatedSnapshot),
   };
 }
 

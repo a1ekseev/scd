@@ -301,11 +301,20 @@ export interface ResourceConfig {
 export interface StatusServerConfig {
   enabled: boolean;
   listen?: string;
+  instanceId?: string;
+  remoteInstances?: RemoteStatusInstanceConfig[];
   runtimeState: {
     enabled: boolean;
     includeRaw: boolean;
     includeSecrets: boolean;
   };
+}
+
+export interface RemoteStatusInstanceConfig {
+  id: string;
+  apiUrl: string;
+  schedule: string;
+  timeoutMs: number;
 }
 
 export interface AppConfig {
@@ -453,6 +462,30 @@ export interface GroupedStatusTarget {
 export interface GroupedStatusSubscription {
   subscriptionId: string;
   targets: GroupedStatusTarget[];
+}
+
+export interface InstanceStatusSnapshot {
+  version: 1;
+  instanceId: string;
+  capturedAt: string;
+  subscriptions: GroupedStatusSubscription[];
+  /** Flat compatibility view for lightweight status consumers. */
+  tunnels: StatusSnapshotTunnel[];
+}
+
+export interface AggregatedInstanceStatus {
+  id: string;
+  source: 'local' | 'remote';
+  apiUrl?: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  lastError?: string;
+  snapshot?: InstanceStatusSnapshot;
+}
+
+export interface AggregatedStatusSnapshot {
+  capturedAt: string;
+  instances: AggregatedInstanceStatus[];
 }
 
 export interface ParsedRuntimeOutbound {
