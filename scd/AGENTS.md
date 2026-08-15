@@ -34,6 +34,7 @@
   - runs optional monitoring cron loops per target
   - runs optional balancer monitor cron loops per target
   - can start the built-in read-only status server
+  - polls configured remote instance status APIs on independent cron loops
   - does not hot-reload YAML; restart required for config changes
 - `src/apply/resource-applicator.ts`
   - generic runtime/apply contract for resource kinds
@@ -105,6 +106,8 @@ Current schema:
 - `resources.routing.enabled`
 - `statusServer.enabled`
 - `statusServer.listen`
+- `statusServer.instanceId?`
+- `statusServer.remoteInstances[]`
 
 Defaults are applied by the schema. Relative paths are normalized during config loading.
 
@@ -134,7 +137,10 @@ Defaults are applied by the schema. Relative paths are normalized during config 
   - failed tunnel probes repair the tunnel outside balancer selection; a later successful probe automatically rejoins it to the Xray balancer
   - balancer monitor is observe-only and does not trigger repair or apply
   - built-in read-only status page
-  - grouped HTML dashboard by `subscription -> target`
+  - status API and dashboard enabled by default on `127.0.0.1:9090`
+  - versioned local instance snapshots via `/api/instance-status`
+  - last-successful remote instance snapshots via `/api/instances`
+  - grouped HTML dashboard by `instance -> subscription -> target`
   - balancer-first target blocks and latency-sorted tunnel cards
   - target-specific runtime JSON dump via `/api/runtime-state`
   - HTML dashboard does not expose `/api/runtime-state` links; use the JSON endpoint directly for diagnostics or automation

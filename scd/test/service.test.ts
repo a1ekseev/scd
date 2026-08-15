@@ -109,6 +109,9 @@ test('loadConfig resolves relative paths, targets and interpolates env vars', as
     assert.deepEqual(loaded.config.subscriptions[0]?.target.fixedOutbounds, ['direct']);
     assert.equal(loaded.config.subscriptions[0]?.target.observatorySubjectSelectorPrefix, 'x-observe-');
     assert.equal(loaded.config.subscriptions[0]?.input, resolve(tempDir, 'subscription.txt'));
+    assert.equal(loaded.config.statusServer.enabled, true);
+    assert.equal(loaded.config.statusServer.listen, '127.0.0.1:9090');
+    assert.deepEqual(loaded.config.statusServer.remoteInstances, []);
   } finally {
     delete process.env.XRAY_API_ADDRESS;
     await rm(tempDir, { recursive: true, force: true });
