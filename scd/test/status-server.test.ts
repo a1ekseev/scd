@@ -372,17 +372,24 @@ test('status server exposes and renders the last stored remote instance snapshot
       tunnels: [],
     },
   };
+  aggregationState.remotes['edge-us'] = {
+    id: 'edge-us',
+    source: 'remote',
+    apiUrl: 'https://edge-us.example.test/api/instance-status',
+  };
 
   const dependencies = { aggregationState };
+  const loadedConfig = createLoadedConfig();
+  loadedConfig.config.statusServer.instanceId = 'local-main';
   const apiResult = await handleStatusServerRequest(
     '/api/instances',
-    createLoadedConfig(),
+    loadedConfig,
     createSyncMemoryState(),
     dependencies,
   );
   const htmlResult = await handleStatusServerRequest(
     '/',
-    createLoadedConfig(),
+    loadedConfig,
     createSyncMemoryState(),
     dependencies,
   );
@@ -393,6 +400,30 @@ test('status server exposes and renders the last stored remote instance snapshot
   assert.match(remote?.lastError ?? '', /HTTP 503/);
   assert.match(htmlResult.body, /edge-eu/);
   assert.match(htmlResult.body, /Last collection failed/);
+  assert.match(htmlResult.body, /role="tablist" aria-label="Instances"/);
+  assert.match(
+    htmlResult.body,
+    /id="instance-tab-0"[\s\S]*?aria-selected="true"[\s\S]*?aria-controls="instance-panel-0"[\s\S]*?tabindex="0"[\s\S]*?>local-main<\/button>/,
+  );
+  assert.match(
+    htmlResult.body,
+    /id="instance-tab-1"[\s\S]*?aria-selected="false"[\s\S]*?aria-controls="instance-panel-1"[\s\S]*?tabindex="-1"[\s\S]*?>edge-eu<\/button>/,
+  );
+  assert.match(
+    htmlResult.body,
+    /id="instance-panel-0"[\s\S]*?aria-labelledby="instance-tab-0"[\s\S]*?tabindex="0"\s*>/,
+  );
+  assert.match(
+    htmlResult.body,
+    /id="instance-panel-1"[\s\S]*?aria-labelledby="instance-tab-1"[\s\S]*?tabindex="0" hidden/,
+  );
+  assert.ok(htmlResult.body.indexOf('>local-main</button>') < htmlResult.body.indexOf('>edge-eu</button>'));
+  assert.match(htmlResult.body, /Waiting for first successful collection/);
+  assert.match(htmlResult.body, /No snapshot available\./);
+  assert.match(htmlResult.body, /event\.key === 'ArrowRight'/);
+  assert.match(htmlResult.body, /event\.key === 'ArrowLeft'/);
+  assert.match(htmlResult.body, /event\.key === 'Home'/);
+  assert.match(htmlResult.body, /event\.key === 'End'/);
 });
 
 test('status server returns 400 for runtime-state endpoint without required query params', async () => {

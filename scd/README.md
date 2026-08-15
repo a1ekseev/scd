@@ -284,6 +284,7 @@ Filter counters are separate from `skipped`: `skipped` remains parse/validation-
   - last HTTP status
   - last latency
 - HTML output is grouped by `instance -> subscription -> target`.
+- Instances are shown as a compact tab list: the local instance is always first and selected on page load, while remote snapshots open on click without another API request.
 - Each target block renders balancer status first, followed by tunnel cards sorted by latency from lowest to highest.
 - Tunnel cards without latency, including idle tunnels, are shown after measured tunnels.
 - The HTML dashboard does not expose JSON/debug links; use the JSON endpoints directly for automation or diagnostics.
