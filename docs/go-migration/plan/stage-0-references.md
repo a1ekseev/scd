@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 24 в контейнере `node:24-alpine` (сейчас 24.22.0; удовлетворяет `engines >=24.14.0` и совпадает с CI `node-version: 24.14.0`) — **основной вариант**, Docker в песочнице есть; запасной — локальный Node 22.22.0 (`npm ci` даёт только warning `EBADENGINE`). Chromium headless shell из `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell` (Playwright-бандл) — запускается на хосте (в alpine-контейнере браузера нет). Проверено ревью: в `node:24-alpine` `npm ci && npm run build && npm test` зелёные — scd 115/115, sfc 24/24, gtl 20/20; ICU-имена стран (`Intl.DisplayNames` en/ru для 45 кодов) у Node 22.22 и 24.22 совпадают.
 
-**Spec:** `07-decisions.md` D3, D9, D20, D23; `00-overview.md` «Этап 0»; `01` §2.6, §14, §17; `03` §6, §10.4; `04` §2.1, §5; `05` §4.5; `06` §3.
+**Spec:** `07-decisions.md` D3, D9, D20, D23, D24, D25, D26; `11-xray-vless-matrix.md` (задача 0.5); `00-overview.md` «Этап 0»; `01` §2.6, §14, §17; `03` §6, §10.4; `04` §2.1, §5; `05` §4.5; `06` §3.
 
 ## Контекст этапа
 
@@ -53,7 +53,7 @@
 
 ### Task 0.2: Эталоны домена scd (разбор, generate, print-config, cron)
 
-**Read:** `01` §2.6, §4–§8, §14, §17.4; `09` §6–§7; `06` §3; `07` D9, D14, D23.
+**Read:** `01` §2.6, §4–§8, §14, §17.4; `09` §6–§7; `06` §3; `07` D9, D23, D24, D26.
 
 **Files:**
 - Create: `tools/golden/scd-domain.mjs`
@@ -63,7 +63,7 @@
 - Create: `testdata/reference/scd/print-config/docker-example.json` (`loadConfig('docker/scd/config.example.yml')`, `input` заменить на путь относительно репозитория), `testdata/reference/scd/print-config/minimal.json` (конфиг из `01` §2.6; положить его в `testdata/reference/scd/print-config/minimal.yml`)
 - Create: `testdata/reference/scd/config-cases.json` — массив `{name, yaml, valid, messages[]}` для кейсов `01` §17.3 S1–S14 и §17.4 «Конфиг» (сообщения информационные — D9)
 - Create: `testdata/reference/common/cron-next.json` — `[{expr, from, next: [t1,t2,t3]}]` от `cron-parser` из `scd/node_modules` при `TZ=UTC`, `from = 2026-08-15T10:00:00.000Z`; выражения: `*/5 * * * *`, `*/10 * * * *`, `*/15 * * * * *`, `0 3 * * *`, `0 0 1 1 *`, `0 9 * * MON-FRI`, `30 2 1,15 * *`, `0 */2 * * *`, `5 4 * JAN,JUL SUN`, `0 0 1 * 1`, `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, `0 0 12 * * *`
-- Create: `testdata/reference/common/cron-rejected.json` — список выражений, которые Go **обязан** отвергать (D23; не из Node): `""`, `* * * * * * *`, `0 0 L * *`, `0 0 * * 5L`, `0 0 * * 1#2`, `0 0 1W * *`, `H * * * *`, `@every 5m`, `* * * * 7`, `@minutely`, `@secondly`, `@weekdays`, `@weekends`, `0 0 31 2 *` (никогда не срабатывает). Ревью сверило `robfig/cron/v3` v3.0.1 с `cron-parser` 5.4.0 на всех 16 выражениях `cron-next` — `Next` совпадает 1:1. **Не** включать `@midnight`/`@annually`: robfig их принимает (=`@daily`/`@yearly`), это допустимое расширение. Расхождения, которые надо задокументировать в README (7.3) как миграционные: TS принимал `* * * * 7`, `L`, `#`, `H`, `@minutely|@secondly|@weekdays|@weekends`; `0 0 31 2 *` TS отвергал, а robfig без доп. проверки принимает и возвращает нулевое `Next` (см. 1.4).
+- Create: `testdata/reference/common/cron-rejected.json` — список выражений, которые Go **обязан** отвергать (D24 «классический Linux crontab» + D23; не из Node): `""`, `* * * * * * *`, `0 0 L * *`, `0 0 * * 5L`, `0 0 * * 1#2`, `0 0 1W * *`, `H * * * *`, `@every 5m`, `* * * * 7`, `@minutely`, `@secondly`, `@weekdays`, `@weekends`, `0 0 ? * *` (`?` — не классический crontab; robfig его принимает, проверено), `TZ=UTC 0 0 * * *`, `CRON_TZ=UTC 0 0 * * *` (robfig принимает префиксы — проверено), `0 0 31 2 *`, `0 0 30 2 *` (никогда не срабатывают: robfig v3.0.1 возвращает нулевое `Next` — проверено; `0 0 29 2 *` валиден, следующий запуск 2028-02-29). Ревью сверило `robfig/cron/v3` v3.0.1 с `cron-parser` 5.4.0 на всех 16 выражениях `cron-next` — `Next` совпадает 1:1. Макросы D24 `@yearly @annually @monthly @weekly @daily @midnight @hourly` robfig принимает все (`@midnight`≡`@daily`, `@annually`≡`@yearly`); `@midnight`/`@annually` в эталон Node не входят (cron-parser их не знает) — их проверяет Go-тест 1.4 напрямую. Миграционные расхождения с TS (документируются в README, 7.3): TS принимал `* * * * 7`, `L`, `#`, `H`, `?`, `@minutely|@secondly|@weekdays|@weekends`; `0 0 31 2 *` TS отвергал.
 
 - [ ] **Step 1: Корпус.** Собрать `vless-corpus.txt` (≥60 строк). Каждую строку сопроводить записью в `testdata/reference/scd/corpus/README.md`: «что проверяет» одной фразой.
 - [ ] **Step 2: Скрипт `scd-domain.mjs`** (TZ=UTC внутри: `process.env.TZ='UTC'` до импорта cron-parser) пишет все файлы выше. Для `ts-parse.json` строки подавать через `scanLines(text)` целого корпуса. У `tools/golden/` нет своих `node_modules`, поэтому пакеты импортировать по пути: `import { CronExpressionParser } from '../../scd/node_modules/cron-parser/dist/index.js'` (проверено: работает из ESM), dist-модули — `../../scd/dist/...js`. `cron-next`: `CronExpressionParser.parse(expr, { currentDate: new Date(FROM) })`, три вызова `.next().toISOString()`.
@@ -137,3 +137,44 @@
 - [ ] **Step 4:** `screenshots.mjs`; Run: `node tools/golden/screenshots.mjs`; Expected: PNG ненулевого размера на каждую фикстуру × 2 ширины. Если headless_shell недоступен — fallback: полный Chromium `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` с теми же флагами; записать использованный способ в README.
 - [ ] **Step 5:** Раздел в `testdata/reference/README.md`: контракт фикстуры (копия JSON-схемы выше с описанием каждого поля), что PNG — справочные (сравнение в Go идёт рендером TS-HTML и Go-HTML в одном браузере, задача 6.5).
 - [ ] **Step 6: Commit** `chore(refs): capture status server HTML/JSON references and screenshots`.
+
+---
+
+### Task 0.5: Корпус ссылок матрицы D26 и ожидания
+
+**Read:** `11-xray-vless-matrix.md` (весь: §3 — строки матрицы, §4 — параметры и тексты ошибок Xray, §4.1 — нестандартные параметры генераторов); `07` D15–D18, D25, D26; `09` §3.2–§3.3 (как 3x-ui/v2rayN кодируют параметры). Не зависит от TS (Node не нужен); зависит только от 0.1 (индекс `testdata/reference/README.md`).
+
+**Files:**
+- Create: `testdata/reference/scd/corpus/d26-links.txt` — по одной ссылке на строку, без комментариев
+- Create: `testdata/reference/scd/corpus/d26-expect.json` — массив по строкам файла выше (контракт — ниже)
+- Create: `testdata/reference/scd/corpus/d26-keys.md` — как получены ключи (команды и версия бинаря), какие строки их используют
+- Modify: `testdata/reference/README.md` (раздел «Корпус D26»)
+
+**Interfaces:**
+- Produces (контракт `d26-expect.json`, его читают тесты 4.3–4.7 и 5.6):
+  ```json
+  [{"line": 1, "matrixRow": "3#4", "expect": "entry", "profile": "tcp-reality-vision",
+    "warnings": [], "params": ["sni","fp","pbk","sid","spx","pqv"], "note": "3x-ui REALITY + vision"},
+   {"line": 2, "matrixRow": "4:sid", "expect": "skip", "reasonCode": "unsupported_value",
+    "stage": "xray", "expectContains": "invalid \"shortId\"", "note": "odd sid"}]
+  ```
+  `expect` ∈ `entry|skip`; для `skip`: `reasonCode`, `stage` ∈ `parse|scd|xray` (`parse` — `vless.Parse`, `scd` — `normalize`, `xray` — отказ `conf.Build`, ловится в манифесте), `expectContains` — подстрока `reason` (для `parse`/`scd`) или `details[0]` (для `xray`); `warnings` — коды; `params` — параметры ссылки, которые **обязаны дойти до Xray** (для `paramcheck`, 4.6/5.6): без сброшенного `flow` (`flow_cleared`), без игнорируемых (README плана O13, O16) и без `allowInsecure`; ключи — lowercase, как в `vless.Link`; `matrixRow` — ссылка на строку 11 §3 (`3#<n>`) или §4 (`4:<param>`).
+
+- Правила корпуса:
+  - Хосты только `*.example.test`, адреса TEST-NET (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`), один фиксированный UUID (плюс `my-user` для D18). Порт 443/8443.
+  - Ключи **настоящие**, сняты релизным бинарём Xray 26.10.10 (`SCD_XRAY_BIN`, см. README плана «Локальный образ Xray», или `scratchpad/bin-xray-26.10.10`): `xray vlessenc` → обе клиентские строки `encryption` (X25519 — 32 байта, ML-KEM-768 — 1184 байта); `xray x25519` → `Password (PublicKey)` для `pbk`; `xray mldsa65` → `Verify` для `pqv`; `xray tls ech --serverName ech.example.test` → `ECH config list` для `ech`. Случайные байты **не** годятся как позитивный пример (ревью B2): 1184 случайных байта — только негативная строка (`stage: scd`, «Invalid VLESS encryption key.»).
+  - Значения кодируются так, как их кодируют генераторы (`url.QueryEscape` для `path`, `extra`, `fm`, `ech`, `spx`, `vcn`; `pcs` — в формате OpenSSL с `:` и без).
+- Обязательные строки (каждая — одна ссылка; минимум 60):
+  - **entry** для каждой ✓-строки 11 §3: #1, #2 (vision и vision-udp443), #3, #4, #5, #8, #9, #11 (tcp/ws/xhttp, X25519- и ML-KEM-ключ), #12 (tcp и ws с vision), #13 (tcp+tls+ML-KEM+vision, tcp+reality+ML-KEM+vision → `tcp-reality-vision`, xhttp+reality+ML-KEM+vision → `xhttp-reality-vision`), #14; `type=raw`; ML-KEM `xorpub.1rtt`, `random.0rtt`, с padding-сегментами, с двумя ключами.
+  - **entry с warning** `flow_cleared`: #6 (ws+tls+vision), #10 (xhttp+reality+vision без ML-KEM); `allow_insecure_ignored` — не в этом корпусе (зависит от Policy; покрыт vpn-sample в 4.7).
+  - **entry по параметрам** (11 §4): `sni`, `fp` (`Chrome` → lowercase, `randomized`, TLS `unsafe`), `alpn` (`h2,http/1.1`; `h3` на xhttp), `pcs` (два значения, с `:` и без), `vcn` (два имени), `ech` (base64 и DNS-форма), `pbk` (std-base64 с `=` → нормализуется), `sid` (пустой, `ab`), `spx` (`/abc?p=10-20&c=2`), `pqv`, `headerType=none`, `headerType=http` с `host`/`path` (tcp+tls, tcp+reality, tcp+ML-KEM), ws `path` с `?ed=2048` и `host`, ws без `path`, xhttp `mode` (все четыре), xhttp `extra` (`xPaddingBytes`, `xmux`, `downloadSettings`), `fm` (tcp `fragment` на tcp+tls и на reality+vision, `header-custom` на ws, udp `noise` + `quicParams` на xhttp `alpn=h3`), REALITY без `sni`/`fp`, свежая REALITY-ссылка 3x-ui (`spx`, `pqv`, `support-x25519mlkem768=true`, `flow=xtls-rprx-vision`), xhttp-ссылка 3x-ui (`x_padding_bytes` + `extra`), id `my-user`.
+  - **skip `stage: parse`**: неизвестный параметр `foo=1` (`unsupported_param`).
+  - **skip `stage: scd`**: `type=grpc`, `type=httpupgrade`, `type=kcp` (`unsupported_combo`), `ws+reality`, `security=none` без ML-KEM (адрес `*.example.test` — conf такой пропустил бы), `security=xtls`, `encryption=None`, ML-KEM со случайным ключом, `flow=xtls-rprx-bogus`, REALITY без `pbk`, `extra=%5B1%5D`, `fm=%7Bx`, `allowInsecure=yes`.
+  - **skip `stage: xray`** (тексты — 11 §4 «Ошибка Xray»): `sid=abc`, `sid` из 18 символов, `pcs=zz`, `pcs=abcd`, `fp=bogus`, REALITY `fp=unsafe`, `spx=abc`, `pqv=AAAA`, xhttp `mode=bogus`, `extra` с `xPaddingPlacement:"nowhere"`, `extra` с `headers.Host`, `fm` с неизвестным типом маски, `headerType=bogus`, `pbk` длиной ≠32 байта, ML-KEM `foo`-режим и `2rtt`.
+
+- [ ] **Step 1:** Снять ключи (команды выше), записать `d26-keys.md` (вывод `xray version`, команды, какие строки используют какой ключ; приватные части не нужны и не записываются).
+- [ ] **Step 2:** Написать `d26-links.txt` и `d26-expect.json` по правилам выше.
+- [ ] **Step 3: Verify:** `jq length testdata/reference/scd/corpus/d26-expect.json` = `grep -c . testdata/reference/scd/corpus/d26-links.txt`; `jq -e 'all(.[]; (.expect=="entry" and has("profile")) or (.expect=="skip" and has("reasonCode") and has("stage")))' …/d26-expect.json` → `true`; `jq -r '[.[]|select(.expect=="entry")|.params[]]|unique|join(",")' …/d26-expect.json` содержит все 20 параметров `paramcheck.Covered` (список — задача 4.6); `grep -vE '@[^?#]*(example\.test|192\.0\.2\.|198\.51\.100\.|203\.0\.113\.)' …/d26-links.txt` → пусто (только фейковые хосты).
+- [ ] **Step 4:** Раздел в `testdata/reference/README.md`: контракт `d26-expect.json`, что ожидания взяты из `11-xray-vless-matrix.md`, а не из TS.
+- [ ] **Step 5: Commit** `chore(refs): add D26 VLESS matrix corpus with real Xray keys` (body: D25, D26).
+
