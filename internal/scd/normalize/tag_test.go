@@ -128,15 +128,37 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
 	}
-	checked := 0
+	excluded := map[int]string{
+		55: "tab kept in label (D9)",
+		59: "percent-escaped host byte, net/url rejects (D9)",
+		62: "leading BOM mid-file, parser skips (D9)",
+	}
+	okLines, checked := 0, 0
 	for _, c := range cases {
-		// Line 55 holds a tab inside the label: TS stripped it (WHATWG URL),
-		// Go keeps it by D9 (see vless parse_test), so the tags differ by design.
-		if !c.TS.OK || c.Line == 55 {
+		if !c.TS.OK {
 			continue
 		}
+		okLines++
 		link, skip := vless.Parse(subscription.Line{Number: c.Line, Raw: c.Raw, Trimmed: strings.TrimSpace(c.Raw)})
-		if skip != nil {
+		reason, isExcluded := excluded[c.Line]
+		switch {
+		case skip != nil && isExcluded:
+			continue
+		case skip != nil:
+			t.Errorf("line %d: parser skipped a TS-ok line: %+v", c.Line, skip)
+			continue
+		case c.Line == 55:
+			// TS stripped the tab (WHATWG URL); keep the tag logic covered.
+			stripped := strings.ReplaceAll(link.Label, "\t", "")
+			if got := BuildTag(stripped, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
+				t.Errorf("line 55 (tab stripped): got %s, want %s", got, c.TS.Tag)
+			}
+			if got := BuildTag(link.Label, link.Address, c.TS.Profile, link.Raw); got == c.TS.Tag {
+				t.Errorf("line 55: stale exclusion (%s), Go tag equals TS tag", reason)
+			}
+			continue
+		case isExcluded:
+			t.Errorf("line %d: stale exclusion (%s), parser accepts it", c.Line, reason)
 			continue
 		}
 		if got := BuildTag(link.Label, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
@@ -144,8 +166,8 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 		}
 		checked++
 	}
-	if checked < 40 {
-		t.Fatalf("only %d corpus lines compared", checked)
+	if checked != okLines-len(excluded) {
+		t.Fatalf("compared %d lines, want %d", checked, okLines-len(excluded))
 	}
 }
 

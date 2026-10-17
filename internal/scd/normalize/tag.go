@@ -18,6 +18,8 @@ const maxSlug = 32
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
+// Accepted divergence (D9): Go's unicode.IsSpace differs from JS \s on U+FEFF
+// and U+0085; inputs strip a leading BOM earlier and real labels are unaffected.
 func isRegionalIndicator(r rune) bool { return r >= 0x1F1E6 && r <= 0x1F1FF }
 
 // InferCity extracts the city from label: the text before the first comma
