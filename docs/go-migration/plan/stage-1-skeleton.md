@@ -33,11 +33,12 @@
 - Create: `internal/scd/cli/cli.go` (`func Commands() []*cobra.Command` → пока пусто), `internal/sfc/cli/cli.go` (`func New() *cobra.Command` → `Use: "sfc"`, Short `Filter upstream subscriptions and serve them by public URL.`), `internal/gtl/cli/cli.go` (`func New() *cobra.Command` → `Use: "gtl"`, Short `Gen Test Load`)
 - Create: `internal/archtest/imports_test.go`
 - Create: `.golangci.yml`
+- Create: `docs/CONFIG-MIGRATION.md` (скелет, см. поправку D32)
 - Modify: `.gitignore` — добавить `/bin/`
 - Modify: `.github/workflows/docker.yml` — новая джоба `go` (условие как у `verify`), Node-шаги не трогать
 
 **Interfaces:**
-- Produces: `package cli` — `func NewRoot() *cobra.Command` (Use `scd`, Short `Generate and apply Xray resources from subscriptions.`, `SilenceUsage: true`, `SilenceErrors: true`, `Version: buildinfo.Version` (флаг `--version` только у корня; у `scd sfc`/`scd gtl` своего нет — D27 O10), шаблон версии `{{.Version}}\n`, completion отключён); `func Execute(args []string, stdout, stderr io.Writer) int` — 0 при успехе, 1 при любой ошибке (печатает `err.Error()+"\n"` в stderr). Если ошибка `errors.Is(err, cliutil.ErrReportFailed)` — `Execute` возвращает 1, ничего не печатая.
+- Produces: `package cli` — `func NewRoot() *cobra.Command` (Use `scd`, Short `Generate and apply Xray resources from subscriptions.`, `SilenceUsage: true`, `SilenceErrors: true`, `Version: buildinfo.Version` (флаг `--version` только у корня; у `scd sfc`/`scd gtl` своего нет — D27 O10), шаблон версии `{{.Version}}\n`, completion отключён); `func Execute(args []string, stdout, stderr io.Writer) int` — делегирует в неэкспортируемый `run(root *cobra.Command, args []string, stdout, stderr io.Writer) int` (шов для теста); 0 при успехе, 1 при любой ошибке (печатает `err.Error()+"\n"` в stderr). Если ошибка `errors.Is(err, cliutil.ErrReportFailed)` — `run` возвращает 1, ничего не печатая.
 - Produces: корень монтирует `scdcli.Commands()...`, `sfccli.New()`, `gtlcli.New()`.
 
 - [ ] **Step 1: Failing tests** в `internal/cli/root_test.go`:
@@ -45,7 +46,7 @@
   - `TestUnknownCommandFails`: `Execute([]string{"nope"}, …)` == 1; `errb` содержит `unknown command "nope"`.
   - `TestVersionFlag`: `buildinfo.Version="1.2.3"`; `Execute([]string{"--version"})` == 0, `out.String()=="1.2.3\n"`; `Execute([]string{"gtl","--version"})` == 1 (`unknown flag: --version`).
   - `internal/common/buildinfo` `TestUserAgent`: `Version="1.2.3"` → `scd/1.2.3`; по умолчанию `scd/dev`.
-  - `TestReportFailedExitCode`: команда-заглушка, возвращающая `cliutil.ErrReportFailed`, даёт код 1 и пустой stderr.
+  - `TestReportFailedExitCode`: в тесте к `NewRoot()` добавляется команда-заглушка, возвращающая `cliutil.ErrReportFailed`; `run(root, []string{"stub"}, &out, &errb)` даёт код 1 и пустой stderr.
   - `internal/archtest/imports_test.go` `TestServicesDoNotImportEachOther`: обходит `internal/scd`, `internal/sfc`, `internal/gtl` (`go/parser` с `parser.ImportsOnly`), ни один файл не импортирует `github.com/a1ekseev/scd/internal/<другой сервис>`; `internal/common/...` не импортирует ни один сервис.
 - [ ] **Step 2: Run** `go test ./...` → FAIL (нет пакетов/функций).
 - [ ] **Step 3: Реализация** `go.mod` (`go get github.com/spf13/cobra@latest`), `root.go`, заглушки, `main.go`.
@@ -64,6 +65,7 @@
 - Create: `internal/common/jsonout/jsonout.go`, `jsonout_test.go`
 - Create: `internal/common/listenaddr/listenaddr.go`, `listenaddr_test.go`
 - Create: `internal/common/regexlit/regexlit.go`, `regexlit_test.go`
+- Modify: `docs/CONFIG-MIGRATION.md` (пункты `listen` и regex, см. Step 5)
 
 **Interfaces:**
 - Produces: `jsonout.Write(w io.Writer, v any) error` — отступ 2 пробела, `SetEscapeHTML(false)`, завершающий `\n`. `jsonout.Marshal(v any) ([]byte, error)` — то же без `\n` (тела HTTP).
@@ -126,12 +128,13 @@
 **Files:**
 - Create: `internal/common/cron/cron.go`, `cron_test.go`
 - Create: `internal/common/cronloop/cronloop.go`, `cronloop_test.go`
+- Modify: `docs/CONFIG-MIGRATION.md` (раздел «Cron», см. Step 6)
 
 **Interfaces:**
 - Produces (`cron`): `type Schedule interface{ Next(time.Time) time.Time }`; `func Parse(expr string) (Schedule, error)` — классический Linux crontab (D24): 5 полей `мин час день месяц день_недели` или 6 с ведущими секундами; списки, диапазоны, шаги, имена месяцев/дней (регистр не важен); макросы `@yearly @annually @monthly @weekly @daily @midnight @hourly`. Реализация (D28) — библиотека `robfig/cron/v3` `NewParser(SecondOptional|Minute|Hour|Dom|Month|Dow|Descriptor)` **как есть**: что она принимает (вкл. `?`, `@every`, `TZ=`/`CRON_TZ=`) — валидно, что отвергает — ошибка с её текстом. Своих синтаксических ограничений не добавляем. Только две защиты: `""` (`cron expression must not be empty`) и выражения, которые никогда не срабатывают: `s.Next(time.Date(2026,1,1,0,0,0,0,time.UTC)).IsZero()` → `cron expression never matches` (robfig принимает `0 0 31 2 *` и возвращает нулевое `Next` — проверено ревью; без проверки `cronloop` ушёл бы в цикл без сна); часовой пояс — `time.Local`.
 - Produces (`cronloop`):
   - `func Run(ctx context.Context, s cron.Schedule, task func(context.Context) error, h Hooks)`; `type Hooks struct{ OnError func(error); OnOverrun func(scheduledAt time.Time) }`. Алгоритм `03` §3.2: первый тик сразу; `scheduledAt = s.Next(prevScheduled)`; если `scheduledAt.IsZero()` — новых тиков не планировать, ждать `ctx.Done()` (защита от busy-loop; `Parse` такие выражения уже отвергает); сон через `time.NewTimer` с `select` на `ctx.Done()` (D7: выход сразу, не ждать слот); занятый тик → `OnOverrun`, слот пропускается; при выходе ждёт активную задачу. Задача получает `ctx` (отмена — ответственность задачи).
-  - `func RunLogged(ctx context.Context, s cron.Schedule, task func(context.Context) error, log *slog.Logger, ev Events, attrs ...any)`; `type Events struct{ OverrunEvent, OverrunMsg, FailureEvent, FailureMsg string }`. Overrun → `log.Warn(OverrunMsg, attrs..., "event", OverrunEvent, "scheduledAt", <RFC3339 millis UTC>)`; ошибка → `log.Error(FailureMsg, attrs..., "event", FailureEvent, "error", err.Error(), ["causes", []string])`.
+  - `func RunLogged(ctx context.Context, s cron.Schedule, task func(context.Context) error, log *slog.Logger, ev Events, attrs ...any)`; `type Events struct{ OverrunEvent, OverrunMsg, FailureEvent, FailureMsg string }`. Overrun → `log.Warn(OverrunMsg, "event", OverrunEvent, attrs..., "scheduledAt", <RFC3339 millis UTC>)`; ошибка → `log.Error(FailureMsg, "event", FailureEvent, attrs..., "error", err.Error(), ["causes", []string])` (`event` первым — соглашение 1.5).
   - `func Causes(err error) []string` — сообщения из `interface{ Unwrap() []error }` (непустые), иначе `nil`.
 
 - [ ] **Step 1: Failing tests (`cron`):**
@@ -158,9 +161,10 @@
 **Files:**
 - Create: `internal/common/logging/logging.go`, `logging_test.go`
 - Create: `internal/common/httpserve/httpserve.go`, `httpserve_test.go`
+- Modify: `docs/CONFIG-MIGRATION.md` (раздел «Логи», см. Step 5)
 
 **Interfaces:**
-- Produces (`logging`): `func New(w io.Writer, level, format string) (*slog.Logger, error)`; level ∈ `fatal|error|warn|info|debug|trace|silent` (trace = `slog.Level(-8)`, fatal = `slog.Level(12)`, silent → `slog.DiscardHandler`); format `json` → `slog.JSONHandler`, `pretty` → `slog.TextHandler` (человекочитаемый `key=value`), иное → ошибка `unsupported log format "<f>" (expected json or pretty)`; `ReplaceAttr` переименовывает уровни −8/12 в `TRACE`/`FATAL`. D27 O10: все три сервиса создают логгер **только** как `logging.New(os.Stderr, cfg.Logging.Level, cfg.Logging.Format)`; stdout занят JSON-выводом команд. Соглашение для всех сервисов: `log.Info("<Human message.>", "event", "<event_name>", …)` — `event` первым атрибутом.
+- Produces (`logging`): `func New(w io.Writer, level, format string) (*slog.Logger, error)`; level ∈ `fatal|error|warn|info|debug|trace|silent` (trace = `slog.Level(-8)`, fatal = `slog.Level(12)`, silent → `slog.DiscardHandler`); format `json` → `slog.JSONHandler`, `pretty` → `slog.TextHandler` (человекочитаемый `key=value`), иное → ошибка `unsupported log format "<f>" (expected json or pretty)`; `ReplaceAttr` переименовывает уровни −8/12 в `TRACE`/`FATAL`. D27 O10: все три сервиса пишут логи **только** в stderr процесса — `logging.New(w, cfg.Logging.Level, cfg.Logging.Format)`, где `w` передаётся (команда передаёт `cmd.ErrOrStderr()`, `RunServe`/`RunSync`… принимают `stderr io.Writer`, чтобы тесты читали лог из буфера); stdout занят JSON-выводом команд. Соглашение для всех сервисов: `log.Info("<Human message.>", "event", "<event_name>", …)` — `event` первым атрибутом.
 - Produces (`httpserve`):
   - `func Recover(log *slog.Logger, h http.Handler) http.Handler` — panic → 500 `text/plain; charset=utf-8` тело `internal server error\n`, лог `error` с `event` `http_handler_panic`, `panic`, `path`.
   - `func Run(ctx context.Context, ln net.Listener, h http.Handler, shutdownTimeout time.Duration) error` — `http.Server{Handler: h, ReadHeaderTimeout: 60*time.Second}` (без `WriteTimeout`: gtl отдаёт большие тела); при `ctx.Done()` → `Shutdown` с таймаутом; возвращает `nil` при штатной остановке.
@@ -244,7 +248,7 @@
   - ok: каждый ключ `AllowedParams` (в т.ч. `serviceName` в любом регистре, `support-x25519mlkem768`, `x_padding_bytes`, `fm`, `pqv`, `ech`) — без skip (`TestAllowedParamsAccepted`).
   - `TestParseCorpusAgainstTS`: для каждой строки `ts-parse.json` с `ts.ok==true` — Go тоже ok (на уровне `Parse`); для `ts.reasonCode=="unsupported_scheme"` — тот же код; для `ts.reasonCode=="unsupported_param"` — Go ok (D28: неизвестные параметры игнорируются; при ключах вне `AllowedParams` — warning `param_ignored`). Прочие расхождения — только по списку `allowedDiffs` в тесте с комментарием-причиной (D9/D18/D26/O11).
   - `TestParseRealShapes` (12 §9 п.5): все 54 строки `docker/fixtures/real-shapes/remnawave.txt` + `provider2.txt` (и `provider2.b64` после `inputsrc.DecodeAuto` — те же 50 `Link`) → `Parse` без skip и с пустым `Ignored`; у строк `remnawave.txt` ключи `Params` по порядку = `encryption,type,path,mode,extra,security,sni,fp,alpn`, `path` декодирован (`%2F` → начинается с `/`), `json.Valid([]byte(extra))`; у `provider2.txt` ключи = `type,path,security,alpn`; label `🇩🇪DE-1-X` и `🇨🇴 Colombia, Bogotá` декодированы.
-  - `TestParseD26CorpusStageParse`: строки `d26-expect.json` со `stage=="parse"` → skip с тем же `reasonCode`; все остальные строки `d26-links.txt` проходят `Parse` без skip.
+  - `TestParseD26CorpusStageParse`: строки `d26-expect.json` со `stage=="parse"` (их **больше 0** — 0.5 обязан содержать минимум одну такую skip-строку; тест это утверждает) → skip с тем же `reasonCode`; все остальные строки `d26-links.txt` проходят `Parse` без skip.
 - [ ] **Step 2: Run** `go test ./internal/common/vless/` → FAIL.
 - [ ] **Step 3: Implement** `parse.go`.
 - [ ] **Step 4: Run** `go test -race ./internal/common/... && golangci-lint run` → PASS.
