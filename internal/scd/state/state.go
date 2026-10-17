@@ -146,6 +146,11 @@ type Tunnel struct {
 
 // Target is the state of one subscription target.
 type Target struct {
+	// SyncSeen reports that a sync reached this target (03 §1: in TS the
+	// target state exists only from then on), even if its apply failed. The
+	// balancer monitor waits for it; the balancer selection tick may create
+	// the target earlier (10 §6.3) without setting it.
+	SyncSeen bool
 	// Hashes are the manifest hashes of the last fully successful apply.
 	Hashes map[apply.Kind]string
 	// Generation is incremented on every topology replacement.
@@ -222,8 +227,21 @@ func (m *Memory) Ensure(key string) {
 	}
 }
 
+// MarkSynced creates the target of key if needed and records that a sync
+// reached it (SyncSeen).
+func (m *Memory) MarkSynced(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.targets[key]
+	if !ok {
+		t = newTarget()
+		m.targets[key] = t
+	}
+	t.SyncSeen = true
+}
+
 // ReplaceTopology installs topo and hashes after a fully successful apply
-// (03 §2.3): Generation++, Hashes become a copy of hashes, Tunnels are
+// (03 §2.3): SyncSeen is set, Generation++, Hashes become a copy of hashes, Tunnels are
 // rebuilt in topology order with idle monitors. The balancer monitor and
 // the balancer selection are kept. The target is created if it does not exist; the *Target stays the
 // same object.
@@ -235,6 +253,7 @@ func (m *Memory) ReplaceTopology(key string, topo topology.Topology, hashes map[
 		t = newTarget()
 		m.targets[key] = t
 	}
+	t.SyncSeen = true
 	t.Generation++
 	t.Hashes = maps.Clone(hashes)
 	if t.Hashes == nil {

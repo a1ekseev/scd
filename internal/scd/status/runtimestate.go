@@ -266,7 +266,9 @@ func BuildRuntimeState(ctx context.Context, d Deps, subscriptionID, targetAddres
 	}
 	if d.Memory != nil {
 		d.Memory.View(state.Key(subscriptionID, targetAddress), func(t *state.Target) {
-			snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&t.Balancer), t.Balancer.ConsecutiveFailures}
+			if t.SyncSeen {
+				snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&t.Balancer), t.Balancer.ConsecutiveFailures}
+			}
 			if sub.Target.BalancerSelection.Enabled {
 				snap.ServiceState.BalancerSelection = runtimeSelection(sub.Target, &t.BalancerSelection, t.Tunnels)
 			}

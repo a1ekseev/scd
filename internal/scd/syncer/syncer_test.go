@@ -795,3 +795,20 @@ func TestReportJSONShape(t *testing.T) {
 		t.Errorf("key order: %s", s)
 	}
 }
+
+// Review 6.6: a sync that reaches a target marks it SyncSeen even when the
+// apply fails (TS creates the target state at that point).
+func TestSyncMarksTargetSeenEvenOnFailedApply(t *testing.T) {
+	f := newFixture(t, cfg(outboundOnly, sub("source-1", "/s1", target(addrA))), map[string]string{"/s1": vienna}, addrA)
+	f.x.servers[addrA].FailNext("AddOutbound", status.Error(codes.Unknown, "rejected"))
+	if r := f.run(t); r.Failed != 1 {
+		t.Fatalf("failed = %d, want 1", r.Failed)
+	}
+	var seen, topo bool
+	if !f.s.Memory.View(state.Key("source-1", addrA), func(tg *state.Target) { seen, topo = tg.SyncSeen, tg.Topology != nil }) {
+		t.Fatal("no target state")
+	}
+	if !seen || topo {
+		t.Errorf("SyncSeen = %v, topology installed = %v; want true, false", seen, topo)
+	}
+}

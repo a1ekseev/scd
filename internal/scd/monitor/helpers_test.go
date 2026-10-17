@@ -147,7 +147,7 @@ func newEnv(t *testing.T, sub config.SubscriptionConfig, links ...string) *env {
 	}
 	e := &env{t: t, mem: state.New(), sub: sub, key: state.Key(sub.ID, sub.Target.Address), logs: logs}
 	e.xray, e.client = xrayfake.Start(t)
-	e.mem.Ensure(e.key)
+	e.mem.MarkSynced(e.key)
 	if len(links) > 0 {
 		m := manifest.Build(strings.Join(links, "\n"), "inline", normalize.Policy{}, time.Unix(0, 0))
 		if len(m.Entries) != len(links) {

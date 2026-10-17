@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/socks"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -214,5 +215,51 @@ func TestBalancerTickCancelled(t *testing.T) {
 	e.bg.Wait()
 	if b := e.balancer(); b.State != state.BalancerIdle || b.RemotePingState != state.RemotePingIdle {
 		t.Errorf("balancer = %+v", b)
+	}
+}
+
+// Review 6.6: the balancer selection tick creates the target before the
+// first sync (10 §6.3); the balancer monitor must still wait until a sync
+// reached the target (TS: the target exists only after
+// syncSubscriptionTarget) — no probe, no remote push.
+func TestBalancerTickWaitsForSyncAfterSelectionTick(t *testing.T) {
+	sub := newSub(withBalancer(200, "https://push.example.test/api/push/token", false))
+	sub.Target.BalancerSelection = config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: "*/15 * * * * *"}
+	e := newEnv(t, sub)
+	e.mem = state.New()
+	e.deps.Memory = e.mem
+	if err := balancer.Tick(t.Context(), balancer.Deps{Memory: e.mem, Log: discardLog(), Dial: e.xray.Dialer()}, sub); err != nil {
+		t.Fatal(err)
+	}
+	if !e.mem.View(e.key, func(*state.Target) {}) {
+		t.Fatal("selection tick did not create the target")
+	}
+
+	var probes atomic.Int32
+	var pushes []directCall
+	e.deps.Probe = func(context.Context, socks.Request) (socks.Response, error) {
+		probes.Add(1)
+		return socks.Response{StatusCode: 200, LatencyMs: 10}, nil
+	}
+	e.deps.Direct = recordDirect(&pushes, 200)
+	if err := BalancerTick(t.Context(), e.deps, sub); err != nil {
+		t.Fatal(err)
+	}
+	if err := TunnelTick(t.Context(), e.deps, sub); err != nil {
+		t.Fatal(err)
+	}
+	e.bg.Wait()
+	if probes.Load() != 0 || len(pushes) != 0 || e.balancer().State != state.BalancerIdle {
+		t.Fatalf("before sync: probes %d, pushes %v, balancer %+v", probes.Load(), pushes, e.balancer())
+	}
+
+	// A sync pass reached the target (even if its apply failed).
+	e.mem.MarkSynced(e.key)
+	if err := BalancerTick(t.Context(), e.deps, sub); err != nil {
+		t.Fatal(err)
+	}
+	e.bg.Wait()
+	if probes.Load() != 1 || len(pushes) != 1 || e.balancer().State != state.BalancerHealthy {
+		t.Fatalf("after sync: probes %d, pushes %v, balancer %+v", probes.Load(), pushes, e.balancer())
 	}
 }

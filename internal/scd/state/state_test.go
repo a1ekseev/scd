@@ -171,3 +171,37 @@ func TestTryStartSyncOverlap(t *testing.T) {
 		t.Fatal("TryStartSync after EndSync = false")
 	}
 }
+
+// SyncSeen means "a sync reached this target" (03 §1, review 6.6): Ensure
+// (e.g. by the balancer selection tick) does not set it; MarkSynced and
+// ReplaceTopology do.
+func TestMarkSynced(t *testing.T) {
+	m := New()
+	seen := func(key string) bool {
+		var s bool
+		m.View(key, func(tg *Target) { s = tg.SyncSeen })
+		return s
+	}
+	m.Ensure("a")
+	if seen("a") {
+		t.Error("Ensure set SyncSeen")
+	}
+	m.Update("a", func(tg *Target) { tg.BalancerSelection.State = SelectionOK })
+	m.MarkSynced("a")
+	if !seen("a") {
+		t.Error("MarkSynced did not set SyncSeen")
+	}
+	m.View("a", func(tg *Target) {
+		if tg.BalancerSelection.State != SelectionOK {
+			t.Error("MarkSynced reset the target")
+		}
+	})
+	m.MarkSynced("b") // creates
+	if !seen("b") {
+		t.Error("MarkSynced on a new key")
+	}
+	m.ReplaceTopology("c", topo("x"), nil)
+	if !seen("c") {
+		t.Error("ReplaceTopology did not set SyncSeen")
+	}
+}

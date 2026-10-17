@@ -476,8 +476,10 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, nil, nil))
 		}
 		m.View(state.Key(c.ID, addr), func(t *state.Target) {
-			v := balancerView(&t.Balancer)
-			bm = &v
+			if t.SyncSeen {
+				v := balancerView(&t.Balancer)
+				bm = &v
+			}
 			if bs.Enabled {
 				sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, &t.BalancerSelection, t.Tunnels))
 			}

@@ -230,7 +230,7 @@ func targetAttrs(event string, kind apply.Kind, c config.SubscriptionConfig) []s
 func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, plans []apply.Plan, skipped []vless.Skip) TargetReport {
 	t := c.Target
 	key := state.Key(c.ID, t.Address)
-	s.Memory.Ensure(key)
+	s.Memory.MarkSynced(key)
 
 	changed := false
 	s.Memory.View(key, func(tg *state.Target) {

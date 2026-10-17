@@ -277,7 +277,7 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 			}
 			if c.BalancerMonitor != nil {
 				key := state.Key("source-1", "127.0.0.1:8080")
-				env.deps.Memory.Ensure(key)
+				env.deps.Memory.MarkSynced(key)
 				env.deps.Memory.Update(key, func(st *state.Target) { st.Balancer = state.BalancerMonitor(*c.BalancerMonitor) })
 			}
 

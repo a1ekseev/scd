@@ -188,8 +188,8 @@ type tunnelRef struct {
 // TunnelTick probes every tunnel of the subscription's target (03 §4.1):
 // at most monitor.maxParallel probes at once, retries inside the worker
 // slot, a repair after the final failure and a rejoin after a success. It
-// is a no-op without a monitor request or before the first sync created the
-// target. A worker error (a repair that could not start) ends that worker;
+// is a no-op without a monitor request or before a sync reached the target
+// (SyncSeen). A worker error (a repair that could not start) ends that worker;
 // the others go on, and the tick returns a *TaskError.
 func TunnelTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	t := sub.Target
@@ -197,12 +197,17 @@ func TunnelTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) erro
 		return nil
 	}
 	key := state.Key(sub.ID, t.Address)
-	var refs []tunnelRef
-	if !d.Memory.View(key, func(tg *state.Target) {
+	var (
+		refs   []tunnelRef
+		synced bool
+	)
+	d.Memory.View(key, func(tg *state.Target) {
+		synced = tg.SyncSeen
 		for _, tn := range tg.Tunnels {
 			refs = append(refs, tunnelRef{tn.Mapping.BaseTunnelID, tn.Mapping.Listen, tn.Mapping.Port})
 		}
-	}) {
+	})
+	if !synced {
 		return nil
 	}
 	return runLimited(len(refs), t.Monitor.MaxParallel, func(i int) error {
