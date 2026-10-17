@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const scripts = [
-  "scd-cli.mjs", // 0.2
-  "sfc-refresh.mjs", // 0.3
-  "status-server.mjs", // 0.4
-  "gtl-payload.mjs", // 0.4
+  "scd-domain.mjs", // 0.2
+  "sfc.mjs", // 0.3
+  "gtl.mjs", // 0.3
+  "status.mjs", // 0.4
   "label-filter.mjs", // 0.6
 ];
 
