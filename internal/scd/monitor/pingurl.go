@@ -21,10 +21,7 @@ func RemotePingURL(raw, status, msg string, pingMs *int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	q, err := parseQuery(u.RawQuery)
-	if err != nil {
-		return "", err
-	}
+	q := parseQuery(u.RawQuery)
 	q = q.set("status", status)
 	q = q.set("msg", msg)
 	q = slices.DeleteFunc(q, func(p queryPair) bool { return p.key == "ping" })
@@ -67,25 +64,28 @@ type queryPair struct{ key, value string }
 type query []queryPair
 
 // parseQuery splits raw on "&" keeping order and duplicates; empty parts
-// are skipped and a part without "=" has an empty value.
-func parseQuery(raw string) (query, error) {
+// are skipped and a part without "=" has an empty value. A key or value
+// with a stray "%" (invalid escape) is kept literally, as WHATWG
+// URLSearchParams does, so it is re-encoded as "%25…".
+func parseQuery(raw string) query {
 	var q query
 	for part := range strings.SplitSeq(raw, "&") {
 		if part == "" {
 			continue
 		}
 		k, v, _ := strings.Cut(part, "=")
-		dk, err := url.QueryUnescape(k)
-		if err != nil {
-			return nil, fmt.Errorf("invalid remote ping URL query: %w", err)
-		}
-		dv, err := url.QueryUnescape(v)
-		if err != nil {
-			return nil, fmt.Errorf("invalid remote ping URL query: %w", err)
-		}
-		q = append(q, queryPair{dk, dv})
+		q = append(q, queryPair{unescapeLenient(k), unescapeLenient(v)})
 	}
-	return q, nil
+	return q
+}
+
+// unescapeLenient is url.QueryUnescape that keeps s literally ("+" still
+// meaning a space) when it has an invalid escape.
+func unescapeLenient(s string) string {
+	if d, err := url.QueryUnescape(s); err == nil {
+		return d
+	}
+	return strings.ReplaceAll(s, "+", " ")
 }
 
 // set is URLSearchParams.set: the first occurrence of key takes value in

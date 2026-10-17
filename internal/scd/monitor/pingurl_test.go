@@ -67,6 +67,14 @@ func TestRemotePingURL(t *testing.T) {
 			values: url.Values{"status": {"up"}, "x": {"1"}, "msg": {"OK"}, "ping": {"7"}},
 		},
 		{
+			name:   "keeps a stray percent literally",
+			raw:    "https://h.test/p?a=%zz&b%zz=1+2%",
+			status: "up", msg: "OK",
+			base:   "https://h.test/p",
+			keys:   []string{"a", "b%zz", "status", "msg"},
+			values: url.Values{"a": {"%zz"}, "b%zz": {"1 2%"}, "status": {"up"}, "msg": {"OK"}},
+		},
+		{
 			name:   "keeps other params and the fragment",
 			raw:    "https://h.test/p?q=a+b&r=%2F&&flag#frag",
 			status: "up", msg: "OK",
@@ -117,7 +125,7 @@ func TestRemotePingURL(t *testing.T) {
 }
 
 func TestRemotePingURLInvalid(t *testing.T) {
-	for _, raw := range []string{"", "not a url", "/relative?x=1", "https://h.test/p?a=%zz", "https://SECRET/%zz"} {
+	for _, raw := range []string{"", "not a url", "/relative?x=1", "https://SECRET/%zz"} {
 		got, err := RemotePingURL(raw, "up", "OK", nil)
 		if err == nil {
 			t.Errorf("RemotePingURL(%q) = %q, want error", raw, got)
