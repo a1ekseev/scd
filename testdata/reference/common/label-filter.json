@@ -1,0 +1,639 @@
+[
+  {
+    "label": "🇩🇪DE-1-X",
+    "source": "remnawave",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇪DE-2-X",
+    "source": "remnawave",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇱NL-1-X",
+    "source": "remnawave",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇱NL-2-X",
+    "source": "remnawave",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇱 Netherlands, Amsterdam",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇬🇷 Greece, Athens",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇨🇴 Colombia, Bogotá",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇧🇪 Belgium, Brussels",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇷🇴 Romania, Bucharest",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇫🇷 France, Paris",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇨🇿 Czech Republic, Prague",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇪 Germany, Frankfurt",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇦🇷 Argentina, Buenos Aires",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇫🇮 Finland, Oulu",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇭🇰 Hong Kong, Hong Kong",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇭🇺 Hungary, Budapest",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇹🇷 Turkey, Istanbul",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇿🇦 South Africa, Johannesburg",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇯🇵 Japan, Tokyo",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇰🇷 South Korea, Seoul",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇰🇿 Kazakhstan, Almaty",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇵🇪 Peru, Lima",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇱🇹 Lithuania, Vilnius",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇪🇸 Spain, Madrid",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇮🇹 Italy, Milan",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, New York",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇴 Norway, Oslo",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇵🇱 Poland, Warsaw",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇲🇽 Mexico, Queretaro",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇧🇷 Brazil, Sao Paulo",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇸🇪 Sweden, Stockholm",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇸🇬 Singapore, Singapore",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇷🇺 Russia, Moscow",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇦🇺 Australia, Sydney",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇮🇱 Israel, Tel Aviv",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇦 Ukraine, Kyiv",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇬🇧 United Kingdom, London",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, Los Angeles",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇨🇦 Canada, Toronto",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇨🇭 Switzerland, Zurich",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇦🇪 UAE, Fujairah",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇦🇹 Austria, Vienna",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇧🇬 Bulgaria, Sofia",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇮🇪 Ireland, Dublin",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, Miami",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇲🇾 Malaysia, Kuala Lumpur",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, Houston",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, San-Jose",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇪 Germany, Berlin",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇸🇰 Slovakia, Bratislava",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇭🇷 Croatia, Zagreb",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇵🇹 Portugal, Lisbon",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇰 Denmark, Copenhagen",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇬 Nigeria, Lagos",
+    "source": "provider2",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇪DE-1-Extra",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇳🇱NL-2-X WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇩🇪 WhiteList Extra",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "extrawhitelist",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "🇷🇺 Москва, Extra, WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "Extra\nWhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "WhiteList\nExtra",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Extra\nfoo",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": " ",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Extra",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "EXTRA",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "extra",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "ExTrA",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Whitelist",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "WHITELIST",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "whitelist",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Extra WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "WhiteList Extra",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "EXTRA WHITELIST",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "extra whitelist",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "Extra-Whitelist",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "🇩🇪 Germany, Frankfurt",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇺🇸 United States, San-Jose Extra",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇯🇵 Tokyo WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇯🇵",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "🇬🇧🇬🇧 London",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Россия, Москва",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Россия, Москва Extra",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Россия, Москва WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Москва Extra WhiteList",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": true
+  },
+  {
+    "label": "Extras",
+    "source": "edge",
+    "en": false,
+    "extra": true,
+    "extraWhitelist": false
+  },
+  {
+    "label": "NotWhiteListed",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "Ext ra",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "White List",
+    "source": "edge",
+    "en": true,
+    "extra": false,
+    "extraWhitelist": false
+  },
+  {
+    "label": "foo\nbar",
+    "source": "edge",
+    "en": false,
+    "extra": false,
+    "extraWhitelist": false
+  }
+]

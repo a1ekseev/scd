@@ -38,6 +38,7 @@ Go is not required to reproduce them. Captured on the Node version recorded in
 | `scd/status/<name>/screenshot-{1280,390}.png` | headless Chromium screenshots of `index.html`, exactly `<w>×2400` (reference only) | 0.4 |
 | `scd/status/runtime-state/cases.json`, `scd/status/runtime-state/<case>.json` | `buildCurrentRuntimeStateSnapshot` with a fake Xray client (03 §10.5 items 1–6); inputs in `cases.json` | 0.4 |
 | `scd/corpus/d26-links.txt`, `scd/corpus/d26-expect.json`, `scd/corpus/d26-keys.md` | D26 matrix corpus: 107 VLESS lines (one per line, no comments) and the expected Go outcome per line; keys from the Xray 26.10.10 binary. **Not** taken from TS (section «Корпус D26») | 0.5 |
+| `common/label-filter.json` | `[{label, source, en, extra, extraWhitelist}]`: decisions of the three production TS label regexes (D29) per label; `source` = `remnawave` (4) / `provider2` (50) / `edge` (synthetic) | 0.6 |
 
 ### scd domain (task 0.2)
 
@@ -177,3 +178,20 @@ Rules: the corpus is policy-invariant (same result with `Policy{}` and `Policy{A
 except `RS1`/`RS2` (lines 83–84, byte-for-byte line 1 of `docker/fixtures/real-shapes/remnawave.txt` and
 `provider2.txt`, hosts `*.example.com`) and the Remnawave stub `0.0.0.0:1` (line 82). Counts: 73 `entry`, 34 `skip`
 (2 `parse`, 16 `scd`, 16 `xray`).
+
+### Корпус меток (task 0.6)
+
+`common/label-filter.json` records what the owner's TS regexes decide on each label (D29, 12 §6.3). Evaluated by
+`tools/golden/label-filter.mjs` (part of `run-all.mjs`) via `parseRegexLiteral` from `sfc/dist/config/load-config.js`
+(`new RegExp(pattern, flags)`), `regex.test(label)` with `lastIndex = 0`:
+
+- `en` = `/^(?!.*Extra)(?!.*WhiteList).*$/i`, `extra` = `/^(?=.*Extra)(?!.*WhiteList).*$/i`, `extraWhitelist` = `/(?=.*Extra)(?=.*WhiteList)/i`.
+- `source`: `remnawave` (4 labels) and `provider2` (50) are extracted by the script from `docker/fixtures/real-shapes/{remnawave,provider2}.txt`
+  (fragment after the first `#`, `decodeURIComponent`); `edge` = synthetic labels (case variants, both words in either order,
+  emoji flags, Cyrillic, empty string, the boundary cases of 12 §6.3, labels with a real `\n`). 91 labels in total, 54 of them real.
+- Only the regex decisions are recorded; the meaning of a label (e.g. the `-X` suffix) is not interpreted (D33).
+- The three filters are mutually exclusive by construction, so only four true/false combinations exist (en only, extra only,
+  extraWhitelist only, none); all four are present.
+- The only known divergence from Go (RE2 `labelIncludeRegex`/`labelExcludeRegex`, D29): `Extra\nWhiteList` (TS: `extraWhitelist == false`,
+  because JS `.` does not match `\n`; Go gives `true`). It goes to `allowedDiffs` of `TestLabelFilterRealShapeEquivalence` (task 4.1)
+  with the reason "JS `.` does not match `\n`". `WhiteList\nExtra` and `Extra\nfoo` show the same TS behaviour for the same reason.
