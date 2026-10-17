@@ -20,6 +20,8 @@
 
 ### Task 1.1: Модуль, корневая команда, архитектурный тест, lint, CI-джоба Go
 
+> **Поправка D32:** создать скелет `docs/CONFIG-MIGRATION.md` (разделы из D32, пока пустые) — последующие задачи дописывают его.
+
 **Read:** `07` D1, D10; `06` §2 (cobra), §11 (CI, `.golangci.yml`), §12; `.github/workflows/docker.yml`; `.gitignore`.
 
 **Files:**
