@@ -34,3 +34,22 @@ func TestRedactInputIn(t *testing.T) {
 		t.Errorf("RedactInputIn with empty input = %q", got)
 	}
 }
+
+func TestRedactURL(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"port kept as written", "https://h:8443/x?t=1", "https://h:8443/<redacted>"},
+		{"default port kept", "http://h.example.test:80/a", "http://h.example.test:80/<redacted>"},
+		{"any scheme", "socks5://127.0.0.1:1080/p", "socks5://127.0.0.1:1080/<redacted>"},
+		{"userinfo dropped", "https://u:p@h.example.test/a", "https://h.example.test/<redacted>"},
+		{"not a url", "not a url", "<redacted>"},
+		{"no host", "mailto:x@example.test", "<redacted>"},
+		{"unparsable", "https://h.example.test/%zz", "<redacted>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RedactURL(tt.in); got != tt.want {
+				t.Errorf("RedactURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
