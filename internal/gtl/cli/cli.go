@@ -17,6 +17,7 @@ func New() *cobra.Command {
 		Short: "Gen Test Load",
 	}
 	cmd.AddCommand(
+		serveCommand(),
 		configCommand("validate-config", "Validate config file", func(cmd *cobra.Command, _ config.Config) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Config is valid")
 			return err
