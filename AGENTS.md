@@ -1,34 +1,89 @@
-# blanc: Agent Context
+# scd: Agent Context
 
 ## Repository Shape
-- This repository contains independent sibling services:
-  - `scd`: Subscription Control Daemon, Xray API manager and status dashboard.
-  - `sfc`: Subscription Filter Control, subscription filter and public base64 payload server.
-  - `gtl`: Gen Test Load, deterministic HTTP load payload generator.
-- Service-specific agent notes:
-  - `scd/AGENTS.md`
-  - `sfc/AGENTS.md`
-  - `gtl/AGENTS.md`
+- One Go module, `github.com/a1ekseev/scd`, builds one binary, `scd`, which runs three services:
+  - `scd`: Subscription Control Daemon. Manages Xray through the gRPC API and serves the status dashboard. Its commands are top level: `scd sync|daemon|generate|validate-config|print-config`.
+  - `scd sfc`: Subscription Filter Control. Filters subscriptions and serves public base64 payloads: `scd sfc serve|refresh|validate-config|print-config`.
+  - `scd gtl`: Gen Test Load. A deterministic HTTP load payload generator: `scd gtl serve|validate-config|print-config`.
+- Layout:
+  - `cmd/scd/`: entry point. `main.version` is set by ldflags.
+  - `internal/cli/`: root cobra command and `--version` (root only). Mounts the three services.
+  - `internal/common/`: shared code only. `buildinfo cliutil configload cron cronloop httpserve inputsrc jsonout labelfilter listenaddr logging regexlit schema sigctx subscription vless`.
+  - `internal/scd/`, `internal/sfc/`, `internal/gtl/`: the services (`config/`, `cli/`, …).
+  - `internal/archtest/`: import-boundary test.
+  - `testdata/reference/`: frozen reference outputs of the previous implementation, used by Go tests (D20).
+  - `docker/`: example and real-shape configs, fixtures, test Xray config.
+  - `scripts/`: CI checks and compose smoke.
+  - `docs/`: `CONFIG-MIGRATION.md`, the owner's guide for rewriting old configs, and `go-migration/`, the historical migration specs and plan.
+- User docs: `README.md`. Config migration guide: `docs/CONFIG-MIGRATION.md`.
 
 ## Common Rules
-- Each service is a standalone Node `24.14.0+` / TypeScript package with its own `package.json`, tests, and Dockerfile.
-- Do not introduce cross-service shared libraries unless explicitly requested.
-- Run service-local checks from the service directory:
-  - `npm run typecheck`
-  - `npm test`
-  - `npm run build`
-  - `node ./dist/cli.js validate-config --config ./config.yml`
-- Root `docker-compose.yml` is used for local runtime smoke checks.
-- `**/config.yml` is ignored by git. Local and `docker/<service>/config.yml` files can exist for runtime testing, but agents must not assume they are tracked artifacts.
-- Before Docker smoke checks, verify that the relevant ignored `docker/<service>/config.yml` exists and matches the service config contract.
+- Go `1.27` (`go 1.27.0`, `toolchain go1.27.2`). Use the latest dependency versions, except xray-core.
+- `internal/scd`, `internal/sfc` and `internal/gtl` never import each other, and `internal/common` imports no service. `internal/archtest` enforces this. Shared code goes only in `internal/common`.
+- xray-core is pinned by commit: `v1.260327.1-0.20261010092107-701af60772cd` = Xray v26.10.10. Never `@latest`. Update the go.mod pin, the compose image `ghcr.io/xtls/xray-core:<ver>` and `.xray-version` **together**; `scripts/check-xray-version.sh` checks this.
+- Behaviour follows Go conventions (D9): Go error texts, `log/slog` to stderr, `regexp` (RE2), `net/url`, stdlib base64, `strings.Compare` ordering. Kept as a contract: log `event` names and fields, the status JSON API (additive only, `version: 1`), the dashboard look (visual regression), and Xray API behaviour (RPC set and order, fixed resources, rollback, error texts).
+- Lint: `golangci-lint` v2.15.0 with `.golangci.yml` (gofumpt and goimports formatters, revive). Every package and exported identifier needs a doc comment. Do not add `//nolint` without a reason.
+- Tests use stdlib `testing`, table-driven where it fits, with real in-process servers (`httptest`, bufconn fake Xray `internal/scd/xrayapi/xrayfake`) instead of mocks.
+- A change to config keys, defaults or config-visible behaviour also updates `docs/CONFIG-MIGRATION.md` in the same commit (D32). `internal/cli/configdoc_test.go` checks that every key that differs from the old schema is mentioned there.
+- `**/config.yml` is ignored by git. Local `docker/<svc>/config.yml` files can hold the owner's real configs: never create, modify or assume them. Tracked configs are `docker/<svc>/config.example.yml`, `config.real-shape.yml` (old form, for the migration guide) and `config.real-shape.go.yml` (Go form).
+- Never commit real subscription URLs, hosts, UUIDs, keys, paths or sfc output ids. Use the sanitized fixtures in `docker/fixtures/` (`real-shapes/` included).
+- The tree is Go-only (`scripts/check-no-node.sh`); the only `.js` file is the browser script `internal/scd/status/web/dashboard.js` of the dashboard.
+
+## Checks
+```bash
+go vet ./... && go vet -tags 'xraylive visual' ./...
+go test -race ./...
+golangci-lint fmt && golangci-lint run
+go build -o bin/scd ./cmd/scd            # always -o bin/scd
+./bin/scd validate-config --config docker/scd/config.example.yml
+./bin/scd sfc validate-config --config docker/sfc/config.example.yml
+./bin/scd gtl validate-config --config docker/gtl/config.example.yml
+bash scripts/check-xray-version.sh
+bash scripts/check-no-node.sh
+SCD_XRAY_BIN=/path/to/xray-26.10.10 go test -tags xraylive -count=1 ./internal/scd/livetest/...
+SCD_CHROME=/path/to/headless_shell go test -tags visual -count=1 ./internal/scd/status/...
+bash scripts/compose-smoke.sh            # Docker smoke on the example configs
+```
+The live and visual tests skip without their environment variables.
 
 ## CI Contract
-- `.github/workflows/docker.yml` verifies `scd`, `sfc`, and `gtl` on pull requests and pushes to `master`.
-- Release tags `vX.Y.Z` publish Docker images for all three services.
+- `.github/workflows/docker.yml`. On pull requests and pushes to `master`, job `verify` runs: `go mod verify`, the Xray pin check, the Go-only tree check, `go vet`, golangci-lint, govulncheck, `go test -race`, live Xray tests, dashboard visual regression, build, and example config validation. Job `smoke` runs the compose smoke.
+- Release tags `vX.Y.Z` publish one multi-arch image (amd64 and arm64) with tags `latest` and `X.Y.Z`.
 
-## Docker Images
-- `scd`: `ghcr.io/a1ekseev/scd`
-- `sfc`: `ghcr.io/a1ekseev/sfc`
-- `gtl`: `ghcr.io/a1ekseev/gtl`
+## Docker Image
+- `ghcr.io/a1ekseev/scd` only. The `sfc` and `gtl` images are no longer published.
+- Distroless static image. Default `CMD ["scd","daemon","--config","/app/config/config.yml"]`. Compose selects sfc and gtl with `command: ["scd","sfc","serve",…]` and `["scd","gtl","serve",…]`.
 
-Release tags are shared across services.
+## scd Notes
+- Pipeline:
+  1. `syncer`: for each enabled subscription, load input (`common/inputsrc`: file, http(s) or stdin; `fetchUserAgent`; redacted `fetchHeaders`).
+  2. `common/subscription` + `common/vless`: split lines and parse.
+  3. `normalize`: scope (D26), allowInsecure policy, flow, ML-KEM key checks, tags.
+  4. `manifest`: build, then filter (country, then label); `outbound` builds the v26 JSON, and `conf.Build` validates it.
+  5. `topology`: tunnels, `in-`/`route-` tags, sequential ports.
+  6. `resources`: SOCKS inbounds and routing rules.
+  7. `apply`: outbound → inbound → routing, full replace, fixed resources kept, outbound-only rollback.
+  8. `state`: memory-only hashes, topology and monitor state.
+- `xrayapi` is the only package that talks gRPC to Xray. Mutations: Handler List/Add/Remove Outbound/Inbound and Routing ListRule/AddRule/RemoveRule. Read-only: `GetBalancerInfo` and `GetOutboundStatus`.
+- Sync, repair and rejoin share the per-target mutex in `state`. Monitors and balancer selection read without it.
+- `daemon` runs `common/cronloop` loops: sync; per subscription the tunnel monitor, balancer monitor and balancer selection; per remote instance a status poll. It also runs the status HTTP server. On SIGINT/SIGTERM, loops stop at once, in-flight Xray mutations finish (`context.WithoutCancel`), then pending remote pings, then the HTTP server. There is no hot reload.
+- `monitor`: tunnel probes through the generated SOCKS inbounds (`socks`). Repair recreates the outbound without the observatory prefix; rejoin restores it. `balancerMonitor` is observe-only, with an optional remote push. Both run only after a sync reached the target.
+- `balancer`: read-only balancer selection view (D22). Never calls `OverrideBalancerTarget`.
+- `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted unless `includeSecrets`). `aggregate` holds the remote snapshots.
+- `country`: flag emoji → ISO2. Labels are not interpreted beyond country and city (D33).
+- Known limitation kept on purpose (O5): a non-fixed static routing rule without `ruleTag` makes routing apply fail with `app/router: empty tag name!`.
+
+## sfc Notes
+- No Xray. Per subscription: fetch (with fetchUserAgent and fetchHeaders) → parse with the shared `common/vless` (same parameter list as scd, no applicability checks) → per-output label filter (`common/labelfilter`) → keep raw lines in original order → base64.
+- Outputs are served only from memory at `<pathRoute>/<output id>`; output ids are globally unique. `GET /healthz` is also served. Profile headers are sent only on a `userAgent` prefix match.
+- Failure rules:
+  - A failed download falls back to the disk source cache `<config dir>/.sfc-cache/<id>.subscription`.
+  - With no cache, the previous payloads are kept.
+  - An empty filtered output fails that output and keeps its previous payload.
+  - No payload yet → `502`.
+- `serve`: one initial refresh before listening, then `refreshSchedule`. Overruns are skipped.
+
+## gtl Notes
+- `GET /healthz`, `GET <load.path>/<sizeKb>` → always `200` for a valid size, `application/octet-stream`, `content-length = sizeKb*1024`, `x-gtl-*` headers. Bad size or a size above `maxSizeKb` → `400`; other paths → `404`; non-GET → `405`.
+- Payload (`internal/gtl/payload`): 64 KiB chunks, each from xorshift32 (`<<13, >>17, <<5`, low byte), reseeded at every chunk start with `0x9e3779b9 ^ uint32(offset)`. The golden SHA-256 vectors live in `testdata/reference/gtl/payload-vectors.json`.
+- `load.path` is required: starts with `/`, is not `/`, has no trailing `/`, query or hash. Unknown config keys are errors.
