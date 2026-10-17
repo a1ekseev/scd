@@ -94,6 +94,8 @@ func (p *fakeProxy) serve(c net.Conn) {
 	switch head[3] {
 	case 1:
 		rest = 6
+	case 4:
+		rest = 18
 	case 3:
 		l := make([]byte, 1)
 		if _, err := io.ReadFull(c, l); err != nil {
@@ -353,15 +355,39 @@ func TestIPv4UsesATYP1DomainUsesATYP3(t *testing.T) {
 	if !bytes.Equal(p.connectBytes(), want) {
 		t.Fatalf("connect = %v want %v", p.connectBytes(), want)
 	}
-	// IPv6 is sent as a domain including brackets (TS behaviour, 03 §5.1 item 4).
+	// IPv6 literals go out as ATYP 4 (RFC 1928, D9); brackets stay in Host only.
 	p = newFakeProxy(t, ok)
-	if _, err := Do(context.Background(), req(p, "http://[::1]:81/", "GET", time.Second)); err != nil {
+	if _, err := Do(context.Background(), req(p, "http://[::1]:8080/x", "GET", time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	want = append([]byte{5, 1, 0, 3, 5}, []byte("[::1]")...)
-	want = append(want, 0, 81)
+	want = append([]byte{5, 1, 0, 4}, make([]byte, 15)...)
+	want = append(want, 1, 0x1f, 0x90)
 	if !bytes.Equal(p.connectBytes(), want) {
 		t.Fatalf("connect = %v want %v", p.connectBytes(), want)
+	}
+}
+
+func TestIPv6HostHeaderKeepsBrackets(t *testing.T) {
+	got := make(chan []byte, 1)
+	p := newFakeProxy(t, func(p *fakeProxy) {
+		p.after = func(c net.Conn) {
+			got <- readHead(c)
+			_, _ = c.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		}
+	})
+	if _, err := Do(context.Background(), req(p, "http://[::1]:8080/x", "GET", time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if s := string(<-got); !strings.Contains(s, "Host: [::1]:8080\r\n") {
+		t.Fatalf("request = %q", s)
+	}
+}
+
+func TestOverlongDomainRejected(t *testing.T) {
+	long := strings.Repeat("a", 256) + ".test"
+	_, err := Do(context.Background(), Request{ProxyHost: "127.0.0.1", ProxyPort: 1, URL: "http://" + long + "/", Method: "GET", Timeout: time.Second})
+	if err == nil || !strings.HasPrefix(err.Error(), "invalid URL") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
