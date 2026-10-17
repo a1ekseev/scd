@@ -1,0 +1,25 @@
+{
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "ruleTag": "x-balancer",
+        "inboundTag": [
+          "socks-proxy"
+        ],
+        "balancerTag": "x-balancer"
+      }
+    ],
+    "balancers": [
+      {
+        "tag": "x-balancer",
+        "selector": [
+          "x-observe-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ]
+  }
+}
