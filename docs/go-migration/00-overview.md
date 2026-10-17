@@ -59,7 +59,7 @@ Go 1.27.2 · cobra · свой cron-парсер (семантика cron-parser
 
 **Этап 6. scd runtime**: sync, daemon, monitoring/repair/rejoin, SOCKS5-проба, remote push, status-сервер + дашборд (visual regression).
 
-**Этап 7. Переключение.** Единый Dockerfile, compose, CI/publish, удаление TS-пакетов, обновление `AGENTS.md` (корневой + сервисные: один Go-модуль, разрешённые `internal/common`, новые команды проверки), README.
+**Этап 7. Переключение и полное удаление TypeScript (D20).** Единый Dockerfile, compose, CI/publish, удаление TS-пакетов, обновление `AGENTS.md` (корневой + сервисные: один Go-модуль, разрешённые `internal/common`, новые команды проверки), README.
 
 Критерий готовности каждого этапа: перенесены все тест-кейсы из инвентаря соответствующего документа + golden из этапа 0, `golangci-lint` и `go test -race` зелёные.
 
