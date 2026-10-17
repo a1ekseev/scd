@@ -24,13 +24,16 @@ type LoadedSubscription struct {
 // FailedSubscription is a subscription whose input could not be loaded.
 type FailedSubscription struct {
 	Config config.SubscriptionConfig
-	// Error is the loader's error text (it never holds fetchHeaders values).
+	// Error is the loader's error text. It never holds fetchHeaders values but
+	// it does hold the input URL; redact it with inputsrc.RedactInputIn before
+	// logging or printing (D33).
 	Error string
 }
 
 // LoadSubscriptions loads the enabled subscriptions one after another,
 // ordered by id and then input (strings.Compare, D23). A failed load does not
-// stop the others. load is inputsrc.Load in production.
+// stop the others; a cancelled ctx does: the remaining subscriptions are
+// neither loaded nor reported. load is inputsrc.Load in production.
 func LoadSubscriptions(
 	ctx context.Context,
 	subs []config.SubscriptionConfig,
@@ -50,6 +53,9 @@ func LoadSubscriptions(
 		failed []FailedSubscription
 	)
 	for _, s := range enabled {
+		if ctx.Err() != nil {
+			break
+		}
 		l, err := load(ctx, s.Input, inputsrc.Options{
 			Format:       s.Format,
 			FetchTimeout: time.Duration(s.FetchTimeoutMs) * time.Millisecond,
