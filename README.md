@@ -467,8 +467,9 @@ server:
 logging: {level: info, format: json}
 ```
 
-- `pathRoute` is required. It starts with `/`, is not `/`, and does not end
-  with `/`. Output `id`s are unique across all subscriptions. Each output
+- `pathRoute` is required. It starts with `/`, is not `/`, does not end
+  with `/`, and is a clean URL path: no empty, `.` or `..` segments and no
+  characters that need escaping (spaces, `%`, `?`, non-ASCII). Output `id`s are unique across all subscriptions. Each output
   needs `labelIncludeRegex` or `labelExcludeRegex`. At least one enabled
   subscription with an enabled output is required. Unknown keys are rejected
   in every object, as in scd and gtl.

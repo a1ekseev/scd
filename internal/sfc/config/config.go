@@ -3,11 +3,13 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
 	"github.com/a1ekseev/scd/internal/common/configload"
 	"github.com/a1ekseev/scd/internal/common/cron"
+	"github.com/a1ekseev/scd/internal/common/httpserve"
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/labelfilter"
@@ -196,6 +198,25 @@ func checkPathRoute(n *schema.Node, route string) {
 	if len(route) > 1 && strings.HasSuffix(route, "/") {
 		n.Addf("pathRoute", "must not end with /")
 	}
+	// Requests are matched on their escaped, cleaned path, so any other
+	// route could never match (final review M7).
+	if strings.HasPrefix(route, "/") && route != "/" && !strings.HasSuffix(route, "/") && !isCleanURLPath(route) {
+		n.Addf("pathRoute", "must be a clean URL path (no empty, . or .. segments, no characters that need escaping)")
+	}
+}
+
+// isCleanURLPath reports whether route is unchanged by httpserve.CleanPath
+// and by url.PathEscape of each segment.
+func isCleanURLPath(route string) bool {
+	if httpserve.CleanPath(route) != route {
+		return false
+	}
+	for seg := range strings.SplitSeq(route[1:], "/") {
+		if url.PathEscape(seg) != seg {
+			return false
+		}
+	}
+	return true
 }
 
 func parseOutput(n *schema.Node, seen *ids) Output {

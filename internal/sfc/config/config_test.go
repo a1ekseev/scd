@@ -187,6 +187,13 @@ func TestPathRouteRules(t *testing.T) {
 	}
 	mustFail(t, replace(t, "pathRoute: /s", "pathRoute: /"), "subscriptions.0.pathRoute: must not equal /")
 	mustFail(t, replace(t, "pathRoute: /s", "pathRoute: ' '"), "subscriptions.0.pathRoute: must not be empty")
+	// Final review M7: requests are matched on the escaped, cleaned path.
+	for _, bad := range []string{"'/my sub'", "/a/../b", "/a/./b", "//a", "/a//b", "/a%20b", "/s?x", "/ü"} {
+		mustFail(t, replace(t, "pathRoute: /s", "pathRoute: "+bad), "subscriptions.0.pathRoute: must be a clean URL path")
+	}
+	for _, good := range []string{"/s", "/a/b-c_d.e~f", "/s/v1"} {
+		mustLoad(t, replace(t, "pathRoute: /s", "pathRoute: "+good))
+	}
 }
 
 func TestUserAgentAndIntervalBounds(t *testing.T) {
