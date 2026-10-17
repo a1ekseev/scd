@@ -34,17 +34,6 @@ func serveCommand() *cobra.Command {
 	})
 }
 
-// RunServe loads the config at cfgPath, refreshes the outputs once, then
-// serves them over HTTP and refreshes them on the configured schedule until
-// ctx is done, logging to stderr. It returns nil after a clean stop.
-func RunServe(ctx context.Context, cfgPath string, stderr io.Writer) error {
-	l, err := config.Load(cfgPath)
-	if err != nil {
-		return err
-	}
-	return serve(ctx, l, stderr)
-}
-
 // serve runs the initial refresh before the HTTP server listens, so outputs
 // are ready once it accepts requests (a bind error is reported only after
 // it). The cron loop then refreshes from the first scheduled slot; its

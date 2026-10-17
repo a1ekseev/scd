@@ -3,6 +3,7 @@ package syncer
 import (
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/apply"
 )
@@ -39,14 +40,9 @@ type Report struct {
 	Skipped []vless.Skip `json:"skipped"`
 }
 
-// timestamp formats t like JavaScript's Date.toISOString (03 §1).
-func timestamp(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z")
-}
-
 // emptyReport is the report of an overlapping run (03 §2.4).
 func emptyReport(now time.Time) Report {
-	return Report{AppliedAt: timestamp(now), Targets: []TargetReport{}, Skipped: []vless.Skip{}}
+	return Report{AppliedAt: jsonout.Timestamp(now), Targets: []TargetReport{}, Skipped: []vless.Skip{}}
 }
 
 // newTargetReport builds a target report; nil lists become [].

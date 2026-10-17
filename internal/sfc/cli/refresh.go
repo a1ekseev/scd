@@ -24,18 +24,6 @@ func refreshCommand() *cobra.Command {
 	})
 }
 
-// RunRefresh loads the config at cfgPath, refreshes every enabled output once
-// (reading and writing the source cache) and prints the report JSON to
-// stdout; logs go to stderr. It returns cliutil.ErrReportFailed when an
-// output failed.
-func RunRefresh(ctx context.Context, cfgPath string, stdout, stderr io.Writer) error {
-	l, err := config.Load(cfgPath)
-	if err != nil {
-		return err
-	}
-	return runRefresh(ctx, l, stdout, stderr)
-}
-
 func runRefresh(ctx context.Context, l config.Loaded, stdout, stderr io.Writer) error {
 	log, err := logging.New(stderr, l.Config.Logging.Level, l.Config.Logging.Format)
 	if err != nil {

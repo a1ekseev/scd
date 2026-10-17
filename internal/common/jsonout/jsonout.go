@@ -1,12 +1,22 @@
 // Package jsonout encodes JSON the way every service prints it: two-space
-// indent and no HTML escaping.
+// indent, no HTML escaping and JavaScript-style timestamps.
 package jsonout
 
 import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"time"
 )
+
+// TimestampLayout is the JSON timestamp format of every report and API
+// (JavaScript's Date.toISOString: UTC with milliseconds).
+const TimestampLayout = "2006-01-02T15:04:05.000Z"
+
+// Timestamp formats t in UTC with TimestampLayout.
+func Timestamp(t time.Time) string {
+	return t.UTC().Format(TimestampLayout)
+}
 
 // Write encodes v to w with a two-space indent, without HTML escaping, and
 // with a trailing newline.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/scd/resources"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -84,6 +85,6 @@ func Routing(ctx context.Context, c xrayapi.RoutingAPI, fixed []string, tunnels 
 	}
 
 	r.DurationMs = m.now().Sub(startedAt).Milliseconds()
-	r.AppliedAt = timestamp(m.now())
+	r.AppliedAt = jsonout.Timestamp(m.now())
 	return r, nil
 }

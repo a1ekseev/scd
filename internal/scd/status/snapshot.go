@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -23,11 +24,8 @@ import (
 // SnapshotVersion is the version of InstanceSnapshot (D3: stays 1).
 const SnapshotVersion = 1
 
-// timeLayout is the JSON timestamp format (03 §1).
-const timeLayout = "2006-01-02T15:04:05.000Z"
-
 // formatTime formats t as a JSON timestamp in UTC.
-func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+func formatTime(t time.Time) string { return jsonout.Timestamp(t) }
 
 // formatOptTime formats t, "" when nil.
 func formatOptTime(t *time.Time) string {

@@ -25,16 +25,6 @@ func serveCommand() *cobra.Command {
 	})
 }
 
-// RunServe loads the config at cfgPath and serves until ctx is done, logging
-// to stderr. It returns nil after a clean stop.
-func RunServe(ctx context.Context, cfgPath string, stderr io.Writer) error {
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		return err
-	}
-	return serve(ctx, cfg, stderr)
-}
-
 func serve(ctx context.Context, cfg config.Config, stderr io.Writer) error {
 	log, err := logging.New(stderr, cfg.Logging.Level, cfg.Logging.Format)
 	if err != nil {

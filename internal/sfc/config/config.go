@@ -105,11 +105,11 @@ func Load(path string) (Loaded, error) {
 	root.Strict("subscriptions", "runtime", "server", "logging")
 	required := schema.StrOpt{Required: true, Trim: true, MinLen: 1}
 
-	ids := ids{subs: map[string]bool{}, outputs: map[string]bool{}}
+	seen := ids{subs: map[string]bool{}, outputs: map[string]bool{}}
 	nodes := root.Array("subscriptions", true, 1)
 	for _, sn := range nodes {
 		if sn != nil {
-			cfg.Subscriptions = append(cfg.Subscriptions, parseSubscription(sn, doc.Dir, &ids))
+			cfg.Subscriptions = append(cfg.Subscriptions, parseSubscription(sn, doc.Dir, &seen))
 		}
 	}
 	checkEnabled(root, cfg.Subscriptions)

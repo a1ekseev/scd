@@ -7,6 +7,7 @@ package apply
 import (
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/vless"
 )
 
@@ -73,11 +74,6 @@ func (m Meta) now() time.Time {
 	return m.Now()
 }
 
-// timestamp formats t like JavaScript's Date.toISOString.
-func timestamp(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z")
-}
-
 // newReport returns an empty report of kind started at startedAt, with
 // non-nil lists so that they serialize as [].
 func newReport(kind Kind, m Meta, startedAt time.Time, skipped []vless.Skip) Report {
@@ -89,7 +85,7 @@ func newReport(kind Kind, m Meta, startedAt time.Time, skipped []vless.Skip) Rep
 		SourceID:       m.SourceID,
 		SubscriptionID: m.SubscriptionID,
 		TargetAddress:  m.TargetAddress,
-		AppliedAt:      timestamp(startedAt),
+		AppliedAt:      jsonout.Timestamp(startedAt),
 		DeletedIDs:     []string{},
 		AppliedIDs:     []string{},
 		Items:          []Item{},

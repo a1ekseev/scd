@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/subscription"
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/country"
@@ -109,7 +110,7 @@ func Build(text, sourceFile string, p normalize.Policy, now time.Time) Manifest 
 	lines := subscription.ScanLines(text)
 	m := Manifest{
 		Version:     Version,
-		GeneratedAt: now.UTC().Format("2006-01-02T15:04:05.000Z"),
+		GeneratedAt: jsonout.Timestamp(now),
 		SourceFile:  sourceFile,
 		Entries:     []Entry{},
 		Skipped:     []vless.Skip{},

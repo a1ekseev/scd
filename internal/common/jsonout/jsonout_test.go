@@ -3,6 +3,7 @@ package jsonout
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 func TestWriteNoHTMLEscape(t *testing.T) {
@@ -28,5 +29,12 @@ func TestMarshalNoTrailingNewline(t *testing.T) {
 func TestMarshalError(t *testing.T) {
 	if _, err := Marshal(make(chan int)); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestTimestamp(t *testing.T) {
+	loc := time.FixedZone("x", 3*3600)
+	if got := Timestamp(time.Date(2026, 10, 17, 15, 4, 5, 6_000_000, loc)); got != "2026-10-17T12:04:05.006Z" {
+		t.Fatalf("got %q", got)
 	}
 }

@@ -51,7 +51,7 @@ func applyTransport(l vless.Link, n *Normalized) *vless.Skip {
 		if v := get("heartbeatperiod"); v != "" {
 			hb, err := strconv.ParseUint(v, 10, 32)
 			if err != nil {
-				return skip(reasonHeartbeat, "heartbeatPeriod="+v)
+				return skip(reasonHeartbeat, "heartbeatPeriod="+truncate(v, 40))
 			}
 			n.HeartbeatPeriod = uint32(hb)
 		}

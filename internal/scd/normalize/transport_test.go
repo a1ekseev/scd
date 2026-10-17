@@ -93,6 +93,9 @@ func TestWSHeartbeatPeriod(t *testing.T) {
 				vless.CodeUnsupportedValue, wantHeartbeat, "heartbeatPeriod="+v)
 		})
 	}
+	// Final review M13: a long value is truncated in the detail like extra/fm.
+	long := strings.Repeat("9", 60)
+	mustSkip(t, tlsWS+"&heartbeatPeriod="+long, Policy{}, vless.CodeUnsupportedValue, wantHeartbeat, "heartbeatPeriod="+truncate(long, 40))
 	// Inapplicable on tcp and xhttp: dropped silently (O16).
 	for _, q := range []string{tlsXHTTP, tlsTCP} {
 		n, w := mustEntry(t, q+"&heartbeatPeriod=abc", Policy{})
