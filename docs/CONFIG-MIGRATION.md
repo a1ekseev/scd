@@ -284,7 +284,7 @@ sfc **не проверяет** применимость параметров к
       - ./docker/sfc/.sfc-cache:/app/config/.sfc-cache
 ```
 
-Перед переключением: `docker run --rm -v ./docker/sfc/config.yml:/app/config/config.yml:ro ghcr.io/a1ekseev/scd:<версия> scd sfc validate-config --config /app/config/config.yml` (аналогично `scd validate-config` и `scd gtl validate-config`).
+Перед переключением: `docker run --rm -v "$PWD/docker/sfc/config.yml":/app/config/config.yml:ro ghcr.io/a1ekseev/scd:<версия> scd sfc validate-config --config /app/config/config.yml` (аналогично `scd validate-config` и `scd gtl validate-config`).
 
 ### scd: `scd daemon`
 

@@ -8,3 +8,7 @@ scd
 sfc
 gtl
 tools
+.superpowers
+.github
+.golangci.yml
+**/.env*
