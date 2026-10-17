@@ -27,7 +27,9 @@ gomod_line="$(grep -E '^[[:space:]]*(require[[:space:]]+)?github\.com/xtls/xray-
 if [[ -z "$gomod_line" ]]; then
   printf 'check-xray-version: go.mod has no github.com/xtls/xray-core requirement\n' >&2
   status=1
-elif ! grep -qE "github\.com/xtls/xray-core v1\.260327\.1-0\.20261010092107-${commit}([[:space:]]|$)" <<<"$gomod_line"; then
+# Any pseudo-version whose commit suffix is the pinned commit (the prefix
+# changes with every Xray bump).
+elif ! grep -qE "github\.com/xtls/xray-core v[^[:space:]]*-${commit}([[:space:]]|$)" <<<"$gomod_line"; then
   printf 'check-xray-version: go.mod xray-core does not match .xray-version (want commit %s for Xray %s):\n  %s\n' \
     "$commit" "$version" "$(sed -E 's/^[[:space:]]+//' <<<"$gomod_line")" >&2
   status=1

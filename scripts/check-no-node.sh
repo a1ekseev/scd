@@ -12,8 +12,13 @@ cd "$root"
 
 status=0
 
-files="$(git ls-files -- ':!internal/scd/status/web/' |
-  grep -E '(\.(ts|js|mjs)$|(^|/)package(-lock)?\.json$|(^|/)tsconfig[^/]*\.json$)' || true)"
+fail() {
+  printf 'check-no-node: %s\n' "$*" >&2
+  exit 2
+}
+
+tracked="$(git ls-files -- ':!internal/scd/status/web/')" || fail "git ls-files failed"
+files="$(grep -E '(\.(ts|js|mjs)$|(^|/)package(-lock)?\.json$|(^|/)tsconfig[^/]*\.json$)' <<<"$tracked" || true)"
 if [[ -n "$files" ]]; then
   printf 'check-no-node: Node/TypeScript files are tracked:\n%s\n' "$(head -n 20 <<<"$files" | sed 's/^/  /')" >&2
   count="$(wc -l <<<"$files")"
@@ -25,9 +30,15 @@ fi
 
 # The name of this script is the only allowed match (docs and CI call it).
 pattern='\b(npm|node|nodejs|node\.js|typescript|tsc|node_modules|pino|zod)\b'
-mentions="$(git grep -nIiE "$pattern" -- \
+# git grep exits 1 when nothing matches and 2 or more on a real error.
+rc=0
+found="$(git grep -nIiE "$pattern" -- \
   README.md AGENTS.md Dockerfile .dockerignore docker-compose.yml docker .github scripts \
-  ':!scripts/check-no-node.sh' | sed 's/check-no-node//g' | grep -iE "$pattern" || true)"
+  ':!scripts/check-no-node.sh')" || rc=$?
+if ((rc > 1)); then
+  fail "git grep failed (exit $rc)"
+fi
+mentions="$(grep -iE "$pattern" <<<"${found//check-no-node/}" || true)"
 if [[ -n "$mentions" ]]; then
   printf 'check-no-node: Node tool chain is mentioned:\n%s\n' "$(head -n 20 <<<"$mentions" | sed 's/^/  /')" >&2
   status=1
