@@ -263,3 +263,25 @@ func TestInstancesOrderLocalFirstRemotesByID(t *testing.T) {
 		t.Fatalf("placeholder %v", us)
 	}
 }
+
+// Final review M4: a collection cut short by shutdown records no error and
+// logs no failure.
+func TestCollectCanceledIsNotAFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	r, srv := remoteServer(t, func(_ http.ResponseWriter, req *http.Request) {
+		cancel()
+		<-req.Context().Done()
+	})
+	var logs bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logs, nil))
+	a := NewAggregator([]config.RemoteStatusInstanceConfig{r})
+	a.Collect(ctx, r, srv.Client(), log, clock(t0))
+
+	got := instancesJSON(t, a, t0)["instances"].([]any)[0].(map[string]any)
+	if _, ok := got["lastError"]; ok {
+		t.Errorf("lastError set on cancel: %v", got)
+	}
+	if strings.Contains(logs.String(), "remote_status_collection_failed") {
+		t.Errorf("failure logged on cancel: %s", logs.String())
+	}
+}

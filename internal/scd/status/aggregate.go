@@ -139,8 +139,9 @@ func (a *Aggregator) Instances(now time.Time) any {
 // Collect fetches the snapshot of remote r once (03 §7): GET apiUrl with
 // Accept: application/json, timeoutMs covering the request and the body.
 // A valid snapshot replaces the stored one and clears lastError; any
-// failure only sets lastError (snapshot and lastSuccessAt are kept). It
-// never fails. client nil means http.DefaultClient, log nil discards.
+// failure only sets lastError (snapshot and lastSuccessAt are kept); a
+// failure caused by the cancellation of ctx is neither recorded nor logged.
+// It never fails. client nil means http.DefaultClient, log nil discards.
 func (a *Aggregator) Collect(ctx context.Context, r config.RemoteStatusInstanceConfig, client *http.Client, log *slog.Logger, now func() time.Time) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -155,6 +156,10 @@ func (a *Aggregator) Collect(ctx context.Context, r config.RemoteStatusInstanceC
 	a.mu.Unlock()
 
 	raw, parsed, err := fetchRemote(ctx, r, cmp.Or(client, http.DefaultClient))
+	if err != nil && ctx.Err() != nil {
+		// Cut short by shutdown: not a failure of the remote (final review M4).
+		return
+	}
 
 	a.mu.Lock()
 	if err != nil {
