@@ -59,6 +59,8 @@
 
 ### Task 7.3: Удаление TypeScript, README.md и AGENTS.md
 
+> **Поправка D32:** финально вычитать `docs/CONFIG-MIGRATION.md`; добавить `TestConfigMigrationDocCoversKeys`; все `docker/*/config.real-shape.go.yml` проходят `validate-config`; ссылка из README.
+
 **Read:** `07` D8, D10, D11, D15, D16, D20–D27; `11-xray-vless-matrix.md` §1, §3, §4.1; `10` §6.10 (README); `08` §8 п.3–5; README плана «Открытые вопросы» (O1–O17) и «Сознательно не делается»; текущие `AGENTS.md`, `scd/AGENTS.md`, `sfc/AGENTS.md`, `gtl/AGENTS.md`, `scd/README.md`, `sfc/README.md`, `gtl/README.md`.
 
 **Files:**
