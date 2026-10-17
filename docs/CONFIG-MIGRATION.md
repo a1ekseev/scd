@@ -257,6 +257,20 @@ sfc **не проверяет** применимость параметров к
 
 Одна команда `scd …`, один образ, `command:` в docker-compose для sfc/gtl (D10).
 
+### scd: `scd daemon`
+
+Ключи конфига не менялись (`runtime.mode: daemon` + `runtime.schedule`, расписания `monitor`/`balancerMonitor`/`balancerSelection`/`remoteInstances[]`); отличия — в поведении процесса:
+
+| Что | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| остановка по SIGINT/SIGTERM | каждый цикл ждал свой следующий слот cron; status server закрывался после выхода *первого* цикла; на практике `docker stop` добивал процесс SIGKILL через 10 с | все циклы выходят сразу; идущие тики (в т.ч. apply/repair/rejoin в Xray) доводятся до конца, затем дожидаются отправленные remote ping (не дольше их `timeoutMs`), затем status server завершает активные запросы (до 10 с) и процесс выходит с кодом 0; пока идёт дренаж, status server отвечает | D7 |
+| второй сигнал во время остановки | немедленное завершение (`process.once`) | так же | D7 |
+| лог остановки | — | `info daemon_stopping` («Daemon stopping.», поле `signal`: `SIGINT`/`SIGTERM`) | D7 |
+| тик monitor/balancerMonitor/balancerSelection, прерванный остановкой | — (отмены не было) | ничего не записывает (ни degraded, ни repair, ни push) и не логирует `*_tick_failed`; sync, прерванный во время загрузки подписки, отмечает её как failed (apply в Xray не прерывается) | D7 |
+| цикл `balancerSelection` | — | на каждую подписку с `balancerSelection.enabled` и `schedule` (как и monitor-циклы — **включая** `enabled: false` подписки, как в TS); overrun — `warn balancer_selection_tick_skipped_overrun` («Balancer selection tick skipped because previous run is still in progress.»), ошибка — `error balancer_selection_tick_failed` («Balancer selection tick failed.»), с `subscriptionId`, `targetAddress` | D22 |
+| конфиг не в режиме daemon | ошибка `Config at <path> is not in daemon mode.` | ошибка `config at <path> is not in daemon mode`, код 1 | D9 |
+| ошибка bind status server | исключение, выход 1 | ошибка `listen on <addr>: …`, код 1; циклы не запускаются | — |
+
 ## Логи
 
 Формат и поля логов (D27, D9, D32).
