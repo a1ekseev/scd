@@ -33,6 +33,10 @@ Go is not required to reproduce them. Captured on the Node version recorded in
 | `gtl/routes.json` | `[{path, method, status, headers, body?|bodyBytes?}]` from `buildResponse(new URL(path,'http://127.0.0.1').pathname, config)` with `maxSizeKb: 64`; `body` for text responses, `bodyBytes` (payload length, not stored) for 200 loads; last row `HEAD /load/1` = 405 captured from a real server (`date`/`connection`/`keep-alive` dropped) | 0.3 |
 | `gtl/print-config-docker-example.json` | `loadConfig` output of `docker/gtl/config.example.yml` | 0.3 |
 | `gtl/config-full.yml`, `gtl/config-keys.json` | as for sfc | 0.3 |
+| `scd/status/fixtures/<name>.json` | status state fixtures (contract below; Go reads them in 6.4): `empty`, `healthy-single`, `degraded-repaired`, `balancer-only`, `disabled-subscription`, `latency-sort`, `multi-sub-multi-target`, `remote-instances`, `remote-ping-states`, `hostile-strings` | 0.4 |
+| `scd/status/<name>/{index.html,api-status.json,api-instance-status.json,api-instances.json}` | `handleStatusServerRequest` for `/`, `/api/status`, `/api/instance-status`, `/api/instances` per fixture (all 200; JSON re-indented with trailing newline, HTML body + `\n`) | 0.4 |
+| `scd/status/<name>/screenshot-{1280,390}.png` | headless Chromium screenshots of `index.html`, exactly `<w>×2400` (reference only) | 0.4 |
+| `scd/status/runtime-state/cases.json`, `scd/status/runtime-state/<case>.json` | `buildCurrentRuntimeStateSnapshot` with a fake Xray client (03 §10.5 items 1–6); inputs in `cases.json` | 0.4 |
 
 ### scd domain (task 0.2)
 
@@ -52,3 +56,93 @@ Captured by `tools/golden/sfc.mjs` and `tools/golden/gtl.mjs` (Node `v24.22.0`, 
 - sfc configs are copied into a temp directory (source cache is written next to the config) with `subscriptions[0].input` replaced by an absolute fixture path; reports contain no paths.
 - `real-shapes.json`: the 50/0/0 and 0/0/0 split is a deliberate TS behaviour; Go (D29/D33) differs: remnawave lines with `mode`/`extra` are accepted and provider2 `en-server` keeps 4 lines in the lookahead-free Go form (3.2 `TestRefreshRealShapes`).
 - Informational: `Date`-dependent `refreshedAt` (frozen value), `HEAD` row headers (Node-specific), `bodyBytes` (derived from `content-length`).
+
+### scd status server (task 0.4)
+
+Captured by `tools/golden/status.mjs` (Node `v24.22.0` in `node:24-alpine`, `TZ=UTC`, frozen time
+`2026-08-15T10:00:00.000Z`) and `tools/golden/screenshots.mjs` (host, Chromium headless shell
+`/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`, Chromium 141.0.7390.37; host fonts
+Inter for `sans-serif`, Noto Color Emoji; flags `--headless --no-sandbox --disable-gpu --hide-scrollbars
+--force-device-scale-factor=1 --window-size=<w>,2400 --screenshot=<png> file://<index.html>`).
+
+#### Fixture contract (`scd/status/fixtures/<name>.json`)
+
+```json
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [ {"id": "sub-1", "enabled": true, "address": "127.0.0.1:8080", "observatorySubjectSelectorPrefix": "x-observe-"} ],
+    "remoteInstances": [ {"id": "edge-eu", "apiUrl": "https://edge.example.test/api/instance-status", "schedule": "* * * * *"} ],
+    "runtimeState": {"enabled": true, "includeRaw": false, "includeSecrets": false}
+  },
+  "targets": [ {
+    "subscriptionId": "sub-1", "targetAddress": "127.0.0.1:8080",
+    "balancerMonitor": { "state": "healthy", "remotePingState": "ok", "consecutiveFailures": 0 },
+    "tunnels": [ {
+      "baseTunnelId": "vless-at-x-tcp-tls-1", "displayName": "🇦🇹 Вена", "countryIso2": "AT",
+      "listen": "127.0.0.1", "port": 20000,
+      "outboundTagInitial": "x-observe-vless-at-x-tcp-tls-1", "outboundTagCurrent": "x-observe-vless-at-x-tcp-tls-1",
+      "outboundWithoutPrefixTag": "vless-at-x-tcp-tls-1",
+      "monitor": { "state": "healthy", "lastLatencyMs": 42, "lastStatusCode": 204, "consecutiveFailures": 0 }
+    } ]
+  } ],
+  "remotes": [ { "id": "edge-eu", "apiUrl": "https://edge.example.test/api/instance-status",
+                 "lastAttemptAt": "…", "lastSuccessAt": "…", "lastError": "Remote status API returned HTTP 503.", "snapshot": { } } ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `now` | request time; must equal the frozen time (`capturedAt` of local and aggregated snapshots, local `lastSuccessAt`) |
+| `config.instanceId` | `statusServer.instanceId` (required: `os.hostname()` never reaches references) |
+| `config.subscriptions[]` | `id`, `enabled`, `address` (= `target.address`), optional `observatorySubjectSelectorPrefix` (= `target.observatorySubjectSelectorPrefix`); everything else takes config defaults (`input: ./sub.txt`, never read). Only enabled subscriptions appear on the dashboard |
+| `config.remoteInstances[]` | `statusServer.remoteInstances[]`: `id`, `apiUrl`, `schedule` (`timeoutMs` default) |
+| `config.runtimeState` | `statusServer.runtimeState` (`enabled`, `includeRaw`, `includeSecrets`); not used by the four captured endpoints |
+| `targets[]` | memory state of one target (`SyncMemoryState.targets["<subscriptionId>::<targetAddress>"]`); must match a configured subscription id + address; absent target = no state (before first sync) |
+| `targets[].balancerMonitor` | `TargetBalancerMonitorState` (03 §1), assigned as is: required `state` (`idle\|healthy\|degraded`), `remotePingState` (`idle\|pending\|ok\|failed`), `consecutiveFailures`; optional `lastCheckedAt`, `lastSuccessAt`, `lastFailureAt`, `lastStatusCode`, `lastLatencyMs`, `lastSuccessStatusCode`, `lastSuccessLatencyMs`, `lastError`, `remotePingLastRunAt`, `remotePingLastSuccessAt`, `remotePingLastFailureAt`, `remotePingLastStatusCode`, `remotePingLastError`, `remotePingLastReportedStatus` (`up\|down`), `remotePingLastReportedMsg`, `remotePingLastReportedPingMs` |
+| `targets[].tunnels[]` | `TunnelMapping` in topology order (`replaceTargetTopology`, then monitor set directly); `[]` = target state without tunnels |
+| `….baseTunnelId` | tunnel id (key in `tunnels`); `inboundTag` = `in-<id>`, `routeTag` = `route-<id>` (not visible in the outputs) |
+| `….displayName`, `….countryIso2` | card title, card meta (`countryIso2` optional → `-`) |
+| `….listen`, `….port` | `endpoint` = `<listen>:<port>` |
+| `….outboundTagInitial`, `….outboundTagCurrent`, `….outboundWithoutPrefixTag` | prefixed tag, current tag (after repair = unprefixed), unprefixed tag (`outboundWithoutPrefix.tag`, also used as `baseOutboundTag`); together they give `balanced` (03 §4.4) |
+| `….monitor` | `TunnelMonitorState` (03 §1), assigned as is: required `state` (`healthy\|degraded\|repairing\|idle`), `consecutiveFailures`; optional `lastCheckedAt`, `lastSuccessAt`, `lastFailureAt`, `lastStatusCode`, `lastLatencyMs`, `lastSuccessStatusCode`, `lastSuccessLatencyMs`, `lastError` |
+| `remotes[]` | aggregation-state entry of a configured remote (`id` and `apiUrl` must match config). Optional `lastAttemptAt`, `snapshot` (an `InstanceStatusSnapshot`; validated by the TS `parseRemoteSnapshot` and passed through untouched, unknown fields included), `lastSuccessAt`, `lastError`. A configured remote missing here, or listed with only `id`/`apiUrl`, has no data (`Waiting for first successful collection`). JSON key order is that of `collectRemoteStatus`: `id, source, apiUrl, lastAttemptAt, snapshot, lastSuccessAt, lastError` |
+
+Fixtures: `empty` (03 §10.4 item 7), `healthy-single` (item 1, healthy balancer), `degraded-repaired` (items 2, 6),
+`balancer-only` (item 3), `disabled-subscription` (item 4), `latency-sort` (10.5 item 8: Fast/Slow/Idle/Unknown;
+`Unknown` has no `countryIso2`), `multi-sub-multi-target` (10.5 item 7; config order `sub-b, sub-a, sub-c`,
+`sub-c` without state), `remote-instances` (10.4 item 8: config order `edge-us, edge-eu`; `edge-eu` has error +
+snapshot with unknown fields `futureField`/`futureTunnelField`, `edge-us` has no data), `remote-ping-states`
+(Remote Push `idle`, `pending`, `failed down`, `delivered up`, `delivered down`; `ping-failed` = item 1 balancer),
+`hostile-strings` (displayName/lastError/remote snapshot/remote `lastError` with `<script>`, quotes, `&`).
+
+Notes:
+
+- Sorting: every sorted group (subscriptions, targets, tunnels, remote ids) is chosen so that ICU `localeCompare`
+  equals byte order (`strings.Compare`, D23); `status.mjs` asserts it. Emoji/Cyrillic names occur only in groups
+  of one.
+- One target per subscription: TS config allows exactly one `target` per subscription, so 10.5 item 7
+  (`sub-a` with two targets) is represented by several subscriptions; memory-only targets are not used.
+- HTML is a TS byte reference, not a Go golden file (D3: Go may use `html/template`, `&#39;` etc.). `escapeHtml`
+  does not escape `'` (seen in `hostile-strings`).
+- PNGs are reference only (font rendering depends on the host): the Go visual test (6.5) renders the TS
+  `index.html` and the Go HTML in the same browser and compares those.
+- Informational: `capturedAt`/timestamps (frozen), order of ICU-sorted lists outside the asserted groups.
+
+#### runtime-state (`scd/status/runtime-state/`)
+
+`cases.json` holds the inputs (subscription line or remote input, target overrides on top of
+`fixedOutbounds: [direct, blocked]`, `inboundSocks 127.0.0.1:20000-20010`, prefix `x-observe-`; builder options;
+memory balancer state; fake `listOutbounds/listInbounds/listRules` items: `{fixedTag, rawHex}` or
+`{tunnel, variant: initial|withoutPrefix}` built with the TS `buildOutboundGrpc`/`buildInboundGrpc`, rules as
+`outboundTag`(1)/`inboundTag`(8)/`ruleTag`(19)). Config goes through `loadConfig`, so `config.subscription` and
+`config.target` carry all TS defaults. The temp input path is replaced with `<input>` (`config.subscription.input`,
+`expected.source`).
+
+Cases: `redacted-default` (10.5 item 1), `vision-udp443` (2), `repaired-fallback` (3), `remote-input` (4),
+`redact-monitor-urls` and `redact-monitor-urls-include-secrets` (5), `raw-and-secrets` (6).
+
+This is a reference of the **shape** (keys, classification, diff, redaction). `runtime.*[].parsed` values for
+ws/fingerprint fields and `rawBase64` are informational (the TS decoder read wrong fields, D2/D6; Go builds
+v26 protobuf). The TS default-config keys in `config.*` follow the TS schema; Go schema changes (D31) apply.

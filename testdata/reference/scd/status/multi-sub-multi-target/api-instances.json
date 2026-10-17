@@ -1,0 +1,240 @@
+{
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "instances": [
+    {
+      "id": "local-main",
+      "source": "local",
+      "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "local-main",
+        "capturedAt": "2026-08-15T10:00:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-a",
+            "targets": [
+              {
+                "subscriptionId": "sub-a",
+                "targetAddress": "127.0.0.1:8080",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-a",
+                    "targetAddress": "127.0.0.1:8080",
+                    "displayName": "Alpha",
+                    "countryIso2": "AT",
+                    "endpoint": "127.0.0.1:20000",
+                    "state": "idle",
+                    "balanced": true,
+                    "balancerMonitorState": "idle",
+                    "balancerMonitorRemotePingState": "idle"
+                  },
+                  {
+                    "subscriptionId": "sub-a",
+                    "targetAddress": "127.0.0.1:8080",
+                    "displayName": "Gamma",
+                    "countryIso2": "FI",
+                    "endpoint": "127.0.0.1:20001",
+                    "state": "degraded",
+                    "lastError": "connect ECONNREFUSED 127.0.0.1:20001",
+                    "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                    "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                    "balanced": true,
+                    "balancerMonitorState": "idle",
+                    "balancerMonitorRemotePingState": "idle"
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "idle",
+                  "remotePingState": "idle"
+                }
+              }
+            ]
+          },
+          {
+            "subscriptionId": "sub-b",
+            "targets": [
+              {
+                "subscriptionId": "sub-b",
+                "targetAddress": "127.0.0.1:8081",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-b",
+                    "targetAddress": "127.0.0.1:8081",
+                    "displayName": "Beta One",
+                    "countryIso2": "DE",
+                    "endpoint": "127.0.0.1:21000",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 55,
+                    "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 55,
+                    "balanced": true,
+                    "balancerMonitorState": "healthy",
+                    "balancerMonitorLastStatusCode": 204,
+                    "balancerMonitorLastLatencyMs": 17,
+                    "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessStatusCode": 204,
+                    "balancerMonitorLastSuccessLatencyMs": 17,
+                    "balancerMonitorRemotePingState": "ok",
+                    "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastStatusCode": 200,
+                    "balancerMonitorRemotePingLastReportedStatus": "up",
+                    "balancerMonitorRemotePingLastReportedMsg": "OK",
+                    "balancerMonitorRemotePingLastReportedPingMs": 17
+                  },
+                  {
+                    "subscriptionId": "sub-b",
+                    "targetAddress": "127.0.0.1:8081",
+                    "displayName": "Beta Two",
+                    "countryIso2": "NL",
+                    "endpoint": "127.0.0.1:21001",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 80,
+                    "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 80,
+                    "balanced": true,
+                    "balancerMonitorState": "healthy",
+                    "balancerMonitorLastStatusCode": 204,
+                    "balancerMonitorLastLatencyMs": 17,
+                    "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessStatusCode": 204,
+                    "balancerMonitorLastSuccessLatencyMs": 17,
+                    "balancerMonitorRemotePingState": "ok",
+                    "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastStatusCode": 200,
+                    "balancerMonitorRemotePingLastReportedStatus": "up",
+                    "balancerMonitorRemotePingLastReportedMsg": "OK",
+                    "balancerMonitorRemotePingLastReportedPingMs": 17
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "healthy",
+                  "lastStatusCode": 204,
+                  "lastLatencyMs": 17,
+                  "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                  "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                  "lastSuccessStatusCode": 204,
+                  "lastSuccessLatencyMs": 17,
+                  "remotePingState": "ok",
+                  "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                  "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                  "remotePingLastStatusCode": 200,
+                  "remotePingLastReportedStatus": "up",
+                  "remotePingLastReportedMsg": "OK",
+                  "remotePingLastReportedPingMs": 17
+                }
+              }
+            ]
+          },
+          {
+            "subscriptionId": "sub-c",
+            "targets": [
+              {
+                "subscriptionId": "sub-c",
+                "targetAddress": "127.0.0.1:8083",
+                "tunnels": [],
+                "balancerMonitor": {
+                  "state": "idle"
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": [
+          {
+            "subscriptionId": "sub-a",
+            "targetAddress": "127.0.0.1:8080",
+            "displayName": "Alpha",
+            "countryIso2": "AT",
+            "endpoint": "127.0.0.1:20000",
+            "state": "idle",
+            "balanced": true,
+            "balancerMonitorState": "idle",
+            "balancerMonitorRemotePingState": "idle"
+          },
+          {
+            "subscriptionId": "sub-a",
+            "targetAddress": "127.0.0.1:8080",
+            "displayName": "Gamma",
+            "countryIso2": "FI",
+            "endpoint": "127.0.0.1:20001",
+            "state": "degraded",
+            "lastError": "connect ECONNREFUSED 127.0.0.1:20001",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "balanced": true,
+            "balancerMonitorState": "idle",
+            "balancerMonitorRemotePingState": "idle"
+          },
+          {
+            "subscriptionId": "sub-b",
+            "targetAddress": "127.0.0.1:8081",
+            "displayName": "Beta One",
+            "countryIso2": "DE",
+            "endpoint": "127.0.0.1:21000",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 55,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 55,
+            "balanced": true,
+            "balancerMonitorState": "healthy",
+            "balancerMonitorLastStatusCode": 204,
+            "balancerMonitorLastLatencyMs": 17,
+            "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessStatusCode": 204,
+            "balancerMonitorLastSuccessLatencyMs": 17,
+            "balancerMonitorRemotePingState": "ok",
+            "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastStatusCode": 200,
+            "balancerMonitorRemotePingLastReportedStatus": "up",
+            "balancerMonitorRemotePingLastReportedMsg": "OK",
+            "balancerMonitorRemotePingLastReportedPingMs": 17
+          },
+          {
+            "subscriptionId": "sub-b",
+            "targetAddress": "127.0.0.1:8081",
+            "displayName": "Beta Two",
+            "countryIso2": "NL",
+            "endpoint": "127.0.0.1:21001",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 80,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 80,
+            "balanced": true,
+            "balancerMonitorState": "healthy",
+            "balancerMonitorLastStatusCode": 204,
+            "balancerMonitorLastLatencyMs": 17,
+            "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessStatusCode": 204,
+            "balancerMonitorLastSuccessLatencyMs": 17,
+            "balancerMonitorRemotePingState": "ok",
+            "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastStatusCode": 200,
+            "balancerMonitorRemotePingLastReportedStatus": "up",
+            "balancerMonitorRemotePingLastReportedMsg": "OK",
+            "balancerMonitorRemotePingLastReportedPingMs": 17
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "subscriptionId": "source-1",
+  "targetAddress": "127.0.0.1:8080",
+  "note": "Inputs of runtime-state/<name>.json; config built by tools/golden/status.mjs via loadConfig.",
+  "cases": [
+    {
+      "name": "redacted-default",
+      "line": "vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@vpn.example.test:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra",
+      "target": {},
+      "options": {},
+      "runtime": {
+        "outbounds": [
+          {
+            "fixedTag": "direct",
+            "rawHex": "010203"
+          },
+          {
+            "tunnel": 0,
+            "variant": "initial"
+          }
+        ],
+        "inbounds": [
+          {
+            "tunnel": 0
+          }
+        ],
+        "rules": [
+          {
+            "tunnel": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "vision-udp443",
+      "line": "vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@vpn.example.test:443?security=reality&encryption=none&fp=chrome&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=io.example.test&pbk=CMkW1axrhEXoiJ6anMz9XEjlfqlAtEZya7L0b5ZPMyw&sid=abe4a59b9f2407e3#🇩🇪 Германия, Extra",
+      "target": {
+        "visionUdp443Override": true
+      },
+      "options": {},
+      "runtime": {
+        "outbounds": [
+          {
+            "tunnel": 0,
+            "variant": "initial"
+          }
+        ],
+        "inbounds": [],
+        "rules": []
+      }
+    },
+    {
+      "name": "repaired-fallback",
+      "line": "vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@vpn.example.test:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra",
+      "target": {},
+      "options": {},
+      "runtime": {
+        "outbounds": [
+          {
+            "tunnel": 0,
+            "variant": "withoutPrefix"
+          }
+        ],
+        "inbounds": [],
+        "rules": []
+      }
+    },
+    {
+      "name": "remote-input",
+      "input": "https://example.test/tokenized/path?secret=abc",
+      "target": {},
+      "options": {},
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0,
+        "lastStatusCode": 204
+      },
+      "runtime": {
+        "outbounds": [],
+        "inbounds": [],
+        "rules": []
+      }
+    },
+    {
+      "name": "redact-monitor-urls",
+      "input": "https://subscription.example.test/tokenized/path?secret=abc",
+      "target": {
+        "monitor": {
+          "enabled": true,
+          "schedule": "*/2 * * * *",
+          "request": {
+            "url": "https://monitor.example.test/health?token=secret",
+            "method": "GET",
+            "expectedStatus": 204,
+            "timeoutMs": 5000
+          }
+        },
+        "balancerMonitor": {
+          "enabled": true,
+          "schedule": "*/2 * * * *",
+          "socks5": {
+            "host": "127.0.0.1",
+            "port": 1080
+          },
+          "request": {
+            "url": "https://balancer.example.test/check?token=secret",
+            "method": "GET",
+            "expectedStatus": 204,
+            "timeoutMs": 5000
+          },
+          "remotePing": {
+            "enabled": true,
+            "url": "https://push.example.test/api/push/token?secret=abc",
+            "timeoutMs": 5000,
+            "viaSocks": true
+          }
+        }
+      },
+      "options": {},
+      "runtime": {
+        "outbounds": [],
+        "inbounds": [],
+        "rules": []
+      }
+    },
+    {
+      "name": "redact-monitor-urls-include-secrets",
+      "input": "https://subscription.example.test/tokenized/path?secret=abc",
+      "target": {
+        "monitor": {
+          "enabled": true,
+          "schedule": "*/2 * * * *",
+          "request": {
+            "url": "https://monitor.example.test/health?token=secret",
+            "method": "GET",
+            "expectedStatus": 204,
+            "timeoutMs": 5000
+          }
+        },
+        "balancerMonitor": {
+          "enabled": true,
+          "schedule": "*/2 * * * *",
+          "socks5": {
+            "host": "127.0.0.1",
+            "port": 1080
+          },
+          "request": {
+            "url": "https://balancer.example.test/check?token=secret",
+            "method": "GET",
+            "expectedStatus": 204,
+            "timeoutMs": 5000
+          },
+          "remotePing": {
+            "enabled": true,
+            "url": "https://push.example.test/api/push/token?secret=abc",
+            "timeoutMs": 5000,
+            "viaSocks": true
+          }
+        }
+      },
+      "options": {
+        "includeSecrets": true
+      },
+      "runtime": {
+        "outbounds": [],
+        "inbounds": [],
+        "rules": []
+      }
+    },
+    {
+      "name": "raw-and-secrets",
+      "line": "vless://7d1b6590-1069-4372-92be-8d0a0ae6eaf5@vpn.example.test:443?type=tcp&security=tls#🇦🇹 Вена, Австрия, Extra",
+      "target": {},
+      "options": {
+        "includeRaw": true,
+        "includeSecrets": true
+      },
+      "runtime": {
+        "outbounds": [
+          {
+            "tunnel": 0,
+            "variant": "initial"
+          }
+        ],
+        "inbounds": [],
+        "rules": []
+      }
+    }
+  ]
+}

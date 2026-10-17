@@ -1,0 +1,31 @@
+{
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "instances": [
+    {
+      "id": "local-main",
+      "source": "local",
+      "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "local-main",
+        "capturedAt": "2026-08-15T10:00:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-1",
+            "targets": [
+              {
+                "subscriptionId": "sub-1",
+                "targetAddress": "127.0.0.1:8080",
+                "tunnels": [],
+                "balancerMonitor": {
+                  "state": "idle"
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": []
+      }
+    }
+  ]
+}

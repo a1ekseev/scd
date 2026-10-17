@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Control Daemon Status</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f2efe7;
+      --panel: #fffaf0;
+      --panel-strong: #fff4df;
+      --ink: #1f1a14;
+      --muted: #766b5c;
+      --line: #dfd3c0;
+      --healthy: #16864d;
+      --degraded: #c53931;
+      --repairing: #c27a12;
+      --idle: #8b8580;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(194, 122, 18, .16), transparent 32rem),
+        linear-gradient(135deg, #f8f5ed, var(--bg));
+    }
+    main { max-width: 1440px; margin: 0 auto; padding: 28px; }
+    h1 { margin: 0 0 20px; font-size: clamp(28px, 4vw, 48px); letter-spacing: -.04em; }
+    h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+    h3 { margin: 0; font-size: 18px; }
+    p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .subscription-card {
+      margin: 0 0 24px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 250, 240, .78);
+      box-shadow: 0 18px 50px rgba(72, 55, 32, .08);
+      backdrop-filter: blur(14px);
+    }
+    .instance-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin: 0 0 20px;
+      padding: 4px 4px 10px;
+      scrollbar-width: thin;
+    }
+    .instance-tab {
+      flex: 0 0 auto;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: rgba(255, 250, 240, .7);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .instance-tab:hover { background: var(--panel-strong); }
+    .instance-tab:focus-visible { outline: 3px solid rgba(194, 122, 18, .35); outline-offset: 2px; }
+    .instance-tab.is-active { border-color: #b86f08; color: #754604; background: var(--panel-strong); }
+    .instance-panel { margin: 0 0 34px; outline: none; }
+    .instance-panel[hidden] { display: none; }
+    .instance-head { margin: 0 0 12px; padding: 0 4px; }
+    .target-card {
+      margin: 14px 0 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 253, 248, .82);
+    }
+    .subscription-head, .target-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
+    .balancer-card, .node-card {
+      position: relative;
+      display: flex;
+      gap: 13px;
+      align-items: flex-start;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffdf8, #fbf4e7);
+      box-shadow: 0 10px 24px rgba(72, 55, 32, .06);
+    }
+    .balancer-card { margin: 0 0 14px; padding: 16px; background: linear-gradient(135deg, var(--panel-strong), #fffdf8); }
+    .nodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .node-card { padding: 14px; }
+    .node-orb {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      border-radius: 999px;
+      background: var(--idle);
+      box-shadow: 0 0 0 6px rgba(139, 133, 128, .14);
+    }
+    .state-healthy .node-orb { background: var(--healthy); box-shadow: 0 0 0 6px rgba(22, 134, 77, .14); }
+    .state-degraded .node-orb { background: var(--degraded); box-shadow: 0 0 0 6px rgba(197, 57, 49, .14); }
+    .state-repairing .node-orb { background: var(--repairing); box-shadow: 0 0 0 6px rgba(194, 122, 18, .18); }
+    .node-main { min-width: 0; width: 100%; }
+    .node-kicker { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: 15px; }
+    .node-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .node-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .metric { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 8px; border-radius: 999px; background: rgba(239, 230, 215, .8); }
+    .metric-label { color: var(--muted); font-size: 11px; }
+    .metric-value { font-size: 12px; font-weight: 750; }
+    .metric-state-healthy, .metric-balancer-active, .metric-remote-up { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+    .metric-state-degraded, .metric-balancer-removed, .metric-remote-down { background: rgba(197, 57, 49, .14); color: #8f241f; }
+    .metric-state-repairing, .metric-remote-pending { background: rgba(194, 122, 18, .16); color: #8a5307; }
+    .metric-state-idle, .metric-balancer-na, .metric-remote-idle { background: rgba(139, 133, 128, .14); color: #5f5a55; }
+    .metric-state-healthy .metric-label, .metric-balancer-active .metric-label, .metric-remote-up .metric-label,
+    .metric-state-degraded .metric-label, .metric-balancer-removed .metric-label, .metric-remote-down .metric-label,
+    .metric-state-repairing .metric-label, .metric-remote-pending .metric-label,
+    .metric-state-idle .metric-label, .metric-balancer-na .metric-label, .metric-remote-idle .metric-label { color: currentColor; opacity: .74; }
+    .empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; }
+    @media (max-width: 720px) {
+      main { padding: 18px; }
+      .nodes-grid { grid-template-columns: 1fr; }
+      .subscription-card, .target-card { border-radius: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Subscription Control Daemon Status</h1>
+    <nav class="instance-tabs" role="tablist" aria-label="Instances"><button
+  type="button"
+  class="instance-tab is-active"
+  id="instance-tab-0"
+  role="tab"
+  aria-selected="true"
+  aria-controls="instance-panel-0"
+  tabindex="0"
+>local-main</button></nav>
+    <section
+  class="instance-panel"
+  id="instance-panel-0"
+  role="tabpanel"
+  aria-labelledby="instance-tab-0"
+  tabindex="0"
+>
+  <div class="instance-head"><div><h2>local-main</h2><p>local · Updated 2026-08-15T10:00:00.000Z</p></div></div>
+  <section class="subscription-card">
+  <div class="subscription-head">
+    <h2>ping-delivered-down</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:8084</h3>
+      <p>0 tunnel(s)</p>
+    </div>
+  </div>
+  <article class="balancer-card state-degraded">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">120 ms</span></span>
+        <span class="metric metric-remote-down"><span class="metric-label">Remote Push</span><span class="metric-value">delivered down</span></span>
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    <p class="empty-state">No tunnel data.</p>
+  </div>
+</section>
+</section>
+<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>ping-delivered-up</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:8083</h3>
+      <p>0 tunnel(s)</p>
+    </div>
+  </div>
+  <article class="balancer-card state-healthy">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
+        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">17 ms</span></span>
+        <span class="metric metric-remote-up"><span class="metric-label">Remote Push</span><span class="metric-value">delivered up</span></span>
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    <p class="empty-state">No tunnel data.</p>
+  </div>
+</section>
+</section>
+<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>ping-failed</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:8082</h3>
+      <p>1 tunnel(s)</p>
+    </div>
+  </div>
+  <article class="balancer-card state-degraded">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: SOCKS5 connect timed out</span></span>
+        <span class="metric metric-remote-down"><span class="metric-label">Remote Push</span><span class="metric-value">failed down</span></span>
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    <article class="node-card state-healthy">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-title">Alpha</div>
+    <div class="node-meta">AT · 127.0.0.1:22000</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
+      <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">42 ms</span></span>
+      <span class="metric metric-balancer-active"><span class="metric-label">Balancer</span><span class="metric-value">active</span></span>
+    </div>
+  </div>
+</article>
+  </div>
+</section>
+</section>
+<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>ping-idle</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:8080</h3>
+      <p>0 tunnel(s)</p>
+    </div>
+  </div>
+  <article class="balancer-card state-idle">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        <span class="metric metric-state-idle"><span class="metric-label">State</span><span class="metric-value">idle</span></span>
+        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">-</span></span>
+        <span class="metric metric-remote-idle"><span class="metric-label">Remote Push</span><span class="metric-value">idle</span></span>
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    <p class="empty-state">No tunnel data.</p>
+  </div>
+</section>
+</section>
+<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>ping-pending</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:8081</h3>
+      <p>0 tunnel(s)</p>
+    </div>
+  </div>
+  <article class="balancer-card state-healthy">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
+        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">21 ms</span></span>
+        <span class="metric metric-remote-pending"><span class="metric-label">Remote Push</span><span class="metric-value">pending</span></span>
+      </div>
+    </div>
+  </article>
+  <div class="nodes-grid">
+    <p class="empty-state">No tunnel data.</p>
+  </div>
+</section>
+</section>
+</section>
+  </main>
+  <script>
+    (() => {
+      const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+      const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+
+      const activate = (nextTab, moveFocus) => {
+        const selectedIndex = tabs.indexOf(nextTab);
+        if (selectedIndex < 0) return;
+
+        tabs.forEach((tab, index) => {
+          const selected = index === selectedIndex;
+          tab.classList.toggle('is-active', selected);
+          tab.setAttribute('aria-selected', String(selected));
+          tab.tabIndex = selected ? 0 : -1;
+          panels[index].hidden = !selected;
+        });
+
+        if (moveFocus) nextTab.focus();
+      };
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activate(tab, false));
+        tab.addEventListener('keydown', (event) => {
+          let nextIndex;
+          if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+          if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === 'Home') nextIndex = 0;
+          if (event.key === 'End') nextIndex = tabs.length - 1;
+          if (nextIndex === undefined) return;
+
+          event.preventDefault();
+          activate(tabs[nextIndex], true);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-b",
+        "enabled": true,
+        "address": "127.0.0.1:8081",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "sub-a",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "sub-c",
+        "enabled": true,
+        "address": "127.0.0.1:8083",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-b",
+      "targetAddress": "127.0.0.1:8081",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "ok",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 17,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 17,
+        "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastStatusCode": 200,
+        "remotePingLastReportedStatus": "up",
+        "remotePingLastReportedMsg": "OK",
+        "remotePingLastReportedPingMs": 17
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "beta-2",
+          "displayName": "Beta Two",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 21001,
+          "outboundTagInitial": "x-observe-beta-2",
+          "outboundTagCurrent": "x-observe-beta-2",
+          "outboundWithoutPrefixTag": "beta-2",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 80,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 80,
+            "consecutiveFailures": 0
+          }
+        },
+        {
+          "baseTunnelId": "beta-1",
+          "displayName": "Beta One",
+          "countryIso2": "DE",
+          "listen": "127.0.0.1",
+          "port": 21000,
+          "outboundTagInitial": "x-observe-beta-1",
+          "outboundTagCurrent": "x-observe-beta-1",
+          "outboundWithoutPrefixTag": "beta-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 55,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 55,
+            "consecutiveFailures": 0
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "sub-a",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "idle",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "gamma",
+          "displayName": "Gamma",
+          "countryIso2": "FI",
+          "listen": "127.0.0.1",
+          "port": 20001,
+          "outboundTagInitial": "x-observe-gamma",
+          "outboundTagCurrent": "x-observe-gamma",
+          "outboundWithoutPrefixTag": "gamma",
+          "monitor": {
+            "state": "degraded",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "lastError": "connect ECONNREFUSED 127.0.0.1:20001",
+            "consecutiveFailures": 2
+          }
+        },
+        {
+          "baseTunnelId": "alpha",
+          "displayName": "Alpha",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-alpha",
+          "outboundTagCurrent": "x-observe-alpha",
+          "outboundWithoutPrefixTag": "alpha",
+          "monitor": {
+            "state": "idle",
+            "consecutiveFailures": 0
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": []
+}
