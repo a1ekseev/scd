@@ -27,19 +27,19 @@ func init() {
 
 // ToProto converts o into the protobuf handler config of the Xray API by
 // building it with infra/conf, exactly as Xray builds a JSON config (D19).
-// Xray's rejection is returned as "xray rejected outbound <tag>: <err>".
+// A local build error (Xray is not contacted) is returned as "invalid outbound <tag>: <err>".
 func ToProto(o Outbound) (*core.OutboundHandlerConfig, error) {
 	raw, err := json.Marshal(o)
 	if err != nil {
-		return nil, fmt.Errorf("xray rejected outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
 	}
 	var dc conf.OutboundDetourConfig
 	if err := json.Unmarshal(raw, &dc); err != nil {
-		return nil, fmt.Errorf("xray rejected outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
 	}
 	h, err := dc.Build()
 	if err != nil {
-		return nil, fmt.Errorf("xray rejected outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
 	}
 	return h, nil
 }
