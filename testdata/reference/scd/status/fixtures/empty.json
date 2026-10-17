@@ -1,0 +1,22 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [],
+  "remotes": []
+}

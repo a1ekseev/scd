@@ -30,3 +30,8 @@ Every script imports `lib/freeze-time.mjs` first (frozen `Date`, default
    ```bash
    node tools/golden/screenshots.mjs
    ```
+
+   The browser defaults to the Playwright headless shell
+   `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`
+   (override with `GOLDEN_CHROME`; falls back to the full Playwright Chromium if the
+   default is missing). Each PNG must be exactly `<width>×2400`.

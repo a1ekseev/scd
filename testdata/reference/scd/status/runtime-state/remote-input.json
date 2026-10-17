@@ -1,0 +1,141 @@
+{
+  "subscriptionId": "source-1",
+  "targetAddress": "127.0.0.1:8080",
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "subscription": {
+      "id": "source-1",
+      "input": "https://example.test/<redacted>",
+      "enabled": true,
+      "format": "plain",
+      "fetchTimeoutMs": 5000,
+      "target": {
+        "address": "127.0.0.1:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [
+          "direct",
+          "blocked"
+        ],
+        "fixedInbounds": [],
+        "fixedRouting": [],
+        "visionUdp443Override": false,
+        "inboundSocks": {
+          "listen": "127.0.0.1",
+          "portRange": {
+            "start": 20000,
+            "end": 20010
+          }
+        },
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancerMonitor": {
+          "enabled": false,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          },
+          "remotePing": {
+            "enabled": false,
+            "timeoutMs": 5000,
+            "viaSocks": false
+          }
+        },
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    },
+    "target": {
+      "address": "127.0.0.1:8080",
+      "timeoutMs": 5000,
+      "fixedOutbounds": [
+        "direct",
+        "blocked"
+      ],
+      "fixedInbounds": [],
+      "fixedRouting": [],
+      "visionUdp443Override": false,
+      "inboundSocks": {
+        "listen": "127.0.0.1",
+        "portRange": {
+          "start": 20000,
+          "end": 20010
+        }
+      },
+      "monitor": {
+        "enabled": false,
+        "maxParallel": 10,
+        "retry": {
+          "attempts": 1,
+          "delayMs": 250
+        }
+      },
+      "balancerMonitor": {
+        "enabled": false,
+        "retry": {
+          "attempts": 1,
+          "delayMs": 250
+        },
+        "remotePing": {
+          "enabled": false,
+          "timeoutMs": 5000,
+          "viaSocks": false
+        }
+      },
+      "observatorySubjectSelectorPrefix": "x-observe-"
+    },
+    "resources": {
+      "outbounds": {
+        "enabled": true
+      },
+      "inbounds": {
+        "enabled": true
+      },
+      "routing": {
+        "enabled": true
+      }
+    }
+  },
+  "serviceState": {
+    "balancerMonitor": {
+      "state": "healthy",
+      "remotePingState": "idle",
+      "consecutiveFailures": 0,
+      "lastStatusCode": 204
+    }
+  },
+  "expected": {
+    "source": "https://example.test/<redacted>",
+    "outbounds": [],
+    "inbounds": [],
+    "routingRules": [],
+    "error": "Expected topology is unavailable for remote or stdin inputs; runtime-state does not refetch subscription sources."
+  },
+  "runtime": {
+    "outbounds": [],
+    "inbounds": [],
+    "routingRules": []
+  },
+  "diff": {
+    "outbounds": {
+      "matched": [],
+      "matchedFallback": [],
+      "missing": [],
+      "unexpected": []
+    },
+    "inbounds": {
+      "matched": [],
+      "missing": [],
+      "unexpected": []
+    },
+    "routingRules": {
+      "matched": [],
+      "missing": [],
+      "unexpected": []
+    }
+  }
+}

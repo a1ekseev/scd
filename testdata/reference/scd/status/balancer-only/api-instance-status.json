@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "instanceId": "local-main",
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "subscriptions": [
+    {
+      "subscriptionId": "sub-1",
+      "targets": [
+        {
+          "subscriptionId": "sub-1",
+          "targetAddress": "127.0.0.1:8080",
+          "tunnels": [],
+          "balancerMonitor": {
+            "state": "healthy",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 17,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 17,
+            "remotePingState": "ok",
+            "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastStatusCode": 200,
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastReportedMsg": "OK",
+            "remotePingLastReportedPingMs": 17
+          }
+        }
+      ]
+    }
+  ],
+  "tunnels": []
+}

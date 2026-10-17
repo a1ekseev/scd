@@ -1,0 +1,151 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    ],
+    "remoteInstances": [
+      {
+        "id": "edge-eu",
+        "apiUrl": "https://edge.example.test/api/instance-status",
+        "schedule": "* * * * *"
+      }
+    ],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-1",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "degraded",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+        "lastFailureAt": "2026-08-15T10:00:00.000Z",
+        "lastError": "<script>alert(\"x\")</script> & 'q'"
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "hostile-1",
+          "displayName": "<script>alert(\"x\")</script> & 'q'",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-hostile-1",
+          "outboundTagCurrent": "x-observe-hostile-1",
+          "outboundWithoutPrefixTag": "hostile-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42,
+            "consecutiveFailures": 0
+          }
+        },
+        {
+          "baseTunnelId": "zulu",
+          "displayName": "Zulu",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 20001,
+          "outboundTagInitial": "x-observe-zulu",
+          "outboundTagCurrent": "x-observe-zulu",
+          "outboundWithoutPrefixTag": "zulu",
+          "monitor": {
+            "state": "degraded",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "lastError": "<img src=x onerror=alert(1)> \"quoted\" & 'single'",
+            "consecutiveFailures": 1
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "id": "edge-eu",
+      "apiUrl": "https://edge.example.test/api/instance-status",
+      "lastAttemptAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+      "lastError": "<script>alert(\"x\")</script> & 'q'",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "edge-eu",
+        "capturedAt": "2026-08-15T09:58:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-eu",
+            "targets": [
+              {
+                "subscriptionId": "sub-eu",
+                "targetAddress": "10.0.0.2:8080",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-eu",
+                    "targetAddress": "10.0.0.2:8080",
+                    "displayName": "<script>alert(\"x\")</script> & 'q'",
+                    "countryIso2": "DE",
+                    "endpoint": "10.0.0.2:20000",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 64,
+                    "lastCheckedAt": "2026-08-15T09:58:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 64,
+                    "balanced": true,
+                    "balancerMonitorState": "healthy",
+                    "balancerMonitorRemotePingState": "idle",
+                    "futureTunnelField": "kept"
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "healthy",
+                  "remotePingState": "idle"
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": [
+          {
+            "subscriptionId": "sub-eu",
+            "targetAddress": "10.0.0.2:8080",
+            "displayName": "<script>alert(\"x\")</script> & 'q'",
+            "countryIso2": "DE",
+            "endpoint": "10.0.0.2:20000",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 64,
+            "lastCheckedAt": "2026-08-15T09:58:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 64,
+            "balanced": true,
+            "balancerMonitorState": "healthy",
+            "balancerMonitorRemotePingState": "idle",
+            "futureTunnelField": "kept"
+          }
+        ],
+        "futureField": {
+          "kept": true
+        }
+      }
+    }
+  ]
+}

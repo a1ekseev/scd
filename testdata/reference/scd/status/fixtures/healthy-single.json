@@ -1,0 +1,66 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-1",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "ok",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 17,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 17,
+        "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastStatusCode": 200,
+        "remotePingLastReportedStatus": "up",
+        "remotePingLastReportedMsg": "OK",
+        "remotePingLastReportedPingMs": 17
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "vless-at-x-tcp-tls-1",
+          "displayName": "🇦🇹 Вена",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-vless-at-x-tcp-tls-1",
+          "outboundTagCurrent": "x-observe-vless-at-x-tcp-tls-1",
+          "outboundWithoutPrefixTag": "vless-at-x-tcp-tls-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42,
+            "consecutiveFailures": 0
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": []
+}
