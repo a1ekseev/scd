@@ -17,15 +17,28 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// waitFor polls cond until it holds or 5 s pass.
-func waitFor(t *testing.T, what string, cond func() bool) {
+// waitFor polls cond until it holds or 5 s pass. It may run on worker
+// goroutines, so it reports a timeout with t.Errorf and returns false.
+func waitFor(t *testing.T, what string, cond func() bool) bool {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
+			t.Errorf("timed out waiting for %s", what)
+			return false
 		}
 		time.Sleep(time.Millisecond)
+	}
+	return true
+}
+
+// storeMax raises m to n atomically.
+func storeMax(m *atomic.Int32, n int32) {
+	for {
+		o := m.Load()
+		if n <= o || m.CompareAndSwap(o, n) {
+			return
+		}
 	}
 }
 
@@ -50,7 +63,7 @@ func TestProbesParallelRepairsSerialized(t *testing.T) {
 	e.deps.Probe = func(context.Context, socks.Request) (socks.Response, error) {
 		started.Add(1)
 		n := inFlight.Add(1)
-		maxProbes.Store(max(maxProbes.Load(), n))
+		storeMax(&maxProbes, n)
 		// Both probes must be in flight at once for the tick to finish.
 		waitFor(t, "second probe", func() bool { return started.Load() == 2 })
 		inFlight.Add(-1)
@@ -59,7 +72,7 @@ func TestProbesParallelRepairsSerialized(t *testing.T) {
 	// A repair spans Dial..Close under the target lock.
 	e.onDial = func() {
 		n := repairs.Add(1)
-		maxRepairs.Store(max(maxRepairs.Load(), n))
+		storeMax(&maxRepairs, n)
 		time.Sleep(10 * time.Millisecond)
 	}
 	e.wrap = func(c xrayapi.Client) xrayapi.Client {
@@ -85,9 +98,9 @@ func TestRespectsMaxParallel(t *testing.T) {
 	e.deps.Probe = func(_ context.Context, r socks.Request) (socks.Response, error) {
 		started.Add(1)
 		n := inFlight.Add(1)
-		maxInFlight.Store(max(maxInFlight.Load(), n))
+		storeMax(&maxInFlight, n)
 		// Hold the slot until two probes overlap (or the last one runs alone).
-		waitFor(t, "overlap", func() bool { return maxInFlight.Load() >= 2 || started.Load() == 3 })
+		waitFor(t, "overlap", func() bool { return inFlight.Load() >= 2 || started.Load() == 3 })
 		time.Sleep(2 * time.Millisecond)
 		inFlight.Add(-1)
 		if r.ProxyPort == 20000 {

@@ -235,7 +235,7 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 		updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 			m := &tn.Monitor
 			m.State = state.TunnelDegraded
-			m.LastCheckedAt, m.LastFailureAt = &failedAt, &failedAt
+			m.LastCheckedAt, m.LastFailureAt = new(failedAt), new(failedAt)
 			m.LastStatusCode, m.LastLatencyMs = nil, nil
 			m.LastError = err.Error()
 			m.ConsecutiveFailures++
@@ -247,10 +247,9 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 	updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 		m := &tn.Monitor
 		m.State = state.TunnelHealthy
-		m.LastCheckedAt, m.LastSuccessAt = &checkedAt, &checkedAt
-		code, latency := resp.StatusCode, resp.LatencyMs
-		m.LastStatusCode, m.LastLatencyMs = &code, &latency
-		m.LastSuccessStatusCode, m.LastSuccessLatencyMs = &code, &latency
+		m.LastCheckedAt, m.LastSuccessAt = new(checkedAt), new(checkedAt)
+		m.LastStatusCode, m.LastLatencyMs = new(resp.StatusCode), new(resp.LatencyMs)
+		m.LastSuccessStatusCode, m.LastSuccessLatencyMs = new(resp.StatusCode), new(resp.LatencyMs)
 		m.LastError = ""
 		m.ConsecutiveFailures = 0
 	})

@@ -47,7 +47,7 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 		d.Memory.Update(key, func(tg *state.Target) {
 			b := &tg.Balancer
 			b.State = state.BalancerDegraded
-			b.LastCheckedAt, b.LastFailureAt = &failedAt, &failedAt
+			b.LastCheckedAt, b.LastFailureAt = new(failedAt), new(failedAt)
 			b.LastStatusCode, b.LastLatencyMs = nil, nil
 			b.LastError = msg
 			b.ConsecutiveFailures++
@@ -61,10 +61,9 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 	d.Memory.Update(key, func(tg *state.Target) {
 		b := &tg.Balancer
 		b.State = state.BalancerHealthy
-		b.LastCheckedAt, b.LastSuccessAt = &checkedAt, &checkedAt
-		c, l := code, latency
-		b.LastStatusCode, b.LastLatencyMs = &c, &l
-		b.LastSuccessStatusCode, b.LastSuccessLatencyMs = &c, &l
+		b.LastCheckedAt, b.LastSuccessAt = new(checkedAt), new(checkedAt)
+		b.LastStatusCode, b.LastLatencyMs = new(code), new(latency)
+		b.LastSuccessStatusCode, b.LastSuccessLatencyMs = new(code), new(latency)
 		b.LastError = ""
 		b.ConsecutiveFailures = 0
 	})
