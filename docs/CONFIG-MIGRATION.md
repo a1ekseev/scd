@@ -30,6 +30,18 @@
 | Ключ | Было (TS) | Стало (Go) | Причина |
 |---|---|---|---|
 | `server.listen` | `:80` невалиден (host обязателен) | `:8080` допустим — все интерфейсы; IPv6 только в скобках (`[::]:8080`) | `net.SplitHostPort`, идиоматичный Go |
+| `subscriptions[].outputs[].labelIncludeRegex` | обязательная строка, JS-регулярка (`/pattern/flags`, lookahead допускался) | необязательна; строка **или список** RE2-выражений (AND); lookahead/lookbehind/backreferences — ошибка (см. «Фильтры меток»); в `print-config` — всегда список | D8, D29 |
+| `subscriptions[].outputs[].labelExcludeRegex` | — | **новый**, необязательный: строка или список RE2-выражений (OR — метка отбрасывается при совпадении с любым) | D29 |
+| фильтр output'а | `labelIncludeRegex` обязателен | обязателен **хотя бы один** из `labelIncludeRegex`/`labelExcludeRegex`, иначе `subscriptions.N.outputs.M: labelIncludeRegex or labelExcludeRegex is required` | D29 |
+| `subscriptions[].fetchUserAgent` | — (заголовок `User-Agent: node`) | **новый**, необязательный: непустая строка (trim) — `User-Agent` загрузки подписки; по умолчанию `scd/<версия>`; без ключа в `print-config` его нет | D27 O9, D9 |
+| `subscriptions[].fetchHeaders` | — | **новый**, необязательный: объект `имя: значение` — доп. заголовки HTTP-запроса подписки (напр. `x-hwid: "${SFC_HWID}"`), только для `http(s)`-input. Значения — строки (после `${NAME}`-подстановки), непустые, без управляющих символов; имена — валидные имена заголовков, без повторов без учёта регистра. Запрещены `User-Agent` (ошибка `use fetchUserAgent instead`), `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` (`header is not allowed`). **Значения — секрет**: в `print-config` и логах — `<redacted>`. Пустой объект `{}` = ключ отсутствует. Путь ошибки — `subscriptions.N.fetchHeaders.<имя>` | D33 |
+| `runtime.refreshSchedule` | cron-parser; `""` = каждую минуту | `internal/common/cron` (см. «Cron»): пустая строка/строка из пробелов — ошибка `cron expression must not be empty`; `L`/`W`/`#`/`H`, день недели `7` — ошибка; `?`, `@every`, `CRON_TZ=` — допустимы | D23, D24, D28 |
+| `subscriptions[].fetchTimeoutMs` | целое `> 0`, `5000.0` допускался | целое `>= 1` (по умолчанию `5000`), `5000.0` — `expected integer, got float`; `${TM}` из env — строка, ошибка `expected integer, got string` (как и раньше, числа из env не задать) | D9 |
+| `outputs[].name`, `outputs[].profileTitle` | пустая/пробельная строка → ключ исчезает | без изменений | — |
+| прочие ключи (`id`, `input`, `enabled`, `format`, `pathRoute`, `outputs`, `userAgent`, `profileUpdateInterval`, `logging.*`) | — | ключи, значения по умолчанию (`enabled: true`, `format: auto`, `logging: {level: info, format: json}`) и правила без изменений: `pathRoute` начинается с `/`, не равен `/`, не оканчивается на `/`; `userAgent` — непустой список непустых строк; `profileUpdateInterval` — `1..24`; id подписок и id выходов уникальны (выходов — глобально), включая выключенные; нужна хотя бы одна включённая подписка с хотя бы одним включённым выходом. Неизвестные ключи, как и раньше, молча игнорируются (в отличие от gtl) | — |
+| Ошибки валидации | тексты zod без путей, app-level проверки не выполнялись при ошибках типов | единый формат `invalid config <файл>:` + `  - <путь>: <сообщение>` (см. «Общее»), все проблемы сразу. Сообщения app-level: `subscriptions: at least one subscription must be enabled`, `subscriptions: at least one output must be enabled`, `subscriptions.N.id: duplicate subscription id "x"`, `subscriptions.N.outputs.M.id: duplicate output id "x"`, `subscriptions.N.pathRoute: must start with /` / `must not equal /` / `must not end with /`, `server.listen: listen address must be in "host:port" format` | D9 |
+
+Команды `scd sfc validate-config --config <файл>` (вывод `{"configPath": "<абсолютный путь>", "valid": true}` с отступом 2) и `scd sfc print-config --config <файл>` (нормализованный JSON после `${NAME}`-подстановки, значений по умолчанию и резолва `input` в абсолютный путь; порядок ключей `subscriptions`, `runtime`, `server`, `logging`; у подписки `id, input, enabled, format, fetchTimeoutMs, fetchUserAgent?, fetchHeaders?, pathRoute, outputs`; у выхода `id, enabled, name?, labelIncludeRegex?, labelExcludeRegex?, userAgent?, profileTitle?, profileUpdateInterval?`) работают как раньше; `--config` обязателен. Ошибка чтения файла — `failed to read config <файл>: …`.
 
 ## scd gtl
 
@@ -116,6 +128,41 @@
 ## Разобранные примеры
 
 Боевые конфиги `docker/{scd,sfc,gtl}/config.real-shape.yml` → Go-формы `config.real-shape.go.yml` (diff по шагам).
+
+### sfc: `docker/sfc/config.real-shape.yml` → `docker/sfc/config.real-shape.go.yml`
+
+TS-форма не проходит `scd sfc validate-config`: все три фильтра построены на lookahead —
+
+```
+invalid config docker/sfc/config.real-shape.yml:
+  - subscriptions.0.outputs.0.labelIncludeRegex: lookahead, lookbehind and backreferences are not supported (RE2 syntax): error parsing regexp: invalid or unsupported Perl syntax: `(?!`
+  - subscriptions.0.outputs.1.labelIncludeRegex: lookahead, … `(?=`
+  - subscriptions.0.outputs.2.labelIncludeRegex: lookahead, … `(?=`
+```
+
+Шаг 1 — `en-server` (всё, кроме Extra и WhiteList): «нет ни Extra, ни WhiteList» = исключение по любому из них.
+
+```diff
+-        labelIncludeRegex: '/^(?!.*Extra)(?!.*WhiteList).*$/i'
++        labelExcludeRegex: '/Extra|WhiteList/i'
+```
+
+Шаг 2 — `extra-server` (Extra, но не WhiteList): положительная часть — в include, отрицательная — в exclude.
+
+```diff
+-        labelIncludeRegex: '/^(?=.*Extra)(?!.*WhiteList).*$/i'
++        labelIncludeRegex: '/Extra/i'
++        labelExcludeRegex: '/WhiteList/i'
+```
+
+Шаг 3 — `extra-whitelist` (и Extra, и WhiteList, в любом порядке): список include — метка должна совпасть со всеми.
+
+```diff
+-        labelIncludeRegex: '/(?=.*Extra)(?=.*WhiteList)/i'
++        labelIncludeRegex: ['/Extra/i', '/WhiteList/i']
+```
+
+Остальные ключи (`input`, `format`, `fetchTimeoutMs: 15000`, `pathRoute`, `userAgent: [Happ]`, `profileTitle`, `profileUpdateInterval: 1`, `refreshSchedule: "15 * * * *"`, `server.listen: 172.18.3.4:8080`, `logging`) не меняются. Новые ключи необязательны: при необходимости добавьте у подписки `fetchUserAgent` (иначе панель увидит `User-Agent: scd/<версия>` вместо `node` — если панель выдаёт разный контент по User-Agent, задайте нужный явно) и `fetchHeaders` (например, `x-hwid: "${SFC_HWID}"`). Проверка: `scd sfc validate-config --config docker/sfc/config.real-shape.go.yml` → `"valid": true` (тест `TestSFCRealShapeGoFormValid`).
 
 ## Чек-лист
 

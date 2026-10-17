@@ -20,6 +20,12 @@ subscriptions:
     enabled: true
     format: auto
     fetchTimeoutMs: 5000
+    # Необязательно: User-Agent загрузки (по умолчанию scd/<версия>) и доп. заголовки
+    # запроса подписки (D33). Значения заголовков — секрет: в print-config и логах
+    # показываются как "<redacted>"; User-Agent/Host здесь задавать нельзя.
+    # fetchUserAgent: Happ/1.0
+    # fetchHeaders:
+    #   x-hwid: "${SFC_HWID}"
     pathRoute: /s
     outputs:
       - id: test-de
