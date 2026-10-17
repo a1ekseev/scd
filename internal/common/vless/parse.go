@@ -116,9 +116,18 @@ func Parse(l subscription.Line) (Link, *Skip) {
 	}
 	// The label is cosmetic: invalid UTF-8 (e.g. "%FF") is replaced, not skipped.
 	label = strings.ToValidUTF8(label, "\uFFFD")
+	// Like TS: only the userinfo user name is the id (a password is dropped)
+	// and a URL path ("/p") is ignored.
 	id := u.User.Username()
 	if id == "" {
 		return skip(CodeMissingRequiredField, "The VLESS URI does not contain a user id.", &label)
+	}
+	// net/url splits host:port at the last colon, so "h:443:80" and an
+	// unbracketed IPv6 address would give an ambiguous host; IPv6 zone ids
+	// ("[fe80::1%25eth0]") are not a usable outbound address either.
+	if host := u.Hostname(); (strings.Contains(host, ":") && !strings.HasPrefix(u.Host, "[")) ||
+		strings.Contains(host, "%") {
+		return skip(CodeInvalidURI, "The line is not a valid URI.", nil)
 	}
 	port, err := strconv.Atoi(u.Port())
 	if u.Hostname() == "" || err != nil || port < 1 || port > 65535 {
