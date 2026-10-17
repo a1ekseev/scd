@@ -177,6 +177,32 @@
 
 Пример (`includeSecrets: false`, xhttp+tls+ML-KEM): `{"protocol":"vless","address":"srv.example.com","port":443,"encryption":"mlkem768x25519plus","network":"splithttp","security":"tls","sni":"…","alpn":["h2"],"fingerprint":"chrome","path":"<redacted>","xhttpMode":"stream-up"}`.
 
+Остальные части ответа runtime-state (03 §6.4–§6.5, D9, D15, D31, D33):
+
+| Что | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| `config.subscription.fetchHeaders` | — | новый ключ (если заданы `fetchHeaders`): имена заголовков со значением `"<redacted>"` при `includeSecrets: false`, реальные значения при `true` | D33 |
+| `config.subscription.target` (копия target внутри подписки) | URL мониторинга печатались **без** редактирования | редактируются так же, как `config.target` | D33: URL мониторинга/push могут содержать токены |
+| редактирование URL (`input`, `monitor.request.url`, `balancerMonitor.request.url`, `remotePing.url`) | `<origin>/<redacted>` (WHATWG: порт по умолчанию опускался, у схем без origin — `null/<redacted>`) | `<scheme>://<host>/<redacted>`, хост и порт — как в исходной строке; без схемы/хоста или при ошибке разбора — `<redacted>` | D9 (`net/url`) |
+| `expected` для файла | `buildManifest` + фильтры + validate | то же, что в sync (`manifest.FromSubscription`): с политикой `allowInsecure` подписки, тем же trim/фильтрами/validate; текст ошибки — Go | D9, D15 |
+| набор ключей `config.subscription`/`config.target` | схема TS | схема Go (D31): напр. `allowInsecure`, `fetchUserAgent`, `target.balancerSelection`; все ключи TS сохранены | D31 |
+| routing `rawBase64` | сырой protobuf правила | protobuf элемента `ListRuleItem` (outbound-тег и `ruleTag` — всё, что отдаёт Xray) | 02 §1.5 |
+| `rawBase64` (любой kind) | ключ при `includeRaw: true` всегда | ключ опускается, если значение пустое | D3 (аддитивно) |
+| сортировки списков `runtime`/`diff` | `localeCompare` (ICU) | побайтно (`strings.Compare`) | D23 |
+
+### scd: status server и JSON API (`statusServer`)
+
+Ключи `statusServer.*` не менялись. Схемы `/api/status`, `/api/instance-status`, `/api/instances` и `version: 1` сохранены (D3); отличия — в поведении:
+
+| Что | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| маршрутизация | точное сравнение URL **с query**: `/api/status?x=1` отдавал HTML | сравнивается только путь: `/api/status?x=1` → JSON; `/api/runtime-state*` — по префиксу пути, как раньше | O8 |
+| сортировка подписок, target'ов, туннелей (при равной latency), remote-инстансов | `localeCompare` (ICU) | побайтно (`strings.Compare`) | D23 |
+| порядок ключей JSON | порядок вставки JS (у local и remote в `/api/instances` разный) | порядок полей Go-структур; набор ключей и значения те же | D23 |
+| исключение в обработчике (напр. странный remote snapshot) | падение процесса | ответ 500 и лог `http_handler_panic`, сервер работает | D23 |
+| ошибки сбора remote (`lastError`) | тексты Node (`fetch failed`, `The operation was aborted due to timeout`) | тексты Go (`net/http`, `context deadline exceeded`, ошибки разбора JSON); `Remote status API returned HTTP <код>.` и тексты проверки схемы — без изменений | D9 |
+| `instanceId` без `statusServer.instanceId` | `os.hostname()` | `os.Hostname()`, при ошибке — `localhost` | D9 |
+
 ### sfc: какие строки попадают в выходы
 
 Ключи конфига не менялись, но **содержимое выходов** `scd sfc` может стать больше (12 §6.2, D27 O7, D28, D18, D32).
