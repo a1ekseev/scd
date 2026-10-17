@@ -33,8 +33,8 @@ func Path(configPath, subscriptionID string) string {
 }
 
 // Write atomically replaces the cache file of the subscription id with
-// content (a temp file renamed into place) and returns the file path. On
-// failure the temp file is removed.
+// content (a temp file synced and renamed into place) and returns the file
+// path. On failure the temp file is removed.
 func Write(configPath, id, content string) (string, error) {
 	p := Path(configPath, id)
 	dir := filepath.Dir(p)
@@ -47,6 +47,11 @@ func Write(configPath, id, content string) (string, error) {
 	}
 	tmp := f.Name()
 	_, werr := f.WriteString(content)
+	if werr == nil {
+		// Flush before the rename: after an upstream outage the cache is the
+		// only copy, and a crash must not leave an empty file in its place.
+		werr = f.Sync()
+	}
 	err = errors.Join(werr, f.Close())
 	if err == nil {
 		err = os.Rename(tmp, p)

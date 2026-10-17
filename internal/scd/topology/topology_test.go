@@ -110,7 +110,7 @@ func TestVisionOverrideLeavesTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(topo.Tunnels) != 1 {
-		t.Skipf("tcp-tls vision not accepted: %+v", m.Skipped)
+		t.Fatalf("tcp-tls vision not accepted: %+v", m.Skipped)
 	}
 	if got := topo.Tunnels[0].OutboundInitial.Normalized.Flow; got != "xtls-rprx-vision" {
 		t.Errorf("flow = %q", got)
