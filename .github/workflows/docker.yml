@@ -135,6 +135,24 @@ jobs:
       - name: Run tests
         run: go test -race -count=1 ./...
 
+      - name: Download Xray 26.10.10
+        run: |
+          base=https://github.com/XTLS/Xray-core/releases/download/v26.10.10
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/Xray-linux-64.zip"
+          curl -fsSLO "$base/Xray-linux-64.zip.dgst"
+          want=$(sed -n 's/^SHA2-256= *//p' Xray-linux-64.zip.dgst)
+          got=$(sha256sum Xray-linux-64.zip | cut -d' ' -f1)
+          if [ -z "$want" ] || [ "$want" != "$got" ]; then
+            echo "Xray-linux-64.zip sha256 $got does not match .dgst SHA2-256 '$want'" >&2
+            exit 1
+          fi
+          unzip -q Xray-linux-64.zip -d xray
+          ./xray/xray version
+
+      - name: Run live Xray tests
+        run: SCD_XRAY_BIN="$RUNNER_TEMP/xray/xray" go test -tags xraylive -race -count=1 ./internal/scd/livetest/...
+
       - name: Build
         run: go build -o bin/scd ./cmd/scd
 

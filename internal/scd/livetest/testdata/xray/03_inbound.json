@@ -1,0 +1,14 @@
+{
+  "inbounds": [
+    {
+      "protocol": "socks",
+      "tag": "socks-proxy",
+      "listen": "127.0.0.1",
+      "port": {{SOCKS_PORT}},
+      "settings": {
+        "udp": true,
+        "auth": "noauth"
+      }
+    }
+  ]
+}
