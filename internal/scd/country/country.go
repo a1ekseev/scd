@@ -69,12 +69,14 @@ const regionalA = 0x1F1E6
 // (space, BOM) means no country.
 func FromLabel(label string) (Info, bool) {
 	var iso strings.Builder
+	var flag []rune
 	n := 0
 	for _, r := range label {
 		if r < regionalA || r > regionalA+25 {
 			return Info{}, false
 		}
 		iso.WriteByte(byte('A' + r - regionalA))
+		flag = append(flag, r)
 		n++
 		if n == 2 {
 			break
@@ -87,5 +89,5 @@ func FromLabel(label string) (Info, bool) {
 	if !ok {
 		return Info{}, false
 	}
-	return Info{Emoji: label[:8], ISO2: iso.String(), NameEn: nm.en, NameRu: nm.ru}, true
+	return Info{Emoji: string(flag), ISO2: iso.String(), NameEn: nm.en, NameRu: nm.ru}, true
 }
