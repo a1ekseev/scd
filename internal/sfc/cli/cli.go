@@ -15,6 +15,8 @@ func New() *cobra.Command {
 		Short: "Filter upstream subscriptions and serve them by public URL.",
 	}
 	cmd.AddCommand(
+		serveCommand(),
+		refreshCommand(),
 		configCommand("validate-config", "Validate config file", func(cmd *cobra.Command, l config.Loaded) error {
 			return jsonout.Write(cmd.OutOrStdout(), struct {
 				ConfigPath string `json:"configPath"`

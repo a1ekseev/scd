@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/sigctx"
 	"github.com/a1ekseev/scd/internal/gtl/cli"
 )
 
@@ -124,7 +125,7 @@ func TestServeStopsOnSignal(t *testing.T) {
 	}{{syscall.SIGINT, "SIGINT"}, {syscall.SIGTERM, "SIGTERM"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			addr := freeAddr(t)
-			ctx, stop := cli.NotifyContext(t.Context())
+			ctx, stop := sigctx.NotifyContext(t.Context())
 			defer stop()
 			done, logs := startServe(ctx, t, addr)
 			_ = get(t, "http://"+addr+"/healthz").Body.Close()
