@@ -18,7 +18,7 @@ func TestRecoverReturns500(t *testing.T) {
 	log := slog.New(slog.NewJSONHandler(&buf, nil))
 	h := Recover(log, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x/y", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x/SECRETID", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("code = %d", rec.Code)
 	}
@@ -28,10 +28,24 @@ func TestRecoverReturns500(t *testing.T) {
 	if rec.Body.String() != "internal server error\n" {
 		t.Fatalf("body = %q", rec.Body.String())
 	}
-	for _, s := range []string{`"event":"http_handler_panic"`, `"panic":"boom"`, `"path":"/x/y"`, `"level":"ERROR"`} {
+	for _, s := range []string{`"event":"http_handler_panic"`, `"panic":"boom"`, `"path":"/x"`, `"level":"ERROR"`} {
 		if !strings.Contains(buf.String(), s) {
 			t.Errorf("log missing %s: %s", s, buf.String())
 		}
+	}
+	// Final review M13: the last segment can be a capability (sfc output id).
+	if strings.Contains(buf.String(), "SECRETID") {
+		t.Errorf("log contains the last path segment: %s", buf.String())
+	}
+}
+
+// Final review M2: idle keep-alive connections and slow requests are bounded;
+// there is no write timeout (large gtl payloads).
+func TestServerTimeouts(t *testing.T) {
+	srv := newServer(http.NotFoundHandler())
+	if srv.IdleTimeout != 120*time.Second || srv.ReadTimeout != 60*time.Second ||
+		srv.ReadHeaderTimeout != 60*time.Second || srv.WriteTimeout != 0 {
+		t.Fatalf("timeouts: idle %v read %v header %v write %v", srv.IdleTimeout, srv.ReadTimeout, srv.ReadHeaderTimeout, srv.WriteTimeout)
 	}
 }
 
