@@ -1,0 +1,39 @@
+# Форма боевого конфига sfc владельца (2026-10-17). Секреты заменены:
+# input → example.com, pathRoute и id выходов → фейковые UUID (в боевом это часть публичной ссылки).
+# Go-версия обязана выражать эти фильтры без lookahead — см. 07-decisions.md D29.
+subscriptions:
+  - id: main
+    input: https://sub.example.com/api/sub/REDACTED
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 15000
+    pathRoute: /00000000-0000-4000-8000-000000000a01
+    outputs:
+      - id: 00000000-0000-4000-8000-000000000b01
+        enabled: true
+        name: en-server
+        labelIncludeRegex: '/^(?!.*Extra)(?!.*WhiteList).*$/i'
+        userAgent: [Happ]
+        profileTitle: EN Servers
+        profileUpdateInterval: 1
+      - id: 00000000-0000-4000-8000-000000000b02
+        enabled: true
+        name: extra-server
+        labelIncludeRegex: '/^(?=.*Extra)(?!.*WhiteList).*$/i'
+        userAgent: [Happ]
+        profileTitle: Extra Servers
+        profileUpdateInterval: 1
+      - id: 00000000-0000-4000-8000-000000000b03
+        enabled: true
+        name: extra-whitelist
+        labelIncludeRegex: '/(?=.*Extra)(?=.*WhiteList)/i'
+        userAgent: [Happ]
+        profileTitle: Extra Whitelist
+        profileUpdateInterval: 1
+runtime:
+  refreshSchedule: "15 * * * *"
+server:
+  listen: 172.31.3.4:8080
+logging:
+  level: info
+  format: json

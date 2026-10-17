@@ -146,3 +146,21 @@ Scope транспортов/шифрования **не расширяется*
 - **Неизвестные параметры ссылок игнорируются по умолчанию** (не skip): ссылка принимается, лишний параметр отбрасывается, warning `param_ignored` в отчёте/логе (`debug`). Покрывает и `support-x25519mlkem768`, `x_padding_bytes` (O13). Касается scd и sfc. Заменяет строгое правило TS «unknown param → skipped».
 - **Cron — библиотека `github.com/robfig/cron/v3` как есть** (`SecondOptional|…|Descriptor`): что она принимает — валидно, что отвергает — ошибка. Своих синтаксических ограничений не вводим (O14 снят). Остаются только защиты: пустое выражение и «никогда не срабатывает» (иначе цикл крутится без сна). Уточняет D24.
 - O15 (ws без path, REALITY без sni/fp/sid — принимать), O16 (неприменимые к транспорту параметры — молча игнорировать), O17 (`ech` передавать как есть) — **приняты**.
+
+## D29. Фильтры меток без lookahead: include/exclude-списки (2026-10-17)
+Боевые конфиги владельца (`docker/scd/config.real-shape.yml`, `docker/sfc/config.real-shape.yml`) строят фильтры на lookahead (`(?!.*Extra)`, `(?=.*Extra)(?=.*WhiteList)`), которых нет в RE2 (D8). Чтобы выразить ту же логику на RE2:
+- `labelIncludeRegex`: строка **или список** RE2-выражений — метка должна совпасть со **всеми** (AND);
+- `labelExcludeRegex` (новое): строка **или список** — метка отбрасывается, если совпала **хотя бы с одним** (OR);
+- оба необязательны (в sfc у output обязателен хотя бы один из двух); формат элемента — как в D8 (`/pattern/flags` или паттерн);
+- lookahead/lookbehind в конфиге → ошибка `validate-config` с подсказкой переписать через `labelIncludeRegex`/`labelExcludeRegex`;
+- применяется одинаково в scd (`subscriptions[].filters`) и sfc (`outputs[]`), общий код — `internal/common`.
+Переписанные боевые фильтры (эквивалентны TS):
+| Было (TS) | Стало (Go) |
+|---|---|
+| `/^(?!.*Extra)(?!.*WhiteList).*$/i` | `labelExcludeRegex: '/Extra\|WhiteList/i'` |
+| `/^(?=.*Extra)(?!.*WhiteList).*$/i` | `labelIncludeRegex: '/Extra/i'` + `labelExcludeRegex: '/WhiteList/i'` |
+| `/(?=.*Extra)(?=.*WhiteList)/i` | `labelIncludeRegex: ['/Extra/i', '/WhiteList/i']` |
+Эквивалентность проверяется тестом на корпусе меток: решения TS-регулярок (эталон этапа 0) == решения Go include/exclude.
+
+## D30. Боевые конфиги — эталон формы
+`docker/scd/config.real-shape.yml` и `docker/sfc/config.real-shape.yml` (секреты заменены) — обязательные фикстуры: TS их принимает сейчас; Go-версия обязана принимать их Go-форму (фильтры по D29, остальное без изменений) и давать понятную ошибку на старую форму. Все поля из них покрыты тестами, вкл. `balancerMonitor.socks5`, `remotePing.viaSocks`, `statusServer.runtimeState.{includeRaw,includeSecrets}`, `instanceId`, `observatorySubjectSelectorPrefix`, `visionUdp443Override`.

@@ -23,6 +23,8 @@
 
 ### Task 4.1: Конфиг scd, `validate-config`, `print-config`
 
+> **Поправка D29/D30 (обязательна):** фильтр меток — `labelIncludeRegex` (строка или список, AND) + новый `labelExcludeRegex` (строка или список, OR); общий пакет `internal/common/labelfilter` (`type Filter struct{Include, Exclude []*regexp.Regexp}`; `func Parse(node) (Filter, error)`; `func (f Filter) Match(label string) bool`), компиляция элементов через `regexlit` (D8); lookahead → ошибка с подсказкой `use labelIncludeRegex/labelExcludeRegex lists instead of lookahead`. Тесты: `TestLabelFilterRealShapeEquivalence` — для корпуса меток `testdata/reference/common/label-filter.json` (этап 0.6) решения Go-формы фильтров из D29 совпадают с решениями TS-регулярок; `TestRealShapeConfigGoFormValid` — Go-форма `docker/<svc>/config.real-shape.yml` проходит `validate-config`; `TestRealShapeConfigTSFormRejectedWithHint`. Здесь — `subscriptions[].filters.{labelIncludeRegex,labelExcludeRegex}`; Go-форму `docker/scd/config.real-shape.yml` создать как `docker/scd/config.real-shape.go.yml`.
+
 **Read:** `01` §1.1, §2 (правила; тексты zod не нужны — D9), §14 (CLI validate/print), §17.3 S1–S14; `07` D8, D12, D15, D22, D23, D24, D27 (O9, O10); `10` §6.5; `docker/scd/config.example.yml`; `testdata/reference/scd/print-config/*`, `testdata/reference/scd/config-cases.json`.
 
 **Files:**
@@ -201,6 +203,8 @@
 ---
 
 ### Task 4.7: Манифест, фильтры, загрузка подписок и `scd generate`
+
+> **Поправка D29:** фильтры манифеста применяют `labelfilter.Filter.Match` (include AND, exclude OR) вместо одного регулярного выражения.
 
 **Read:** `01` §8, §9, §10, §13, §14.1–§14.2, §16, §17.1 (P1–P5, P7–P10, P19–P20, P25), §17.3 S15; `07` D8, D9, D23, D26, D27 (O9); `11-xray-vless-matrix.md` §5; `testdata/reference/scd/generate/*`, `testdata/reference/scd/corpus/ts-parse.json`, `d26-expect.json`.
 

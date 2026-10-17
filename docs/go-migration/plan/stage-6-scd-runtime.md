@@ -97,6 +97,8 @@
 
 ### Task 6.3: Мониторинг туннелей, repair/rejoin, balancer monitor и remote push
 
+> **Поправка D30:** явно покрыть тестами balancer monitor через внешний SOCKS5 из `balancerMonitor.socks5.{host,port}` и remote push `balancerMonitor.remotePing` с `viaSocks: true` (запрос идёт через тот же SOCKS5) и `viaSocks: false` (напрямую) — поведение `03` §4 (balancer monitor / Remote Push); конфиг-фикстура — `docker/scd/config.real-shape.go.yml`.
+
 **Read:** `03` §4 (весь), §8.1 (события мониторинга), §10.6 п.1–25; `02` §2.5; `07` D2.
 
 **Files:**
