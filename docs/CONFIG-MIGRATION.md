@@ -159,7 +159,7 @@
 
 | Поле `parsed` | Было (TS) | Стало (Go) | Причина |
 |---|---|---|---|
-| outbound `path` (ws, xhttp, raw/tcp с `headerType=http`) | ws `path` не выводился (декодер читал не то поле), остальные — не выводились | выводится; при `includeSecrets: false` — `"<redacted>"` (пустой path — ключа нет), при `true` — как есть (у raw `headerType=http` — список путей через запятую) При `includeRaw: true` поле `rawBase64` содержит нередактированный protobuf (uuid, path, host, ключи) независимо от `includeSecrets`. | D33: xhttp-путь реальных подписок — секретоподобная строка, как URL подписки |
+| outbound `path` (ws, xhttp, raw/tcp с `headerType=http`) | ws `path` не выводился (декодер читал не то поле), остальные — не выводились | выводится; при `includeSecrets: false` — `"<redacted>"` (пустой path — ключа нет), при `true` — как есть (у raw `headerType=http` — список путей через запятую). При `includeRaw: true` поле `rawBase64` содержит нередактированный protobuf (uuid, path, host, ключи) независимо от `includeSecrets`. | D33: xhttp-путь реальных подписок — секретоподобная строка, как URL подписки |
 | outbound `host` | ws `host` не выводился | ws — как есть; xhttp — при `includeSecrets: false` `"<redacted>"` | D6, D33 |
 | outbound `encryption` у ML-KEM | — (такие ссылки пропускались) | при `includeSecrets: false` — `"mlkem768x25519plus"` вместо ключа; при `true` — значение Xray (без префикса `mlkem768x25519plus.<режим>.<rtt>.`) | D26, D33 |
 | outbound `fingerprint` (tls) | не выводился (читалось поле 10) | значение `fp` из ссылки | D6 |
