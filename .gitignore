@@ -20,3 +20,4 @@ scd/.turbo/
 xtls-sdk/
 **/config.yml
 **/.sfc-cache/
+/bin/
