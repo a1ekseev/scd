@@ -1,0 +1,1 @@
+Subscription source "<input>" produced no valid outbound entries. parsed=0 skipped=4 filtered=0 filteredByCountry=0 filteredByLabelRegex=0 unsupportedScheme=0 unsupportedParam=4 unsupportedValue=0 unsupportedCombo=0 invalidUri=0 missingRequiredField=0 duplicateTag=0

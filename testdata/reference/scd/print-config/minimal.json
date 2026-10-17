@@ -1,0 +1,67 @@
+{
+  "subscriptions": [
+    {
+      "id": "s1",
+      "input": "testdata/reference/scd/print-config/sub.txt",
+      "enabled": true,
+      "format": "auto",
+      "fetchTimeoutMs": 5000,
+      "target": {
+        "address": "127.0.0.1:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [],
+        "fixedInbounds": [],
+        "fixedRouting": [],
+        "visionUdp443Override": false,
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancerMonitor": {
+          "enabled": false,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          },
+          "remotePing": {
+            "enabled": false,
+            "timeoutMs": 5000,
+            "viaSocks": false
+          }
+        }
+      }
+    }
+  ],
+  "runtime": {
+    "mode": "run-once"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "resources": {
+    "outbounds": {
+      "enabled": true
+    },
+    "inbounds": {
+      "enabled": false
+    },
+    "routing": {
+      "enabled": false
+    }
+  },
+  "statusServer": {
+    "enabled": true,
+    "listen": "127.0.0.1:9090",
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  }
+}
