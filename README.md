@@ -223,6 +223,9 @@ Validation errors list every problem with its field path, for example:
   `*_tick_skipped_overrun`.
 - Subscription URLs appear in logs and in the sync report as
   `<scheme>://<host>/<redacted>`.
+- The `scd sync` report, like the `generate` manifest and log, lists skipped
+  lines with their full `raw` link, which contains secrets (UUID, keys,
+  path); treat that output like the subscription itself.
 
 ### Monitoring and repair
 
