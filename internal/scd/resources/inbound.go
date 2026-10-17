@@ -31,7 +31,7 @@ type socksSettings struct {
 // Inbound returns the no-auth, UDP-enabled SOCKS inbound of t, built from
 // its Xray JSON config with infra/conf (D19). An IP listen address becomes
 // IPOrDomain.ip (IPv6 included); conf rejects a domain other than localhost,
-// returned as "xray rejected inbound <tag>: <err>".
+// returned as "invalid inbound <tag>: <err>".
 func Inbound(t topology.Tunnel) (*core.InboundHandlerConfig, error) {
 	raw, err := json.Marshal(inboundJSON{
 		Tag:      t.InboundTag,
@@ -45,11 +45,11 @@ func Inbound(t topology.Tunnel) (*core.InboundHandlerConfig, error) {
 	}
 	var dc conf.InboundDetourConfig
 	if err := json.Unmarshal(raw, &dc); err != nil {
-		return nil, fmt.Errorf("xray rejected inbound %s: %w", t.InboundTag, err)
+		return nil, fmt.Errorf("invalid inbound %s: %w", t.InboundTag, err)
 	}
 	h, err := dc.Build()
 	if err != nil {
-		return nil, fmt.Errorf("xray rejected inbound %s: %w", t.InboundTag, err)
+		return nil, fmt.Errorf("invalid inbound %s: %w", t.InboundTag, err)
 	}
 	return h, nil
 }

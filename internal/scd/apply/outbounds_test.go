@@ -348,7 +348,7 @@ func TestOutboundsBuildErrorRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := r.Items[len(r.Items)-1]
-	if last.ID != "bad" || last.Status != "failed" || !strings.HasPrefix(last.Message, "xray rejected outbound bad: ") {
+	if last.ID != "bad" || last.Status != "failed" || !strings.HasPrefix(last.Message, "invalid outbound bad: ") {
 		t.Errorf("last item = %+v", last)
 	}
 	assertState(t, srv, original)

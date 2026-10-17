@@ -450,7 +450,7 @@ func TestToProtoIsSilent(t *testing.T) {
 func TestToProtoErrorNamesTag(t *testing.T) {
 	n := d26(t, 103)
 	_, err := ToProto(Build(n))
-	if err == nil || !strings.HasPrefix(err.Error(), "xray rejected outbound "+n.Tag+": ") {
+	if err == nil || !strings.HasPrefix(err.Error(), "invalid outbound "+n.Tag+": ") {
 		t.Fatalf("err %v", err)
 	}
 }
