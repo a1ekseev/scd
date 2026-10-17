@@ -3,12 +3,14 @@
 package logging
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 )
 
 // Levels beyond the standard slog set.
@@ -90,8 +92,11 @@ func replacePretty(groups []string, a slog.Attr) slog.Attr {
 	}
 	switch reflect.TypeOf(v).Kind() {
 	case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct:
-		if b, err := json.Marshal(v); err == nil {
-			a.Value = slog.StringValue(string(b))
+		var b bytes.Buffer
+		enc := json.NewEncoder(&b)
+		enc.SetEscapeHTML(false) // "<redacted>", "a&b" stay readable
+		if err := enc.Encode(v); err == nil {
+			a.Value = slog.StringValue(strings.TrimSuffix(b.String(), "\n"))
 		}
 	}
 	return a
