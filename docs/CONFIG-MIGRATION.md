@@ -38,6 +38,15 @@
 | Ключ | Было (TS) | Стало (Go) | Причина |
 |---|---|---|---|
 | `server.listen` | `:80` невалиден (host обязателен) | `:8080` допустим — все интерфейсы; IPv6 только в скобках (`[::]:8080`) | `net.SplitHostPort`, идиоматичный Go |
+| `logging.*`, `load.*` | — | ключи, значения по умолчанию (`info`/`json`, `maxSizeKb: 10240`) и проверки `load.path` без изменений; `maxSizeKb` — от 1 до `9007199254740991` (`MaxInt64/1024`, было `8796093022207`) | D9 |
+| Ошибки валидации | `✖ …` / `→ at path` (zod) | единый формат `invalid config <файл>:` + `  - <путь>: <сообщение>` (см. «Общее»); неизвестный ключ — `unknown key "x"` | D9 |
+| Куда пишутся логи | pino в **stdout** | **stderr**; `logging.format: pretty` — `slog.TextHandler` (см. «Логи») | D27 |
+| `--version` | `gtl --version` → `1.0.2` | у `scd gtl` флага нет, версия только у корневой `scd --version` | D27 O10 |
+| Запуск | `node dist/cli.js serve --config …` | `scd gtl serve --config …` (в compose: `command: ["gtl", "serve", "--config", …]`) | D10 |
+
+Команды `scd gtl validate-config --config <файл>` (вывод `Config is valid`) и `scd gtl print-config --config <файл>` (нормализованный JSON; порядок ключей `server`, `logging`, `load`) работают как раньше; `--config` обязателен.
+
+Разобранный пример: боевой `docker/gtl/config.real-shape.yml` → `docker/gtl/config.real-shape.go.yml`. Ключи gtl не менялись, содержимое совпадает (меняется только комментарий-шапка); `server.listen: 172.18.3.5:8080` остаётся валидным.
 
 ## Фильтры меток
 
