@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+// ShutdownTimeout is how long services let in-flight requests finish after a
+// stop signal. It stays below Docker's default ~10 s SIGKILL grace period.
+const ShutdownTimeout = 10 * time.Second
+
 // Listen opens a TCP listener on addr.
 func Listen(addr string) (net.Listener, error) {
 	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)

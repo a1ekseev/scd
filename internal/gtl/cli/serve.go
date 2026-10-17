@@ -2,12 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,15 +17,46 @@ import (
 )
 
 // shutdownTimeout bounds how long active downloads may finish after a stop
-// signal (the Node service waited without a deadline).
-const shutdownTimeout = 10 * time.Minute
+// signal; a variable so tests can shorten it.
+var shutdownTimeout = httpserve.ShutdownTimeout
 
 func serveCommand() *cobra.Command {
 	return configCommand("serve", "Run the load generator HTTP server", func(cmd *cobra.Command, cfg config.Config) error {
-		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		ctx, stop := notifyContext(cmd.Context())
 		defer stop()
 		return serve(ctx, cfg, cmd.ErrOrStderr())
 	})
+}
+
+// signalCause is the context cause recorded when a stop signal arrives.
+type signalCause string
+
+func (c signalCause) Error() string { return string(c) + " received" }
+
+// notifyContext returns a context cancelled by the first SIGINT or SIGTERM,
+// with a signalCause naming it. Right after the first signal the default
+// signal handling is restored, so a second signal during the shutdown drain
+// terminates the process immediately.
+func notifyContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancelCause(parent)
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-ch:
+			signal.Stop(ch)
+			name := "SIGTERM"
+			if sig == os.Interrupt {
+				name = "SIGINT"
+			}
+			cancel(signalCause(name))
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, func() {
+		signal.Stop(ch)
+		cancel(nil)
+	}
 }
 
 // RunServe loads the config at cfgPath and serves until ctx is done, logging
@@ -69,14 +99,8 @@ func serve(ctx context.Context, cfg config.Config, stderr io.Writer) error {
 
 // stopReason names the signal that cancelled ctx, or "context canceled".
 func stopReason(ctx context.Context) string {
-	switch cause := context.Cause(ctx); {
-	case cause == nil, cause == context.Canceled: //nolint:errorlint // sentinel identity
-		return "context canceled"
-	case strings.HasPrefix(cause.Error(), "interrupt "):
-		return "SIGINT"
-	case strings.HasPrefix(cause.Error(), "terminated "):
-		return "SIGTERM"
-	default:
-		return cause.Error()
+	if sc, ok := errors.AsType[signalCause](context.Cause(ctx)); ok {
+		return string(sc)
 	}
+	return "context canceled"
 }
