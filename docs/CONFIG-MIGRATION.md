@@ -7,11 +7,11 @@
 | Что | Было (TS) | Стало (Go) | Причина |
 |---|---|---|---|
 | `${NAME}` | scd — по сырому тексту до YAML (в т.ч. в комментариях), нет переменной → ошибка; sfc — только в строковых значениях после YAML, нет переменной → `""`; gtl — без подстановки | без изменений; текст ошибки scd: `missing environment variable "NAME" required by config` | D9 |
-| YAML | `yaml@2` (YAML 1.2 core) | `go.yaml.in/yaml/v3`; дубликат ключа и несколько документов (`---`) — ошибка (`config must contain a single YAML document`); пустой файл — пустой объект; `yes`/`on` — строки | D9 |
+| YAML | `yaml@2` (YAML 1.2 core) | `go.yaml.in/yaml/v3`; дубликат ключа и несколько документов (`---`) — ошибка (`config must contain a single YAML document`); пустой файл — пустой объект; `yes`/`on` — строки; целое с ведущим `0` читается как восьмеричное (`017` → 15, было 17) — пишите без ведущего нуля | D9 |
 | Пустое значение ключа (`key:` / `~`) | `null` → ошибка типа | `null` = ключ отсутствует (действует значение по умолчанию; для обязательного — `required`) | идиоматичный YAML |
 | Целые числа | `5000.0` принимался (JS-число с целым значением) | только YAML-целые: `5000.0` → `expected integer, got float` | D9, D31 |
 | Булевы | только YAML bool | без изменений: `yes` → `expected boolean, got string` | — |
-| Ошибки валидации | тексты zod, у sfc без путей | все issues с путём поля: `invalid config <файл>:` и по строке `  - <путь>: <сообщение>` (`<root>` для корня); сообщения `required`, `expected <тип>, got <тип>`, `must be at least N`, `must be at most N`, `must be one of a\|b`, `must not be empty`, `invalid URL`, `unknown key "x"` | D9 |
+| Ошибки валидации | тексты zod, у sfc без путей | все issues с путём поля: `invalid config <файл>:` и по строке `  - <путь>: <сообщение>` (`<root>` для корня); сообщения `required`, `expected <тип>, got <тип>`, `must be at least N`, `must be at most N`, `must be at least N characters long`, `must have at least N items`, `integer out of range`, `must be one of a\|b`, `must not be empty`, `expected string or array, got <тип>`, `invalid URL`, `unknown key "x"` | D9 |
 | URL-поля | WHATWG `new URL` | `net/url.Parse` + непустые схема и хост | D9 |
 | Относительный `subscriptions[].input` | от каталога конфига; `-` и `http(s)://` как есть | без изменений (`ftp://x/y` — относительный путь `<каталог>/ftp:/x/y`) | — |
 

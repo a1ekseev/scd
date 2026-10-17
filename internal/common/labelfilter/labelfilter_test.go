@@ -58,11 +58,20 @@ func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 	// a line break; RE2 include/exclude look at the whole label. Go behaviour is
 	// kept (12 §6.3); every label with a real "\n" must be listed here.
 	const why = "JS `.` не матчит `\\n`"
-	allowedDiffs := map[string]string{
-		"Extra\nWhiteList": why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true (12 §6.3)",
-		"WhiteList\nExtra": why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true",
-		"Extra\nfoo":       why + ": TS extra=false (`.*$` не доходит до конца), Go include /Extra/i exclude /WhiteList/i = true",
-		"foo\nbar":         why + ": TS en=false (`.*$` не доходит до конца), Go exclude /Extra|WhiteList/i = true",
+	type diff struct {
+		goWant [3]bool // expected Go [en extra extraWhitelist]
+		reason string
+	}
+	allowedDiffs := map[string]diff{
+		"Extra\nWhiteList": {[3]bool{false, false, true}, why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true (12 §6.3)"},
+		"WhiteList\nExtra": {[3]bool{false, false, true}, why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true"},
+		"Extra\nfoo":       {[3]bool{false, true, false}, why + ": TS extra=false (`.*$` не доходит до конца), Go include /Extra/i exclude /WhiteList/i = true"},
+		"foo\nbar":         {[3]bool{true, false, false}, why + ": TS en=false (`.*$` не доходит до конца), Go exclude /Extra|WhiteList/i = true"},
+	}
+	for label := range allowedDiffs {
+		if !strings.Contains(label, "\n") {
+			t.Errorf("allowedDiffs label %q has no \\n: only JS `.`/\\n differences are allowed", label)
+		}
 	}
 
 	sources := map[string]int{}
@@ -75,10 +84,12 @@ func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 		}
 		got := [3]bool{en.Match(c.Label), extra.Match(c.Label), extraWhitelist.Match(c.Label)}
 		want := [3]bool{c.En, c.Extra, c.ExtraWhitelist}
-		reason, allowed := allowedDiffs[c.Label]
+		d, allowed := allowedDiffs[c.Label]
 		switch {
 		case allowed && got == want:
-			t.Errorf("label %q is in allowedDiffs (%s) but Go now matches TS %v", c.Label, reason, want)
+			t.Errorf("label %q is in allowedDiffs (%s) but Go now matches TS %v", c.Label, d.reason, want)
+		case allowed && got != d.goWant:
+			t.Errorf("label %q (%s): Go = %v, want %v", c.Label, d.reason, got, d.goWant)
 		case !allowed && got != want:
 			t.Errorf("label %q (%s): Go [en extra extraWhitelist] = %v, TS = %v", c.Label, c.Source, got, want)
 		}
