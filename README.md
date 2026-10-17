@@ -483,6 +483,8 @@ logging: {level: info, format: json}
   `<config dir>/.sfc-cache/<id>.subscription` is used (file mode `0600`). If
   there is no cache, or an output comes out empty, that output keeps serving
   its last good payload and the refresh is reported as failed.
+- Subscription URLs appear in logs and in the `refresh` report as
+  `<scheme>://<host>/<redacted>`, as in scd.
 
 ## scd gtl
 

@@ -187,6 +187,8 @@ statusServer:
 
 `scd sfc validate-config --config <файл>` (`{"configPath": "<абсолютный путь>", "valid": true}`), `scd sfc print-config` (JSON после `${NAME}`, умолчаний и резолва `input`; порядок `subscriptions`, `runtime`, `server`, `logging`; у подписки `id, input, enabled, format, fetchTimeoutMs, fetchUserAgent?, fetchHeaders?, pathRoute, outputs`; у выхода `id, enabled, name?, labelIncludeRegex?, labelExcludeRegex?, userAgent?, profileTitle?, profileUpdateInterval?`), `scd sfc refresh`, `scd sfc serve`. Отличия `refresh`/`serve` — «[sfc: какие строки попадают в выходы](#sfc-какие-строки-попадают-в-выходы)».
 
+URL подписки в логах `refresh`/`serve` (`subscription_refreshed.source`, `error` у `subscription_source_cache_used`/`subscription_source_cache_missed`/`subscription_refresh_failed`) и в `outputs[].error` отчёта `refresh` — `<scheme>://<host>/<redacted>` (было: полный URL с токеном), как у scd (D33).
+
 ## scd gtl
 
 Ключи `scd gtl` (бывший `gtl`) не менялись.

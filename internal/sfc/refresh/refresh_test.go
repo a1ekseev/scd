@@ -6,8 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -771,4 +775,79 @@ server:
 	if len(rep.Outputs) != 1 || rep.Outputs[0].ID != "out-a" {
 		t.Errorf("outputs = %+v, want only out-a", rep.Outputs)
 	}
+}
+
+// Final review I2: the subscription URL (a token in the path and query) never
+// reaches the logs or the report (D33, like scd ruling 6.1).
+func TestRefreshDoesNotLeakSubscriptionURL(t *testing.T) {
+	const secret, qsecret = "PATHSECRET123", "QUERYSECRET456"
+	var fail atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, lineDE)
+	}))
+	defer srv.Close()
+	input := srv.URL + "/sub/" + secret + "?token=" + qsecret
+
+	cfg := loadConfig(t, `
+subscriptions:
+  - id: main
+    input: `+input+`
+    pathRoute: /p
+    outputs:
+      - id: out
+        labelIncludeRegex: '/Germany/'
+runtime:
+  refreshSchedule: "@hourly"
+server:
+  listen: 127.0.0.1:8080
+`)
+	rec := &logRecorder{}
+	r := &Refresher{
+		Cfg: cfg, State: NewState(cfg.Config), Now: func() time.Time { return fixedNow },
+		Log: slog.New(slog.NewJSONHandler(rec, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	check := func(stage string, rep Report) {
+		t.Helper()
+		b, err := json.Marshal(rep)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec.mu.Lock()
+		logs := rec.buf.String()
+		rec.mu.Unlock()
+		st, _ := json.Marshal(r.State.get("out"))
+		for _, s := range []string{secret, qsecret} {
+			for name, text := range map[string]string{"logs": logs, "report": string(b), "state": string(st)} {
+				if strings.Contains(text, s) {
+					t.Errorf("%s: %s contain %s:\n%s", stage, name, s, text)
+				}
+			}
+		}
+	}
+
+	rep := r.Run(t.Context()) // success: subscription_refreshed.source
+	if rep.Failed != 0 || len(rec.events(t, "subscription_refreshed")) != 1 {
+		t.Fatalf("first refresh: %+v", rep)
+	}
+	check("success", rep)
+
+	fail.Store(true) // load failure with the source cache
+	rep = r.Run(t.Context())
+	if len(rec.events(t, "subscription_source_cache_used")) != 1 {
+		t.Fatalf("cache not used: %+v", rep)
+	}
+	check("cache", rep)
+
+	if err := os.RemoveAll(cache.Dir(cfg.Path)); err != nil {
+		t.Fatal(err)
+	}
+	rep = r.Run(t.Context()) // load failure without the cache: report error
+	if rep.Failed != 1 || !strings.Contains(rep.Outputs[0].Error, "/<redacted>") {
+		t.Fatalf("failed refresh: %+v", rep)
+	}
+	check("failure", rep)
 }
