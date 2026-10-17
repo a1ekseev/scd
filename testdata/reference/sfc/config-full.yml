@@ -1,0 +1,24 @@
+# Every key of the TS sfc config schema (sfc/src/types.ts). Used by config-keys.json.
+subscriptions:
+  - id: full-fixture
+    input: ../../../docker/fixtures/subscription.b64
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    pathRoute: /s
+    outputs:
+      - id: full-output
+        enabled: true
+        name: full
+        labelIncludeRegex: '/.*/i'
+        userAgent:
+          - Clash
+        profileTitle: Full Title
+        profileUpdateInterval: 6
+runtime:
+  refreshSchedule: "*/10 * * * *"
+server:
+  listen: 0.0.0.0:8080
+logging:
+  level: info
+  format: json
