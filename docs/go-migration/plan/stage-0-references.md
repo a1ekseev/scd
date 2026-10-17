@@ -1,0 +1,133 @@
+# Этап 0. Эталоны с TypeScript-версии (до удаления TS)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development (или executing-plans). Шаги — чекбоксы. Перед задачей прочитать «Глобальные ограничения» в `README.md` этого каталога.
+
+**Goal:** снять с работающей TS-версии воспроизводимые эталоны (выходы CLI, разбор корпуса ссылок, cron-векторы, ответы sfc/gtl, HTML/JSON status-сервера и скриншоты дашборда) и сохранить их как Go-testdata в `testdata/reference/`, чтобы этапы 1–6 сверялись с ними после удаления TS (D3, D20).
+
+**Architecture:** временный каталог `tools/golden/` с Node-скриптами (ESM `.mjs`), которые импортируют собранные `scd/dist`, `sfc/dist`, `gtl/dist` и пишут JSON/HTML/PNG в `testdata/reference/`. Скрипты коммитятся, чтобы эталоны можно было переснять до этапа 7; в задаче 7.3 `tools/golden/` удаляется, `testdata/reference/` остаётся.
+
+**Tech Stack:** Node 22.22.0 (локально; `engines` просит ≥24.14 — `npm ci` выдаст warning, это допустимо), уже установленные `node_modules` сервисов, Chromium headless shell из `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell` (Playwright-бандл, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
+
+**Spec:** `07-decisions.md` D3, D9, D20, D23; `00-overview.md` «Этап 0»; `01` §2.6, §14, §17; `03` §6, §10.4; `04` §2.1, §5; `05` §4.5; `06` §3.
+
+## Контекст этапа
+
+- Node 22 вместо 24.14: эталоны, зависящие от ICU (`nameEn` стран, `localeCompare`), снимаются как есть; Go их **не** обязан повторять (D9) — в `testdata/reference/README.md` пометить эти поля как «информационные».
+- Время замораживать: все скрипты импортируют `tools/golden/lib/freeze-time.mjs` **до** импорта dist-модулей. Он подменяет `globalThis.Date` подклассом, у которого `new Date()`/`Date.now()` возвращают значение из env `GOLDEN_NOW` (default `2026-08-15T10:00:00.000Z`).
+- `os.hostname()` не должен попадать в эталоны: во всех фикстурах задавать `statusServer.instanceId`.
+- Выходные JSON писать `JSON.stringify(v, null, 2) + "\n"`; Go-тесты сравнивают их семантически.
+- Каждая задача дописывает свой раздел в `testdata/reference/README.md` (что за файл, чем снят, какие поля информационные).
+
+---
+
+### Task 0.1: Инструменты эталонов и базовая проверка TS
+
+**Read:** `07` D20; `00` «Этап 0»; `AGENTS.md` (корень) «Common Rules».
+
+**Files:**
+- Create: `tools/golden/package.json` (`{"private":true,"type":"module","scripts":{"all":"node run-all.mjs"}}`, без зависимостей)
+- Create: `tools/golden/lib/freeze-time.mjs`, `tools/golden/lib/io.mjs` (`writeJSON(path, value)`, `writeText(path, s)`, `repoRoot`)
+- Create: `tools/golden/run-all.mjs` (последовательно запускает скрипты 0.2–0.4, которые появятся позже; отсутствующие пропускает с сообщением)
+- Create: `tools/golden/README.md` (как пересоздать эталоны; предупреждение «удаляется в задаче 7.3»)
+- Create: `testdata/reference/README.md` (индекс), `testdata/reference/scd/fixtures/vpn-sample.txt` (копия `scd/test/fixtures/vpn-sample.txt`)
+- Create: `testdata/reference/ts-baseline.txt` (вывод прогонов TS-тестов: число tests/pass/fail по сервису)
+
+**Interfaces:**
+- Produces: `freeze-time.mjs` экспортирует `FROZEN_NOW: string`; `io.mjs` — `writeJSON(relPath, value)`, `writeText(relPath, text)`, `repoRoot: string` (абсолютный корень репозитория). Все последующие скрипты этапа 0 пользуются ими.
+
+- [ ] **Step 1: Собрать TS и прогнать TS-тесты.**
+  Run (из каждого `scd/`, `sfc/`, `gtl/`): `npm ci && npm run build && npm test 2>&1 | tail -5`
+  Expected: `fail 0` во всех трёх. Записать сводку в `testdata/reference/ts-baseline.txt`. Если тесты красные на Node 22 — зафиксировать в ts-baseline, какие и почему, и продолжить (эталоны снимаются с собранного кода).
+- [ ] **Step 2: Написать `freeze-time.mjs` и самопроверку** `node -e "import('./tools/golden/lib/freeze-time.mjs').then(()=>console.log(new Date().toISOString()))"` → `2026-08-15T10:00:00.000Z`.
+- [ ] **Step 3: `io.mjs`, `run-all.mjs`, README-файлы, копия фикстуры.**
+- [ ] **Step 4: Проверка:** `node tools/golden/run-all.mjs` завершается с кодом 0 (пока скриптов нет — сообщает «skipped»).
+- [ ] **Step 5: Commit** `chore(refs): add golden reference tooling and TS baseline` (трейлер — см. README плана).
+
+---
+
+### Task 0.2: Эталоны домена scd (разбор, generate, print-config, cron)
+
+**Read:** `01` §2.6, §4–§8, §14, §17.4; `09` §6–§7; `06` §3; `07` D9, D14, D23.
+
+**Files:**
+- Create: `tools/golden/scd-domain.mjs`
+- Create: `testdata/reference/scd/corpus/vless-corpus.txt` — корпус строк (одна ссылка на строку; комментариев нет): все строки `docker/fixtures/subscription.txt`, `scd/test/fixtures/vpn-sample.txt`, все случаи из `01` §17.4 и §5.2/§5.3 (Example.COM/0443/Type=TCP, `:65536`, `@:443`, `ho st`, `+443`, nil UUID, uppercase UUID, `&1=2&zz=3&&=x`, `sni=a&sni=b`, `path=/a+b%2Fc%zz;x`, `[2001:0DB8:0:0::1]`, `encryption=None`, `headerType=`, `allowInsecure=`, `type=tcp` без security, reality без sid, reality без flow, tcp+tls+vision, `alpn=h2,%20http/1.1,,`), примеры `09` §6.1–§6.3 (с `?ed=2048`), ссылки 3x-ui/v2rayN с `spx`, `pqv`, `pcs`, `vcn`, `allowInsecure=1`, пустым `sid`, `fp=Chrome`, битым `pbk`, `type=xhttp` (`path`,`host`,`mode=auto`,`extra=%7B%7D`), `encryption=mlkem768x25519plus.native.0rtt.<base64url-ключ>` (ключ сгенерировать: 1184 случайных байт → base64url без padding), ссылки с `ech=`, `fm=`, `type=grpc`.
+- Create (выход скрипта): `testdata/reference/scd/corpus/ts-parse.json` — массив `{line, raw, ts: {ok, reasonCode?, reason?, details?, label?, profile?, tag?, normalized?}}` (результат `parseSubscriptionLine` → `normalizeVless`; исключение `URIError` → `{error: "URI malformed"}`)
+- Create: `testdata/reference/scd/generate/vpn-sample.{manifest,log,summary}.json`, `testdata/reference/scd/generate/docker-fixture.{manifest,log,summary}.json` (через `generateCommand` в tmp-каталог; `sourceFile` заменить на `<input>`)
+- Create: `testdata/reference/scd/print-config/docker-example.json` (`loadConfig('docker/scd/config.example.yml')`, `input` заменить на путь относительно репозитория), `testdata/reference/scd/print-config/minimal.json` (конфиг из `01` §2.6; положить его в `testdata/reference/scd/print-config/minimal.yml`)
+- Create: `testdata/reference/scd/config-cases.json` — массив `{name, yaml, valid, messages[]}` для кейсов `01` §17.3 S1–S14 и §17.4 «Конфиг» (сообщения информационные — D9)
+- Create: `testdata/reference/common/cron-next.json` — `[{expr, from, next: [t1,t2,t3]}]` от `cron-parser` из `scd/node_modules` при `TZ=UTC`, `from = 2026-08-15T10:00:00.000Z`; выражения: `*/5 * * * *`, `*/10 * * * *`, `*/15 * * * * *`, `0 3 * * *`, `0 0 1 1 *`, `0 9 * * MON-FRI`, `30 2 1,15 * *`, `0 */2 * * *`, `5 4 * JAN,JUL SUN`, `0 0 1 * 1`, `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, `0 0 12 * * *`
+- Create: `testdata/reference/common/cron-rejected.json` — список выражений, которые Go **обязан** отвергать (D23; не из Node): `""`, `* * * * * * *`, `0 0 L * *`, `0 0 * * 5L`, `0 0 * * 1#2`, `0 0 1W * *`, `H * * * *`, `@every 5m`, `@midnight`, `* * * * 7`
+
+- [ ] **Step 1: Корпус.** Собрать `vless-corpus.txt` (≥60 строк). Каждую строку сопроводить записью в `testdata/reference/scd/corpus/README.md`: «что проверяет» одной фразой.
+- [ ] **Step 2: Скрипт `scd-domain.mjs`** (TZ=UTC внутри: `process.env.TZ='UTC'` до импорта cron-parser) пишет все файлы выше. Для `ts-parse.json` строки подавать через `scanLines(text)` целого корпуса.
+- [ ] **Step 3: Run:** `TZ=UTC node tools/golden/scd-domain.mjs` → без ошибок; `git status` показывает новые файлы; `jq length testdata/reference/scd/corpus/ts-parse.json` = числу строк корпуса.
+- [ ] **Step 4: Описать в `testdata/reference/README.md`:** какие поля намеренно разойдутся в Go (теги новых профилей; `jsonOutbound` целиком — новая форма v26 по D11/09 §5; тексты ошибок конфига — D9; `nameEn` — ICU).
+- [ ] **Step 5: Commit** `chore(refs): capture scd domain references from TS`.
+
+---
+
+### Task 0.3: Эталоны sfc и gtl
+
+**Read:** `04` §2.1, §4, §5, §11; `05` §4, §10; `docker/sfc/config.example.yml`, `docker/gtl/config.example.yml`.
+
+**Files:**
+- Create: `tools/golden/sfc.mjs`, `tools/golden/gtl.mjs`
+- Create: `testdata/reference/sfc/refresh-docker-example.json` — отчёт `refreshWithConfig` по копии `docker/sfc/config.example.yml` во временном каталоге (input → абсолютный путь к `docker/fixtures/subscription.b64`); плюс `testdata/reference/sfc/outputs/<output-id>.b64` — `lastGoodBase64` каждого output и `.../<output-id>.plain.txt`
+- Create: `testdata/reference/sfc/server-cases.json` — `[{name, path, userAgent?, status, contentType, body, headers}]` из `handleServerRequest` для: `/healthz`, `/s/test-de` с UA `ClashMeta/1.0`, `/s/test-de` с UA `Shadowrocket/1.0`, `/s/test-nl`, `/s/unknown`, `/s/../s/test-all`, `/other/test-all`
+- Create: `testdata/reference/sfc/print-config-docker-example.json`
+- Create: `testdata/reference/gtl/payload-vectors.json` — `[{sizeBytes, sha256, first16hex}]` для 0, 1, 16, 1024, 65536, 65537, 98311, 10485760 (через `writeRepeatedPayload` в буфер) + `fill8` для offset 0, 65536, 2^32, 2^32+65536
+- Create: `testdata/reference/gtl/routes.json` — `[{path, method, status, headers, body?}]` из `buildResponse` для: `/healthz`, `/load/32`, `/load/0`, `/load/007`, `/load/1?x=y` (pathname-нормализация по `new URL`), `/load/65` (maxSizeKb 64), `/load/`, `/load/1/`, `/load`, `/load/200_32`, `/load/%33`, `/unknown`, `/load/99999999999999999999`; плюс метод HEAD → 405
+- Create: `testdata/reference/gtl/print-config-docker-example.json`
+
+- [ ] **Step 1:** Написать `sfc.mjs` (с freeze-time; `logger` — pino с `level: 'silent'`).
+- [ ] **Step 2:** Написать `gtl.mjs`.
+- [ ] **Step 3: Run:** `node tools/golden/sfc.mjs && node tools/golden/gtl.mjs`. Expected: файлы созданы; `jq -r '.[] | select(.sizeBytes==1024) | .sha256' testdata/reference/gtl/payload-vectors.json` = `8ab783947bae918d01b74448625dfd0fef119e16e97d6fc9fdf15e310c87cb01` (05 §4.5).
+- [ ] **Step 4:** Раздел в `testdata/reference/README.md`.
+- [ ] **Step 5: Commit** `chore(refs): capture sfc and gtl references from TS`.
+
+---
+
+### Task 0.4: Эталоны status-сервера: фикстуры состояния, JSON, HTML, скриншоты
+
+**Read:** `03` §1, §4.4, §6 (полностью), §7, §10.4, §10.5; `07` D3, D22, D23; `scd/src/runtime/status-server.ts` (`handleStatusServerRequest`), `scd/src/runtime/run-state.ts`, `scd/src/runtime/status-aggregation.ts`, `scd/src/runtime/current-runtime-state.ts`, `scd/test/status-server.test.ts`, `scd/test/runtime-state.test.ts`.
+
+**Files:**
+- Create: `testdata/reference/scd/status/fixtures/<name>.json` — **общий контракт фикстуры** (его же читает Go в задаче 6.4):
+  ```json
+  {
+    "now": "2026-08-15T10:00:00.000Z",
+    "config": {
+      "instanceId": "local-main",
+      "subscriptions": [ {"id": "sub-1", "enabled": true, "address": "127.0.0.1:8080", "observatorySubjectSelectorPrefix": "x-observe-"} ],
+      "remoteInstances": [ {"id": "edge-eu", "apiUrl": "https://edge.example.test/api/instance-status", "schedule": "* * * * *"} ],
+      "runtimeState": {"enabled": true, "includeRaw": false, "includeSecrets": false}
+    },
+    "targets": [ {
+      "subscriptionId": "sub-1", "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": { "state": "healthy", "remotePingState": "ok", "consecutiveFailures": 0 },
+      "tunnels": [ {
+        "baseTunnelId": "vless-at-x-tcp-tls-1", "displayName": "🇦🇹 Вена", "countryIso2": "AT",
+        "listen": "127.0.0.1", "port": 20000,
+        "outboundTagInitial": "x-observe-vless-at-x-tcp-tls-1", "outboundTagCurrent": "x-observe-vless-at-x-tcp-tls-1",
+        "outboundWithoutPrefixTag": "vless-at-x-tcp-tls-1",
+        "monitor": { "state": "healthy", "lastLatencyMs": 42, "lastStatusCode": 204, "consecutiveFailures": 0 }
+      } ]
+    } ],
+    "remotes": [ { "id": "edge-eu", "apiUrl": "https://edge.example.test/api/instance-status",
+                   "lastAttemptAt": "…", "lastSuccessAt": "…", "lastError": "Remote status API returned HTTP 503.", "snapshot": { } } ]
+  }
+  ```
+  Набор фикстур (минимум): `empty` (одна enabled подписка, нет target-state), `healthy-single`, `degraded-repaired` (03 §10.4 п.2: current=`out-a`, initial=`x-observe-out-a`), `balancer-only` (03 §10.4 п.3), `disabled-subscription` (п.4), `latency-sort` (03 §10.5 п.8: Fast/Slow/Idle/Unknown — имена ASCII, чтобы порядок ICU и `strings.Compare` совпадал, D23), `multi-sub-multi-target` (03 §10.5 п.7), `remote-instances` (03 §10.4 п.8: local + `edge-eu` с ошибкой и snapshot + `edge-us` без данных), `remote-ping-states` (pending/failed/delivered up/down), `hostile-strings` (displayName `<script>alert("x")</script> & 'q'`, remote snapshot с тем же). Все `displayName` в сортируемых группах выбирать так, чтобы ICU-порядок совпал с байтовым.
+- Create: `tools/golden/status.mjs` — для каждой фикстуры: строит `LoadedConfig` (пишет временный YAML и вызывает `loadConfig`), `SyncMemoryState` (через `createSyncMemoryState`, `getOrCreateTargetState`, `replaceTargetTopology` + прямую установку monitor-state; `outboundInitial.tag`/`outboundWithoutPrefix.tag` из фикстуры), aggregation state (`createStatusAggregationState` + ручная запись remotes), затем вызывает `handleStatusServerRequest` для `/`, `/api/status`, `/api/instance-status`, `/api/instances`.
+- Create (выход): `testdata/reference/scd/status/<name>/{index.html, api-status.json, api-instance-status.json, api-instances.json}`
+- Create: `testdata/reference/scd/status/runtime-state/<case>.json` — `buildCurrentRuntimeStateSnapshot` с фейковым клиентом (как в `scd/test/runtime-state.test.ts`) для кейсов 03 §10.5 п.1–6 (`redacted-default`, `vision-udp443`, `repaired-fallback`, `remote-input`, `redact-monitor-urls`, `raw-and-secrets`); это эталон **формы** (ключи, классификация, diff), значения `parsed.*` для ws/fingerprint информационные (TS-декодер читал неверные поля, D2/D6)
+- Create: `tools/golden/screenshots.mjs` — запускает `headless_shell` (путь из env `GOLDEN_CHROME`, default `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`) с `--headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,2400 --screenshot=<out.png> file://<index.html>` для каждой фикстуры и ширины 1280 и 390
+- Create (выход): `testdata/reference/scd/status/<name>/screenshot-1280.png`, `screenshot-390.png`
+
+- [ ] **Step 1:** Написать 10 фикстур JSON (контракт выше; поля monitor/balancerMonitor — имена из `03` §1).
+- [ ] **Step 2:** `status.mjs`: HTML/JSON по фикстурам; `runtime-state/*` по 6 кейсам.
+- [ ] **Step 3: Run:** `node tools/golden/status.mjs`. Проверка: `grep -c 'node-card' testdata/reference/scd/status/healthy-single/index.html` ≥ 1; `jq '.tunnels|length' testdata/reference/scd/status/healthy-single/api-status.json` = 1; в `hostile-strings/index.html` нет подстроки `<script>alert`.
+- [ ] **Step 4:** `screenshots.mjs`; Run: `node tools/golden/screenshots.mjs`; Expected: PNG ненулевого размера на каждую фикстуру × 2 ширины. Если headless_shell недоступен — fallback: `npx --yes playwright-core@latest screenshot` с `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` и `executablePath`; записать использованный способ в README.
+- [ ] **Step 5:** Раздел в `testdata/reference/README.md`: контракт фикстуры (копия JSON-схемы выше с описанием каждого поля), что PNG — справочные (сравнение в Go идёт рендером TS-HTML и Go-HTML в одном браузере, задача 6.5).
+- [ ] **Step 6: Commit** `chore(refs): capture status server HTML/JSON references and screenshots`.
