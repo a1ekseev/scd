@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	rootcli "github.com/a1ekseev/scd/internal/cli"
@@ -201,5 +202,49 @@ server:
 	keyRe := regexp.MustCompile(`(?m)^\s*"([^"]+)":`)
 	if a, b := keyRe.FindAllString(out, -1), keyRe.FindAllString(raw, -1); !slices.Equal(a, b) {
 		t.Errorf("key order differs:\n%v\n%v", a, b)
+	}
+}
+
+// Final review M3: `scd sfc refresh` handles SIGTERM as a cancellation and
+// still prints its report, without refreshing the remaining subscriptions.
+func TestRefreshStopsOnSignal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	p := filepath.Join(t.TempDir(), "config.yml")
+	body := `subscriptions:
+  - id: a
+    input: ` + srv.URL + `/a
+    pathRoute: /a
+    outputs:
+      - id: out-a
+        labelExcludeRegex: x
+  - id: b
+    input: ` + srv.URL + `/b
+    pathRoute: /b
+    outputs:
+      - id: out-b
+        labelExcludeRegex: x
+runtime:
+  refreshSchedule: "@hourly"
+server:
+  listen: :8080
+`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, out, errs := run("refresh", "--config", p)
+	var rep struct {
+		Outputs []struct {
+			ID string `json:"id"`
+		} `json:"outputs"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("stdout is not one JSON report: %v\n%s\n%s", err, out, errs)
+	}
+	if len(rep.Outputs) != 1 || rep.Outputs[0].ID != "out-a" {
+		t.Errorf("outputs = %+v, want only out-a", rep.Outputs)
 	}
 }

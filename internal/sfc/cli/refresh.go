@@ -9,13 +9,18 @@ import (
 	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/logging"
+	"github.com/a1ekseev/scd/internal/common/sigctx"
 	"github.com/a1ekseev/scd/internal/sfc/config"
 	"github.com/a1ekseev/scd/internal/sfc/refresh"
 )
 
 func refreshCommand() *cobra.Command {
 	return configCommand("refresh", "Refresh all outputs once and print the report", func(cmd *cobra.Command, l config.Loaded) error {
-		return runRefresh(cmd.Context(), l, cmd.OutOrStdout(), cmd.ErrOrStderr())
+		// SIGINT/SIGTERM stop the refresh after the subscription in flight
+		// and the report is still printed (D7).
+		ctx, stop := sigctx.NotifyContext(cmd.Context())
+		defer stop()
+		return runRefresh(ctx, l, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	})
 }
 

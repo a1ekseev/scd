@@ -2,9 +2,12 @@ package cli_test
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -61,5 +64,47 @@ func TestSyncCommandExitCode(t *testing.T) {
 	}
 	if strings.Contains(errs, "report has failed items") {
 		t.Errorf("stderr has the ErrReportFailed text:\n%s", errs)
+	}
+}
+
+// Final review M3: `scd sync` handles SIGTERM as a cancellation (the apply in
+// flight would finish, nothing new starts) and still prints its report,
+// instead of being killed by the default signal handling.
+func TestSyncCommandStopsOnSignal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	body := `subscriptions:
+  - id: s1
+    input: ` + srv.URL + `/sub
+    target: {address: 127.0.0.1:1}
+  - id: s2
+    input: ` + srv.URL + `/sub2
+    target: {address: 127.0.0.1:2}
+runtime: {}
+logging: {}
+resources: {}
+`
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, out, errs := run("sync", "--config", path)
+
+	var report struct {
+		Targets []struct {
+			SubscriptionID string `json:"subscriptionId"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("stdout is not one JSON report: %v\n%s\n%s", err, out, errs)
+	}
+	for _, tg := range report.Targets {
+		if tg.SubscriptionID == "s2" {
+			t.Errorf("s2 was synced after the signal: %s", out)
+		}
 	}
 }
