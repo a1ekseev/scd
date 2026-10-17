@@ -1,0 +1,9 @@
+# Every key of the TS gtl config schema (gtl/src/types.ts). Used by config-keys.json.
+server:
+  listen: 0.0.0.0:8080
+load:
+  path: /load
+  maxSizeKb: 10240
+logging:
+  level: info
+  format: json
