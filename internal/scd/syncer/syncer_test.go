@@ -812,3 +812,72 @@ func TestSyncMarksTargetSeenEvenOnFailedApply(t *testing.T) {
 		t.Errorf("SyncSeen = %v, topology installed = %v; want true, false", seen, topo)
 	}
 }
+
+// Final review I1: a cancellation lets the apply in flight finish but starts
+// no apply on the remaining targets.
+func TestCanceledSyncStartsNoFurtherApply(t *testing.T) {
+	l := cfg(allKinds, sub("source-a", "/a", withSocks(target(addrA), 20000, 20010)), sub("source-b", "/b", withSocks(target(addrB), 21000, 21010)))
+	f := newFixture(t, l, map[string]string{"/a": vienna, "/b": berlin}, addrA, addrB)
+	srvA, srvB := f.x.servers[addrA], f.x.servers[addrB]
+	srvA.Delay("AddOutbound", 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	done := make(chan Report)
+	go func() {
+		r, _ := f.s.Run(ctx)
+		done <- r
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for count(srvA.Calls(), "AddOutbound") == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("AddOutbound was never called on A")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	r := <-done
+
+	if len(srvA.Rules()) != 1 || len(srvA.InboundTags()) != 1 {
+		t.Errorf("apply on A did not reach the end: rules %v inbounds %v", srvA.Rules(), srvA.InboundTags())
+	}
+	if calls := srvB.Calls(); len(calls) != 0 {
+		t.Errorf("target B got RPCs after the cancel: %v", calls)
+	}
+	if got := f.x.dials(); !slices.Equal(got, []string{addrA}) {
+		t.Errorf("dials = %v, want only %s", got, addrA)
+	}
+	if r.Failed != 0 {
+		t.Errorf("report failed = %d: %+v", r.Failed, r)
+	}
+	if n := len(f.logs.events(t, "apply_failed")); n != 0 {
+		t.Errorf("apply_failed events = %d, want 0", n)
+	}
+}
+
+// Final review I1: a cancellation stops loading the remaining subscriptions.
+func TestCanceledSyncStopsLoading(t *testing.T) {
+	l := cfg(allKinds, sub("source-a", "/a", target(addrA)), sub("source-b", "/b", target(addrB)))
+	f := newFixture(t, l, map[string]string{"/a": vienna, "/b": berlin}, addrA, addrB)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	inner := f.s.LoadInput
+	f.s.LoadInput = func(c context.Context, input string, o inputsrc.Options) (inputsrc.Loaded, error) {
+		cancel()
+		return inner(c, input, o)
+	}
+
+	r, err := f.s.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.in.loads != 1 {
+		t.Errorf("loads = %d, want 1", f.in.loads)
+	}
+	if d := f.x.dials(); len(d) != 0 {
+		t.Errorf("dials after cancel = %v", d)
+	}
+	if r.Failed != 0 || len(f.logs.events(t, "subscription_fetch_failed")) != 0 {
+		t.Errorf("cancel reported as failure: %+v", r)
+	}
+}

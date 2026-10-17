@@ -731,3 +731,44 @@ func TestRefreshRealShapes(t *testing.T) {
 		t.Fatalf("source cache not written next to the config copy: %v", err)
 	}
 }
+
+// Final review I1 (deferred 3.4): a cancelled refresh loads no further
+// subscription.
+func TestRefreshStopsAfterCancel(t *testing.T) {
+	cfg := loadConfig(t, `
+subscriptions:
+  - id: a
+    input: https://sub.example.com/a
+    pathRoute: /a
+    outputs:
+      - id: out-a
+        labelIncludeRegex: '/Germany/'
+  - id: b
+    input: https://sub.example.com/b
+    pathRoute: /b
+    outputs:
+      - id: out-b
+        labelIncludeRegex: '/Germany/'
+runtime:
+  refreshSchedule: "@hourly"
+server:
+  listen: 127.0.0.1:8080
+`)
+	src := &source{content: lineDE}
+	r, _ := newRefresher(t, cfg, src)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	r.Input = func(c context.Context, input string, o inputsrc.Options) (inputsrc.Loaded, error) {
+		cancel()
+		return src.load(c, input, o)
+	}
+
+	rep := r.Run(ctx)
+
+	if _, ok := src.calls["https://sub.example.com/b"]; ok {
+		t.Errorf("subscription b was loaded after the cancel")
+	}
+	if len(rep.Outputs) != 1 || rep.Outputs[0].ID != "out-a" {
+		t.Errorf("outputs = %+v, want only out-a", rep.Outputs)
+	}
+}

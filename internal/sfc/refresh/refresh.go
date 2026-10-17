@@ -62,13 +62,17 @@ type Refresher struct {
 
 // Run refreshes the enabled subscriptions one after another and returns the
 // report with outputs sorted by id. Failures are reported per output, never
-// returned.
+// returned. After ctx is cancelled no further subscription is refreshed and
+// the remaining ones are left out of the report (their state is kept).
 func (r *Refresher) Run(ctx context.Context) Report {
 	reports := []OutputReport{}
 	sources := 0
 	for _, sub := range r.Cfg.Config.Subscriptions {
 		if !sub.Enabled {
 			continue
+		}
+		if ctx.Err() != nil {
+			break
 		}
 		sources++
 		reports = append(reports, r.refreshSubscription(ctx, sub)...)

@@ -45,7 +45,9 @@ func (s *Syncer) now() time.Time {
 // in progress) logs sync_skipped_overlap and returns an empty report. The
 // load and plan steps use ctx; the Xray apply of a target runs under
 // context.WithoutCancel(ctx) with the per-call timeouts of the client, so a
-// cancellation never stops an apply halfway (Review Focus 1). Every
+// cancellation never stops an apply halfway (Review Focus 1). After a
+// cancellation no further subscription is loaded and no further target is
+// applied; those are left out of the report. Every
 // subscription or target failure is part of the report, so the error is
 // reserved for failures of the whole run (none exist at present).
 func (s *Syncer) Run(ctx context.Context) (Report, error) {
@@ -108,12 +110,23 @@ func (s *Syncer) perform(ctx context.Context) Report {
 	for _, f := range failed {
 		targets = append(targets, s.failedLoad(ctx, f))
 	}
-	for _, l := range loaded {
-		r, sk := s.syncSubscription(ctx, l)
+	for i, l := range loaded {
+		r, sk, ok := s.syncSubscription(ctx, l)
+		if !ok {
+			s.logCanceled(ctx, len(loaded)-i)
+			break
+		}
 		targets = append(targets, r)
 		skipped = append(skipped, sk...)
 	}
 	return aggregate(targets, skipped, startedAt, s.now())
+}
+
+// logCanceled logs, at debug, that a cancelled sync left the remaining
+// targets alone (final review I1).
+func (s *Syncer) logCanceled(ctx context.Context, remaining int) {
+	s.Log.LogAttrs(ctx, slog.LevelDebug, "Sync canceled; remaining targets skipped.",
+		slog.String("event", "sync_canceled"), slog.Int("remainingTargets", remaining))
 }
 
 // failedLoad reports a subscription whose input could not be loaded: one
@@ -147,8 +160,12 @@ func (s *Syncer) meta(c config.SubscriptionConfig, sourceID string) apply.Meta {
 
 // syncSubscription builds the manifest and plans of a loaded subscription
 // and syncs its target. It returns the target report and the manifest's
-// skipped lines for the run report.
-func (s *Syncer) syncSubscription(ctx context.Context, l manifest.LoadedSubscription) (TargetReport, []vless.Skip) {
+// skipped lines for the run report; ok is false when ctx was cancelled
+// before the target's apply started, and the target is then left out.
+func (s *Syncer) syncSubscription(ctx context.Context, l manifest.LoadedSubscription) (r TargetReport, skipped []vless.Skip, ok bool) {
+	if ctx.Err() != nil {
+		return TargetReport{}, nil, false
+	}
 	c := l.Config
 	t := c.Target
 	m, err := manifest.FromSubscription(l, s.now())
@@ -160,7 +177,7 @@ func (s *Syncer) syncSubscription(ctx context.Context, l manifest.LoadedSubscrip
 			slog.String("sourceId", c.ID),
 			slog.String("error", err.Error()),
 			slog.String("targetAddress", t.Address))
-		return newTargetReport(c.ID, t.Address, c.ID, nil, s.failAll(ctx, c, c.ID, nil, err.Error()), nil), nil
+		return newTargetReport(c.ID, t.Address, c.ID, nil, s.failAll(ctx, c, c.ID, nil, err.Error()), nil), nil, true
 	}
 	s.logEntryWarnings(ctx, c, m)
 
@@ -170,7 +187,7 @@ func (s *Syncer) syncSubscription(ctx context.Context, l manifest.LoadedSubscrip
 		p, err := apply.PlanForTarget(k, m, c.ID, t)
 		if err != nil {
 			// E.g. topology.ErrPortRangeExhausted: only this target fails (D23).
-			return newTargetReport(c.ID, t.Address, c.ID, nil, s.failAll(ctx, c, c.ID, nil, err.Error()), m.Skipped), m.Skipped
+			return newTargetReport(c.ID, t.Address, c.ID, nil, s.failAll(ctx, c, c.ID, nil, err.Error()), m.Skipped), m.Skipped, true
 		}
 		plans = append(plans, p)
 	}
@@ -187,7 +204,8 @@ func (s *Syncer) syncSubscription(ctx context.Context, l manifest.LoadedSubscrip
 			slog.Int("filteredByLabelRegex", m.Summary.FilteredByLabelRegex),
 			slog.String("targetAddress", t.Address))
 	}
-	return s.syncTarget(ctx, c, plans, m.Skipped), m.Skipped
+	r, ok = s.syncTarget(ctx, c, plans, m.Skipped)
+	return r, m.Skipped, ok
 }
 
 // logEntryWarnings logs the normalizer warnings of every entry:
@@ -227,7 +245,9 @@ func targetAttrs(event string, kind apply.Kind, c config.SubscriptionConfig) []s
 
 // syncTarget compares the plan hashes with the saved ones and, when any
 // differs, applies every plan in order under the target lock (03 §2.2).
-func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, plans []apply.Plan, skipped []vless.Skip) TargetReport {
+// ok is false when ctx was cancelled before the apply started (possibly
+// while waiting for the lock): no apply is started then (final review I1).
+func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, plans []apply.Plan, skipped []vless.Skip) (r TargetReport, ok bool) {
 	t := c.Target
 	key := state.Key(c.ID, t.Address)
 	s.Memory.MarkSynced(key)
@@ -247,11 +267,14 @@ func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, pl
 			s.Log.LogAttrs(ctx, slog.LevelInfo, "Manifest unchanged for resource; skipping Xray API.",
 				targetAttrs("skipped_no_changes", p.Kind, c)...)
 		}
-		return newTargetReport(c.ID, t.Address, c.ID, unchanged, nil, skipped)
+		return newTargetReport(c.ID, t.Address, c.ID, unchanged, nil, skipped), true
 	}
 
 	unlock := s.Memory.LockTarget(key)
 	defer unlock()
+	if ctx.Err() != nil {
+		return TargetReport{}, false
+	}
 	// The mutation sequence is not cut short by a cancellation; each RPC has
 	// the client's own timeout (Review Focus 1, D7).
 	actx := context.WithoutCancel(ctx)
@@ -264,7 +287,7 @@ func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, pl
 			s.logApply(ctx, r)
 			reports = append(reports, r)
 		}
-		return newTargetReport(c.ID, t.Address, c.ID, nil, reports, skipped)
+		return newTargetReport(c.ID, t.Address, c.ID, nil, reports, skipped), true
 	}
 	defer func() { _ = client.Close() }()
 
@@ -286,7 +309,7 @@ func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, pl
 		// Every plan carries the same target topology.
 		s.Memory.ReplaceTopology(key, *plans[len(plans)-1].Topology, hashes)
 	}
-	return newTargetReport(c.ID, t.Address, c.ID, nil, reports, skipped)
+	return newTargetReport(c.ID, t.Address, c.ID, nil, reports, skipped), true
 }
 
 // logApply logs apply_finished, or apply_failed with the failed items and
