@@ -35,7 +35,9 @@
 | `github.com/netresearch/go-cron` | v0.16.1 | 1.26 + `toolchain go1.27.1` | — |
 | `google.golang.org/protobuf` | v1.36.12 | 1.23 | ок |
 
-**Рекомендация:** `go 1.26.0` в `go.mod` (+ при желании `toolchain go1.27.2`), CI — `actions/setup-go` с `go-version-file: go.mod`. Локально `GOTOOLCHAIN=auto` (дефолт) сам скачает нужный toolchain — проверено: `GOTOOLCHAIN=go1.26.9 go build` из-под 1.24.7 работает через прокси. Бонусы ≥1.25: `testing/synctest` (стабилен), `sync.WaitGroup.Go`, container-aware `GOMAXPROCS`; ≥1.26: «Green Tea» GC по умолчанию.
+> **Решение (2026-10-17, требование заказчика): самый современный стек.** `go 1.27.0` + `toolchain go1.27.2` в `go.mod`, все зависимости — последних версий, в CI обязателен golangci-lint (v2.15.0, `golangci/golangci-lint-action@v9`), сборка падает при любом замечании линтера. Минимальные версии ради старого toolchain не выбираем.
+
+~~Исходная рекомендация:~~ `go 1.26.0` в `go.mod` (+ при желании `toolchain go1.27.2`), CI — `actions/setup-go` с `go-version-file: go.mod`. Локально `GOTOOLCHAIN=auto` (дефолт) сам скачает нужный toolchain — проверено: `GOTOOLCHAIN=go1.26.9 go build` из-под 1.24.7 работает через прокси. Бонусы ≥1.25: `testing/synctest` (стабилен), `sync.WaitGroup.Go`, container-aware `GOMAXPROCS`; ≥1.26: «Green Tea» GC по умолчанию.
 
 ---
 
@@ -279,7 +281,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o 
 ### Dockerfile (один на репозиторий, три target)
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS build
 ARG TARGETOS TARGETARCH VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -325,12 +327,13 @@ CMD ["serve", "--config", "/app/config/config.yml"]
 verify:
   steps:
     - uses: actions/checkout@v5
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v7
       with: { go-version-file: go.mod, cache: true }
     - run: go mod verify
     - run: go vet ./...
-    - uses: golangci/golangci-lint-action@<актуальная major>
+    - uses: golangci/golangci-lint-action@v9   # v9.3.0
       with: { version: v2.15.0 }
+    - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
     - run: go test -race -count=1 ./...
     - run: go build ./cmd/blanc && ./blanc scd validate-config --config ./testdata/scd.config.yml   # smoke
     - uses: docker/setup-buildx-action@v4
@@ -338,14 +341,14 @@ verify:
 ```
 QEMU (`setup-qemu-action`) больше не нужен — кросс-компиляция в Go через `$BUILDPLATFORM`. Шаги `setup-node`/`npm ci`/`typecheck` удаляются после полного перехода (на переходный период оставить TS-джобы параллельно). `publish`: три `metadata-action` остаются как есть, в `build-push-action` добавить `context: .`, `file: ./Dockerfile`, `target: <svc>`, `build-args: VERSION=${{ github.ref_name }}`.
 
-`.golangci.yml` (v2): `linters: default: standard` + `errorlint`, `gocritic`, `revive`, `bodyclose`, `contextcheck`, `noctx`; `formatters: gofumpt, goimports`.
+`.golangci.yml` (v2): `linters: default: standard` + `errorlint`, `gocritic`, `revive`, `bodyclose`, `contextcheck`, `noctx`, `modernize` (новые идиомы Go 1.2x: `min/max`, `slices`, `maps`, `for range n`, `wg.Go`), `usestdlibvars`, `perfsprint`; `formatters: gofumpt, goimports`. Линтер — блокирующий шаг CI, `issues.new: false` (с первого дня чистый код, без baseline).
 
 ---
 
 ## 12. Предлагаемая раскладка модуля
 
 ```
-go.mod                         module github.com/a1ekseev/blanc   (go 1.26.0)
+go.mod                         module github.com/a1ekseev/blanc   (go 1.27.0, toolchain go1.27.2)
 cmd/blanc/main.go              multicall по argv[0] + cobra root
 internal/cli/                  сборка дерева команд, версия, формат ошибок/exit codes
 internal/common/
@@ -380,7 +383,7 @@ Dockerfile, .golangci.yml
 
 | Область | Выбор | Модуль / версия | Комментарий |
 |---|---|---|---|
-| Язык / toolchain | Go 1.26+ | `go 1.26.0` в go.mod, CI на 1.27.x | 1.24.7 не хватает (grpc ≥1.81, x/net ≥0.59, xray-core) |
+| Язык / toolchain | Go 1.27 (latest) | `go 1.27.0` + `toolchain go1.27.2` в go.mod, CI через `go-version-file` | 1.24.7 не хватает (grpc ≥1.81, x/net ≥0.59, xray-core) |
 | CLI | cobra + multicall по argv[0] | `github.com/spf13/cobra` v1.10.2 | `blanc scd daemon` ≡ `scd daemon` (симлинк) |
 | Cron | свой парсер-подмножество cron-parser v5 | `internal/common/cron` | golden-тесты из cron-parser 5.4.0; fallback — `github.com/robfig/cron/v3` v3.0.1 (только Parser) |
 | Cron-цикл | порт `runCronLoop` | stdlib (`time`, `context`) | без планировщика robfig |
@@ -395,6 +398,6 @@ Dockerfile, .golangci.yml
 | HTML | html/template + embed | stdlib | или text/template + escapeHtml для побайтной идентичности |
 | HTTP-сервер | net/http + ServeMux | stdlib | graceful shutdown через `signal.NotifyContext` |
 | Тесты | testing, httptest, bufconn, synctest | stdlib, `google.golang.org/grpc/test/bufconn`, опц. `github.com/google/go-cmp` v0.7.0 | `go test -race` |
-| Линт | golangci-lint v2 | `github.com/golangci/golangci-lint/v2` v2.15.0 | + `go vet` |
+| Линт | golangci-lint v2 (обязателен в CI) | `github.com/golangci/golangci-lint/v2` v2.15.0, `golangci-lint-action@v9` | + `go vet`, `govulncheck`; конфиг `.golangci.yml` v2 |
 | Сборка | `CGO_ENABLED=0`, `-trimpath -s -w`, amd64+arm64 кросс-компиляцией | — | без QEMU |
 | Образы | один Dockerfile, target'ы `scd`/`sfc`/`gtl` на общей базе | `gcr.io/distroless/static-debian12` (root, по digest) | `ghcr.io/a1ekseev/{scd,sfc,gtl}` сохраняются; опц. `ghcr.io/a1ekseev/blanc` |
