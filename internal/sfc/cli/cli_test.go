@@ -3,6 +3,8 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -114,5 +116,40 @@ server:
 	if code != 0 || !strings.Contains(out, "\"fetchHeaders\": {\n        \"x-hwid\": \"<redacted>\"\n      }") ||
 		strings.Contains(out, "s3cr3t") {
 		t.Fatalf("code %d out %s err %s", code, out, errs)
+	}
+}
+
+// Final review I2: `scd sfc refresh` prints no subscription URL token to
+// stdout (report) or stderr (logs).
+func TestRefreshDoesNotPrintSubscriptionURL(t *testing.T) {
+	const secret, qsecret = "PATHSECRET123", "QUERYSECRET456"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	p := filepath.Join(t.TempDir(), "config.yml")
+	body := `subscriptions:
+  - id: main
+    input: ` + srv.URL + `/sub/` + secret + `?token=` + qsecret + `
+    pathRoute: /s
+    outputs:
+      - id: out
+        labelExcludeRegex: x
+runtime:
+  refreshSchedule: "@hourly"
+server:
+  listen: :8080
+`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := run("refresh", "--config", p)
+	if code == 0 || !strings.Contains(out, "/<redacted>") {
+		t.Fatalf("code %d out %s err %s", code, out, errs)
+	}
+	for _, s := range []string{secret, qsecret} {
+		if strings.Contains(out, s) || strings.Contains(errs, s) {
+			t.Errorf("output contains %s:\nstdout %s\nstderr %s", s, out, errs)
+		}
 	}
 }

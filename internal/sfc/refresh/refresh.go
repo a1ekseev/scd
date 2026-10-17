@@ -97,7 +97,8 @@ func (r *Refresher) Run(ctx context.Context) Report {
 
 // refreshSubscription loads one subscription, writes the source cache before
 // parsing and builds its outputs; when loading fails it falls back to the
-// source cache, and without one every enabled output fails.
+// source cache, and without one every enabled output fails. The input URL is
+// redacted in logs, errors and the report (D33).
 func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscription) []OutputReport {
 	log := r.log()
 	in, err := r.input()(ctx, sub.Input, inputsrc.Options{
@@ -117,29 +118,31 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 		links := r.parse(sub.ID, in.Content)
 		reports := r.buildOutputs(sub, links, false)
 		log.Info("Subscription refreshed.", "event", "subscription_refreshed", "subscriptionId", sub.ID,
-			"source", in.Source, "outputs", enabledOutputIDs(sub), "parsedEntries", len(links))
+			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputIDs(sub), "parsedEntries", len(links))
 		return reports
 	}
 
+	// The loader's error holds the input URL (a secret, D33).
+	msg := inputsrc.RedactInputIn(err.Error(), sub.Input)
 	cachePath, content, cerr := cache.Read(r.Cfg.Path, sub.ID)
 	if cerr == nil {
 		links := r.parse(sub.ID, content)
 		reports := r.buildOutputs(sub, links, true)
 		log.Warn("Subscription refresh used source cache after input load failed.",
 			"event", "subscription_source_cache_used", "subscriptionId", sub.ID, "path", cachePath,
-			"error", err.Error(), "parsedEntries", len(links))
+			"error", msg, "parsedEntries", len(links))
 		return reports
 	}
 	log.Error("Subscription source cache is not available after input load failed.",
-		"event", "subscription_source_cache_missed", "subscriptionId", sub.ID, "error", err.Error(),
+		"event", "subscription_source_cache_missed", "subscriptionId", sub.ID, "error", msg,
 		"cachePath", cachePath, "cacheError", cerr.Error())
 	log.Error("Subscription refresh failed.",
-		"event", "subscription_refresh_failed", "subscriptionId", sub.ID, "error", err.Error())
+		"event", "subscription_refresh_failed", "subscriptionId", sub.ID, "error", msg)
 
 	var reports []OutputReport
 	for _, out := range sub.Outputs {
 		if out.Enabled {
-			reports = append(reports, r.fail(sub, out, err.Error(), false))
+			reports = append(reports, r.fail(sub, out, msg, false))
 		}
 	}
 	return reports
