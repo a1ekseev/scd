@@ -553,3 +553,28 @@ func TestTLSHandshakeTimeout(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Final review M10: a response head without a blank line is capped instead of
+// being buffered for the whole timeout.
+func TestOverlongHeadRejected(t *testing.T) {
+	p := newFakeProxy(t, func(p *fakeProxy) {
+		p.after = func(c net.Conn) {
+			readHead(c)
+			_, _ = c.Write([]byte("HTTP/1.1 200 OK\r\n"))
+			line := []byte("X-Filler: " + strings.Repeat("a", 1000) + "\r\n")
+			for {
+				if _, err := c.Write(line); err != nil {
+					return
+				}
+			}
+		}
+	})
+	start := time.Now()
+	_, err := Do(context.Background(), req(p, "http://example.test/", "GET", 5*time.Second))
+	if err == nil || err.Error() != "Invalid HTTP response from monitored endpoint." {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("took %v: head was not capped", d)
+	}
+}
