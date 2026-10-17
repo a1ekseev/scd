@@ -47,8 +47,8 @@ bash scripts/compose-smoke.sh            # Docker smoke on the example configs
 The live and visual tests skip without their environment variables.
 
 ## CI Contract
-- `.github/workflows/docker.yml`. On pull requests and pushes to `master`, job `verify` runs: `go mod verify`, the Xray pin check, the Go-only tree check, `go vet`, golangci-lint, govulncheck, `go test -race`, live Xray tests, dashboard visual regression, build, and example config validation. Job `smoke` runs the compose smoke.
-- Release tags `vX.Y.Z` publish one multi-arch image (amd64 and arm64) with tags `latest` and `X.Y.Z`.
+- `.github/workflows/docker.yml`. On pull requests, pushes to `master` and release tags, job `verify` runs: `go mod verify`, the Xray pin check, the Go-only tree check, `go vet` (also with `-tags 'xraylive visual'`), golangci-lint, govulncheck (pinned version), `go test -race`, live Xray tests, dashboard visual regression, build, and example config validation. Job `smoke` (after `verify`) runs the compose smoke.
+- Release tags `vX.Y.Z` publish one multi-arch image (amd64 and arm64) with tags `latest` and `X.Y.Z`, only after `verify` and `smoke` pass.
 
 ## Docker Image
 - `ghcr.io/a1ekseev/scd` only. The `sfc` and `gtl` images are no longer published.
