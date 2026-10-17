@@ -1,0 +1,11 @@
+# Go-форма боевого конфига gtl владельца (2026-10-17), секретов нет. Ключи gtl не менялись; файл совпадает с config.real-shape.yml по содержанию (D30, D32).
+server:
+  listen: 172.31.3.5:8080
+
+load:
+  path: /load
+  maxSizeKb: 10240
+
+logging:
+  level: info
+  format: json
