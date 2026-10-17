@@ -137,7 +137,9 @@ resources: {}
 }
 
 func TestEnvMissingIsError(t *testing.T) {
-	mustFail(t, base+"# ${SCD_TEST_NOPE}\n", "failed to read config", `missing environment variable "SCD_TEST_NOPE"`)
+	mustFail(t, withSub(t, "    fetchUserAgent: ${SCD_TEST_NOPE}\n"), "failed to read config", `missing environment variable "SCD_TEST_NOPE"`)
+	// Comments are not expanded.
+	mustLoad(t, base+"# ${SCD_TEST_NOPE}\n")
 }
 
 func TestS2VisionUDP443Override(t *testing.T) {
@@ -517,4 +519,13 @@ func TestSCDRealShapeGoFormValid(t *testing.T) {
 	if got := c.Subscriptions[1].Target.FixedInbounds; !reflect.DeepEqual(got, []string{"socks-proxy", "wg-proxy", "ru-zone"}) {
 		t.Fatalf("fixedInbounds %v", got)
 	}
+}
+
+func TestDisabledScheduleStillValidated(t *testing.T) {
+	mustFail(t, withTarget(t, "      monitor: {schedule: '61 * * * *'}\n      balancerMonitor: {schedule: nope}\n      balancerSelection: {schedule: '0 0 L * *'}\n"),
+		"subscriptions.0.target.monitor.schedule: ",
+		"subscriptions.0.target.balancerMonitor.schedule: ",
+		"subscriptions.0.target.balancerSelection.schedule: ")
+	mustFail(t, replace(t, "runtime: {}", "runtime: {schedule: nope}"), "runtime.schedule: ")
+	mustLoad(t, withTarget(t, "      monitor: {schedule: '*/1 * * * *'}\n"))
 }

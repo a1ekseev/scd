@@ -20,9 +20,7 @@ subscriptions:
     # Доп. заголовки HTTP-запроса подписки (значения — секрет: в print-config и логах <redacted>),
     # например HWID из окружения:
     #   fetchHeaders:
-    #     x-hwid: "$ {SCD_HWID}"
-    # Пробел после "$" здесь только потому, что scd подставляет переменные окружения и в
-    # комментариях: без SCD_HWID загрузка этого примера упала бы. В рабочем конфиге — без пробела.
+    #     x-hwid: "${SCD_HWID}"
     target:
       # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
       # (docker/xray/config/01_api.json).

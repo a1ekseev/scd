@@ -20,8 +20,10 @@ type EnvMode int
 const (
 	// EnvNone keeps ${NAME} literally (gtl).
 	EnvNone EnvMode = iota
-	// EnvRawStrict expands ${NAME} in the raw text before YAML parsing,
-	// comments included; an undefined variable is an error (scd).
+	// EnvRawStrict expands ${NAME} in scalar values (not keys, not comments)
+	// before they are typed: an unquoted value is re-resolved, so `a: ${X}`
+	// with X=true is a bool, while a value can never change the YAML
+	// structure. An undefined variable is an error (scd).
 	EnvRawStrict
 	// EnvStringsLenient expands ${NAME} after YAML parsing in string values
 	// only (keys are kept); an undefined variable becomes "" (sfc).
@@ -60,13 +62,11 @@ func Load(path string, mode EnvMode, lookup func(string) (string, bool)) (Doc, e
 	if err != nil {
 		return Doc{}, err
 	}
-	text := string(raw)
+	var expand func(*yaml.Node) error
 	if mode == EnvRawStrict {
-		if text, err = expandStrict(text, lookup); err != nil {
-			return Doc{}, err
-		}
+		expand = func(n *yaml.Node) error { return expandStrict(n, lookup) }
 	}
-	root, err := decodeSingle(text)
+	root, err := decodeSingle(string(raw), expand)
 	if err != nil {
 		return Doc{}, err
 	}
@@ -86,20 +86,47 @@ func ResolveInput(dir, input string) string {
 	return filepath.Join(dir, input)
 }
 
-func expandStrict(text string, lookup func(string) (string, bool)) (string, error) {
-	var missing error
-	out := envRef.ReplaceAllStringFunc(text, func(m string) string {
+// expandStrict substitutes ${NAME} in the scalar values of the tree in
+// document order; the first undefined variable is an error. A changed plain
+// scalar loses its resolved tag so that decoding types it again.
+func expandStrict(n *yaml.Node, lookup func(string) (string, bool)) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		var missing error
+		out := envRef.ReplaceAllStringFunc(n.Value, func(m string) string {
+			if missing != nil {
+				return m
+			}
+			name := envRef.FindStringSubmatch(m)[1]
+			v, ok := lookup(name)
+			if !ok {
+				missing = fmt.Errorf("missing environment variable %q required by config", name)
+			}
+			return v
+		})
 		if missing != nil {
-			return m
+			return missing
 		}
-		name := envRef.FindStringSubmatch(m)[1]
-		v, ok := lookup(name)
-		if !ok {
-			missing = fmt.Errorf("missing environment variable %q required by config", name)
+		if out != n.Value {
+			n.Value = out
+			if n.Style == 0 {
+				n.Tag = ""
+			}
 		}
-		return v
-	})
-	return out, missing
+	case yaml.MappingNode:
+		for i := 1; i < len(n.Content); i += 2 {
+			if err := expandStrict(n.Content[i], lookup); err != nil {
+				return err
+			}
+		}
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			if err := expandStrict(c, lookup); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func expandLenient(v any, lookup func(string) (string, bool)) any {
@@ -121,11 +148,24 @@ func expandLenient(v any, lookup func(string) (string, bool)) any {
 	return v
 }
 
-func decodeSingle(text string) (any, error) {
+// decodeSingle decodes one YAML document; expand (optional) rewrites the
+// node tree before it is decoded into Go values.
+func decodeSingle(text string, expand func(*yaml.Node) error) (any, error) {
 	dec := yaml.NewDecoder(strings.NewReader(text))
-	var root any
-	if err := dec.Decode(&root); err != nil && !errors.Is(err, io.EOF) {
+	var node yaml.Node
+	if err := dec.Decode(&node); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
+	}
+	var root any
+	if node.Kind != 0 {
+		if expand != nil {
+			if err := expand(&node); err != nil {
+				return nil, err
+			}
+		}
+		if err := node.Decode(&root); err != nil {
+			return nil, err
+		}
 	}
 	var extra any
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
