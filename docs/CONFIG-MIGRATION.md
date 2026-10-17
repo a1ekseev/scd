@@ -130,6 +130,28 @@
 
 Новый ключ `subscriptions[].allowInsecure` (D15), по умолчанию `deny`: ссылка с `allowInsecure=1` и без `pcs`/`vcn` пропускается (в отчёте — причина), т.к. в Xray v26.10.10 отключить проверку сертификата нельзя и такой outbound всё равно не подключился бы к серверу с невалидным сертификатом. `allow` — ссылка принимается, параметр игнорируется с warning `allow_insecure_ignored`. Ссылки с `pcs` (`pinnedPeerCertSha256`) или `vcn` (`verifyPeerCertByName`) обрабатываются штатно при любом значении.
 
+Ссылка `allowInsecure=1` проверяется только при `security=tls`: у REALITY и у ML-KEM без TLS параметр неприменим и молча игнорируется (O16), политика на такие ссылки не влияет. Значение, кроме `0|1|true|false` (без учёта регистра), по-прежнему пропускает ссылку при любой политике.
+
+### scd: какие ссылки становятся outbound'ами
+
+Ключи конфига не менялись; меняется, какие строки подписки дают outbound'ы и с какими тегами (D26, `11-xray-vless-matrix.md` §3). Проверить на своей подписке: `scd generate` — `skipped` с причинами и `warnings` у entries.
+
+| Ссылка | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| неизвестный параметр (`foo=1`) | skip `unsupported_param` | entry, параметр отбрасывается, warning `param_ignored` «Ignored unknown VLESS parameter(s): foo.» (в логе sync — уровень `debug`) | D28 |
+| параметр, неприменимый к transport/security (`path=/` у tcp без `headerType=http`, `alpn`/`pcs` у REALITY, `pbk`/`sid` у TLS, `serviceName`, `support-x25519mlkem768`, `x_padding_bytes` …) | параметры из старого списка TS (`path`, `host`, `alpn`, `pbk`, `sid` …) молча игнорировались, прочие — skip `unsupported_param` | молча игнорируется, без warning; виден только в `normalized.query` | O16, O13, D28 |
+| `type=xhttp`, REALITY без `flow`, VLESS Encryption (`encryption=mlkem768x25519plus.*`, в т.ч. с `security=none`) | skip `unsupported_combo`/`unsupported_value` | entry с новым профилем (ниже) | D26 |
+| `type=grpc`, `httpupgrade`, `kcp` и прочие транспорты; `ws`+`reality`; `security=none` (или без `security`) без ML-KEM; `security=xtls` | skip `unsupported_combo` | без изменений: skip `unsupported_combo` | D26 (вне scope) |
+| ключ ML-KEM правильной длины, но не ключ | — | skip `unsupported_value` «Invalid VLESS encryption key.» (иначе Xray отверг бы outbound при `AddOutbound`) | D25 |
+| `flow=xtls-rprx-vision` на ws/xhttp без ML-KEM | ws+tls: outbound с `flow` (Xray v26.10.10 рвал бы каждое соединение) | `flow` сбрасывается, warning `flow_cleared` «flow xtls-rprx-vision is not supported on ws+tls; flow cleared.» | D16 |
+| значение `flow` | tcp+tls и ws+tls — любое значение как есть; REALITY — только `xtls-rprx-vision`, иначе skip `unsupported_combo` | `""`, `xtls-rprx-vision`, `xtls-rprx-vision-udp443` (регистр важен); иное — skip `unsupported_value` «Unsupported VLESS flow value.» (Xray его не принимает) | D16, D26 |
+| id не UUID (`vless://my-user@…`), UUID v6+ | skip | принимается; id приводится как в Xray (`uuid.ParseString`: строка ≤30 символов → UUIDv5, UUID — в нижний регистр; тег от этого не зависит). Skip `unsupported_value` «The VLESS user id is not accepted by Xray.» — только если Xray его не примет (31 символ, 37+ символов, не-hex UUID) | D18, O4 |
+| ws без `path`; REALITY без `sni`/`fp`/`sid` | skip `missing_required_field` | принимается (Xray принимает); у REALITY обязателен только `pbk` | O15 |
+
+Профили и теги. Старые профили и **теги их outbound'ов не меняются** (`vless-<cc>-<город>-<профиль>-<sha8(строки)>`): `tcp-tls` (в т.ч. tcp+tls+vision), `ws-tls`, `tcp-reality-vision`. Новые профили: `tcp-reality` (REALITY без flow), `xhttp-tls`, `xhttp-reality`, `xhttp-reality-vision` (только с ML-KEM), `tcp-mlkem`, `ws-mlkem`, `xhttp-mlkem` (`security=none` + ML-KEM). ML-KEM поверх tls/reality профиль не меняет. Если фильтры или правила маршрутизации завязаны на профиль в теге, их нужно дополнить новыми именами.
+
+Пример: `vless://…@h:443?type=tcp&security=reality&pbk=…&sid=ab#🇩🇪 Berlin` — было skip «Unsupported VLESS type/security/flow combination.», стало outbound `vless-de-berlin-tcp-reality-<hash>`.
+
 ### sfc: какие строки попадают в выходы
 
 Ключи конфига не менялись, но **содержимое выходов** `scd sfc` может стать больше (12 §6.2, D27 O7, D28, D18, D32).
