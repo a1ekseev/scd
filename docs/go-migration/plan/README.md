@@ -300,3 +300,9 @@ EOF
 5. **Враждебные строки в remote snapshot / label** (`<script>`, кавычки, очень длинный label). Ожидание: дашборд экранирует (html/template), JSON passthrough без изменений, ничего не падает (panic → 500, D23). Тест — 6.5 (`TestDashboardEscapesHostileStrings`), 6.4 (`TestRemoteSnapshotPassthroughKeepsUnknownFields`).
 6. **Ссылка, которую `infra/conf` принимает, а живой Xray отвергает на `AddOutbound`** (добавлено ревью: ML-KEM-ключ правильной длины, но не валидный ключ — `conf.Build()` OK, `AddOutbound` → `proxy/vless/outbound: failed to use encryption > mlkem: invalid polynomial encoding`, проверено на 26.10.10). Ожидание: строка пропускается на этапе нормализации (`unsupported_value` «Invalid VLESS encryption key.», D25), а не валит outbound-apply всего target'а с rollback. Тест — 4.3 (`TestMLKEMInvalidKeySkipped`), 5.6 (`TestLiveEveryParamReachesXray` — все принятые entries добавляются без ошибок; `TestLiveRejectsInvalidMLKEMKeyLikeNormalize`).
 7. **Свежая REALITY-ссылка 3x-ui** (`spx`, `pqv`, `pcs`, `support-x25519mlkem768=true`, vision) и xhttp-ссылка 3x-ui (`extra` + `x_padding_bytes`). Ожидание: entry (`tcp-reality-vision` / `xhttp-*`), все стандартные параметры дошли до Xray, нестандартные проигнорированы (O13). Тест — 1.7 (`TestAllowedParamsAccepted`), 4.7 (`TestBuild3xuiRealityLink`), 3.2 (`TestRefreshUsesSharedParamWhitelist`), 5.6 (строки корпуса D26).
+
+
+## Поправки D29/D30 (2026-10-17)
+- Новая задача 0.6 (корпус меток); поправки в 1.3 (если есть regexlit), 3.1, 4.1, 4.7, 6.3 — блоки «Поправка D29/D30» в начале задач.
+- Боевые конфиги `docker/{scd,sfc}/config.real-shape.yml` (TS-форма) и создаваемые в 3.1/4.1 `config.real-shape.go.yml` (Go-форма) — обязательные фикстуры.
+- Трассировка: D29 → 0.6, 3.1, 4.1, 4.7; D30 → 3.1, 4.1, 6.3, 7.1 (smoke compose с Go-формой).

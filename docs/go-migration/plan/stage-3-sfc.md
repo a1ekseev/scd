@@ -29,6 +29,8 @@
 
 ### Task 3.1: Конфиг sfc и `validate-config` / `print-config`
 
+> **Поправка D29/D30 (обязательна):** фильтр меток — `labelIncludeRegex` (строка или список, AND) + новый `labelExcludeRegex` (строка или список, OR); общий пакет `internal/common/labelfilter` (`type Filter struct{Include, Exclude []*regexp.Regexp}`; `func Parse(node) (Filter, error)`; `func (f Filter) Match(label string) bool`), компиляция элементов через `regexlit` (D8); lookahead → ошибка с подсказкой `use labelIncludeRegex/labelExcludeRegex lists instead of lookahead`. Тесты: `TestLabelFilterRealShapeEquivalence` — для корпуса меток `testdata/reference/common/label-filter.json` (этап 0.6) решения Go-формы фильтров из D29 совпадают с решениями TS-регулярок; `TestRealShapeConfigGoFormValid` — Go-форма `docker/<svc>/config.real-shape.yml` проходит `validate-config`; `TestRealShapeConfigTSFormRejectedWithHint`. Здесь — `outputs[].{labelIncludeRegex,labelExcludeRegex}` (хотя бы один обязателен); Go-форма — `docker/sfc/config.real-shape.go.yml`.
+
 **Read:** `04` §2 (CLI, формат validate), §3 (весь), §11 тесты 13–16; `docker/sfc/config.example.yml`; `testdata/reference/sfc/print-config-docker-example.json`.
 
 **Files:**

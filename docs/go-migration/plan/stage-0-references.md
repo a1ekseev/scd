@@ -178,3 +178,15 @@
 - [ ] **Step 4:** Раздел в `testdata/reference/README.md`: контракт `d26-expect.json`, что ожидания взяты из `11-xray-vless-matrix.md`, а не из TS.
 - [ ] **Step 5: Commit** `chore(refs): add D26 VLESS matrix corpus with real Xray keys` (body: D25, D26).
 
+
+
+### Task 0.6: Корпус меток для фильтров (D29)
+
+**Goal:** зафиксировать решения боевых TS-регулярок, чтобы доказать эквивалентность Go include/exclude-фильтров.
+
+**Files:** Create `testdata/reference/common/label-filter.json`, скрипт `tools/golden/label-filter.mjs`.
+
+- [ ] **Step 1:** Собрать ≥40 меток: варианты с/без `Extra`, `WhiteList`, `Whitelist`, `EXTRA` (регистр), оба слова в разном порядке, эмодзи-флаги, кириллица, пустая строка, а также реальные формы меток из `docker/fixtures/real-shapes/*.txt` (фрагмент после `#`, URL-decoded).
+- [ ] **Step 2:** Node 24 (`docker run --rm -v $PWD:/w -w /w node:24-alpine node tools/golden/label-filter.mjs`) вычисляет для каждой метки результат трёх TS-регулярок из D29 (`en`, `extra`, `extraWhitelist`) через тот же `parseRegexLiteral`, что TS (`scd/src/config/load-config.ts`), и пишет `{label, en, extra, extraWhitelist}`.
+- [ ] **Step 3:** Проверка: `jq length testdata/reference/common/label-filter.json` ≥ 40; хотя бы по одной метке на каждую комбинацию true/false для трёх фильтров.
+- [ ] **Step 4: Commit** `test(reference): capture label filter decisions for D29`.
