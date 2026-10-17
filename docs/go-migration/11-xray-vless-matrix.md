@@ -48,6 +48,8 @@
 
 ## 4. Маппинг параметров ссылки → JSON (`streamSettings`/`settings`) → proto
 
+> **Поправка (D28/O16, D33; 2026-10-17):** неприменимые к transport/security параметры («Игнор» ниже) отбрасываются **молча**, без warning; `param_ignored` (уровень `debug`) — только для неизвестных параметров (план 1.7). Плюс по D33 в маппинг добавлены `cs` → `tlsSettings.cipherSuites` и ws `heartbeatPeriod` → `wsSettings.heartbeatPeriod` (см. `12-real-subscriptions.md` §3).
+
 «Игнор» — параметр не относится к выбранным transport/security; Xray такие ключи тоже не использует. Поведение scd: не передавать, warning `param_ignored` «<key> is not used with <network>+<security>; ignored.». Значения из ссылки — после `url.QueryUnescape`.
 
 | Параметр | Где действует | JSON-ключ (форма v26) | Что делает conf / proto | Проверено (кейс `matrix.out`) | Ошибка Xray → skip |

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27.2, `github.com/spf13/cobra@latest`, `go.yaml.in/yaml/v3@latest`, `github.com/robfig/cron/v3@v3.0.1`, stdlib.
 
-**Spec:** `07` D1, D7, D8, D9, D10, D18, D23, D24, D26, D27; `11-xray-vless-matrix.md` §4, §4.1 (задача 1.7); `06` §2–§6, §10–§12 (с поправками D9/D10); `01` §2–§5; `03` §3; `04` §3–§4.
+**Spec:** `07` D1, D7, D8, D9, D10, D18, D23, D24, D26, D27, D28, D33; `11-xray-vless-matrix.md` §4, §4.1 (задача 1.7); `12-real-subscriptions.md` §2, §3, §9 п.5 (задачи 1.6, 1.7); `06` §2–§6, §10–§12 (с поправками D9/D10); `01` §2–§5; `03` §3; `04` §3–§4.
 
 ## Контекст этапа
 
@@ -100,7 +100,7 @@
   - `func ResolveInput(dir, input string) string`: `-` и `^(?i)https?://` — как есть; абсолютный — как есть; иначе `filepath.Join(dir, input)`.
 - Produces (`schema`) — маленький валидатор поверх `any`:
   - `type Issue struct{ Path, Message string }`; `type Issues []Issue`; `func (is Issues) Err(file string) error` → `nil` если пусто, иначе ошибка с текстом `invalid config <file>:` + по строке `\n  - <path>: <message>` (пустой путь → `<root>`).
-  - `type Node struct{…}`; `func Root(v any, issues *Issues) *Node`; методы (все nil-safe, ошибки типа/отсутствия пишут Issue с путём `a.b.0.c`): `Object(key string, required bool) *Node`, `Array(key string, required bool, minItems int) []*Node`, `String(key string, o StrOpt) (string, bool)` (`StrOpt{Required, Trim, MinLen, Default *string, EmptyToAbsent bool}`), `StringList(key string, o StrOpt) []string`, `Int(key string, o IntOpt) int` (`IntOpt{Required bool; Default, Min, Max *int}`; YAML-float с целым значением допустим), `Bool(key string, def bool) bool` (только YAML bool; `yes` → issue), `Enum(key string, allowed []string, def string) string`, `URL(key string, required bool) (string, bool)` (`net/url.Parse` + непустые scheme и host), `Strict(known ...string)` (неизвестные ключи → `unknown key "x"`), `Has(key) bool`, `Path() string`, `Addf(key, format string, args ...any)`.
+  - `type Node struct{…}`; `func Root(v any, issues *Issues) *Node`; методы (все nil-safe, ошибки типа/отсутствия пишут Issue с путём `a.b.0.c`): `Object(key string, required bool) *Node`, `Array(key string, required bool, minItems int) []*Node`, `String(key string, o StrOpt) (string, bool)` (`StrOpt{Required, Trim, MinLen, Default *string, EmptyToAbsent bool}`), `StringList(key string, o StrOpt) []string`, `Int(key string, o IntOpt) int` (`IntOpt{Required bool; Default, Min, Max *int}`; YAML-float с целым значением допустим), `Bool(key string, def bool) bool` (только YAML bool; `yes` → issue), `Enum(key string, allowed []string, def string) string`, `URL(key string, required bool) (string, bool)` (`net/url.Parse` + непустые scheme и host), `Strict(known ...string)` (неизвестные ключи → `unknown key "x"`), `Has(key) bool`, `Path() string`, `Addf(key, format string, args ...any)`, `StringMap(key string) map[string]string` (D33 `fetchHeaders`: отсутствует → `nil`; не объект → `expected object, got <type>`; значение не строка → issue по пути `<key>.<имя>` `expected string, got <type>`; ключи — как в YAML, порядок не важен).
   - Сообщения: `required`, `expected <type>, got <type>`, `must be at least N`, `must be at most N`, `must be one of a|b|c`, `must not be empty`, `invalid URL`, `unknown key "x"`.
 
 - [ ] **Step 1: Failing tests (`configload`):**
@@ -109,7 +109,7 @@
   - `TestLoadNoneKeepsLiteral`: `a: ${X}` → `"${X}"`.
   - `TestLoadDuplicateKeyFails`, `TestLoadEmptyFileIsEmptyMap`, `TestLoadMultiDocFails`, `TestLoadMissingFileError` (`errors.Is(err, fs.ErrNotExist)`).
   - `TestResolveInput`: `-`, `HTTP://x`, `/abs`, `rel/a.txt`, `ftp://x/y` (→ `<dir>/ftp:/x/y`).
-- [ ] **Step 2: Failing tests (`schema`):** `TestRequiredMissing` (путь `subscriptions.0.id`), `TestWrongType`, `TestTrimAndMin`, `TestIntBounds`, `TestFloatIntegralAccepted` (`5000.0` → 5000), `TestBoolRejectsYesString`, `TestEnumDefault`, `TestStrictUnknownKey`, `TestIssuesErrFormat` (точный текст двух issues).
+- [ ] **Step 2: Failing tests (`schema`):** `TestRequiredMissing` (путь `subscriptions.0.id`), `TestWrongType`, `TestTrimAndMin`, `TestIntBounds`, `TestFloatIntegralAccepted` (`5000.0` → 5000), `TestBoolRejectsYesString`, `TestEnumDefault`, `TestStrictUnknownKey`, `TestIssuesErrFormat` (точный текст двух issues), `TestStringMap` (`{x-hwid: abc}` → `map[x-hwid:abc]`; `{x-n: 5}` → issue `fetchHeaders.x-n: expected string, got int`; `fetchHeaders: [a]` → `expected object`).
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `go test -race ./internal/common/... && golangci-lint run` → PASS.
 - [ ] **Step 6: Commit** `feat(common): add config loading and schema validation helpers`.
 
@@ -170,15 +170,17 @@
 
 ### Task 1.6: `inputsrc` и `subscription` (загрузка источника, base64, строки)
 
-**Read:** `01` §3, §4, §17.1 P11–P18; `04` §4.1–§4.3; `07` D9, D27 (O9).
+**Read:** `01` §3, §4, §17.1 P11–P18; `04` §4.1–§4.3; `07` D9, D27 (O9), D33 (`fetchHeaders`); `12-real-subscriptions.md` §1 (заголовки HWID Remnawave, зачем нужна опция).
 
 **Files:**
-- Create: `internal/common/inputsrc/inputsrc.go`, `inputsrc_test.go`
+- Create: `internal/common/inputsrc/inputsrc.go`, `inputsrc_test.go`, `headers.go`, `headers_test.go`
 - Create: `internal/common/subscription/lines.go`, `lines_test.go`
 
 **Interfaces:**
 - Produces (`inputsrc`):
-  - `type Options struct{ Format string /* auto|plain|base64, "" = auto */; FetchTimeout time.Duration /* 0 → 5s */; UserAgent string /* "" → buildinfo.UserAgent() = "scd/<version>" (D27 O9) */; Stdin io.Reader; HTTPClient *http.Client }`
+  - `type Options struct{ Format string /* auto|plain|base64, "" = auto */; FetchTimeout time.Duration /* 0 → 5s */; UserAgent string /* "" → buildinfo.UserAgent() = "scd/<version>" (D27 O9) */; Headers Headers /* D33 fetchHeaders, только для http(s) */; Stdin io.Reader; HTTPClient *http.Client }`
+  - (`headers.go`, D33) `type Headers map[string]string` — заголовки запроса подписки, **значения — секрет**: `func (h Headers) MarshalJSON() ([]byte, error)` пишет объект с теми же ключами (по `slices.Sorted`) и значением `"<redacted>"` у каждого (так `print-config` и любой случайный JSON-вывод не раскрывают значения); `func (h Headers) LogValue() slog.Value` — группа `ключ=<redacted>` (`slog.LogValuer`); `func (h Headers) Plain() map[string]string` — копия с настоящими значениями (только для HTTP-запроса и runtime-state при `includeSecrets: true`); `func CheckHeaders(h map[string]string) []HeaderIssue`, `type HeaderIssue struct{ Key, Message string }`: имя — HTTP-token по RFC 9110 (`httpguts.ValidHeaderFieldName` из `golang.org/x/net/http/httpguts`, иначе `invalid header name`); значение непустое после trim и без `\r`/`\n`/`\x00` (`must not be empty` / `must not contain control characters`); `User-Agent` (любой регистр) → `use fetchUserAgent instead`; `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` → `header is not allowed`; два ключа, равные без учёта регистра → `duplicate header (case-insensitive)`. Конфиги scd/sfc (4.1, 3.1) превращают `HeaderIssue` в `schema`-issue по пути `subscriptions.N.fetchHeaders.<Key>`.
+  - HTTP-запрос: сначала `Headers` (`req.Header.Set(k, v)`), затем `User-Agent` — так `fetchUserAgent` нельзя перебить. Значения заголовков **никогда** не попадают в тексты ошибок `Load` (там только URL/статус/таймаут).
   - `type Loaded struct{ Source, Content, Encoding string /* plain|base64 */ }`
   - `func Load(ctx context.Context, input string, o Options) (Loaded, error)`: `-` → stdin, Source `stdin`; `^(?i)https?://` → GET (редиректы по умолчанию Go; таймаут — `context.WithTimeout` на запрос+тело), Source = исходный URL; иначе файл (`filepath.Abs`), Source = абсолютный путь. У всех источников снимается ведущий U+FEFF. Пустой (после `strings.TrimSpace`) до и после декодирования → `ErrEmpty`, текст `input source <src> returned empty content`. HTTP не-2xx → `unable to download input from <url>: <resp.Status>`; таймаут → `input source <url> timed out after <N>ms`.
   - `func DecodeAuto(raw string) (content string, decoded bool)`: trimmed содержит `://` → как есть; иначе удалить все пробельные (`unicode.IsSpace`), пробовать `base64.StdEncoding`, `RawStdEncoding`, `URLEncoding`, `RawURLEncoding`; ошибка или результат без `://` → как есть. Формат `base64`: то же декодирование, ошибка → `input source <src> is not valid base64: <err>` (D9: без лояльности Node).
@@ -188,19 +190,23 @@
   - `TestLoadFilePlain`, `TestLoadFileWithBOM` (BOM снят, Content начинается с `vless://`), `TestLoadFileIgnoresFetchTimeout` (P16).
   - `TestLoadHTTPBase64` (P12; `httptest.Server`; Source = URL, Encoding `base64`).
   - `TestLoadHTTPUserAgent` (O9): без `UserAgent` сервер видит `User-Agent: scd/dev`; с `UserAgent: "Happ/1.0"` — `Happ/1.0`.
+  - `TestLoadHTTPSendsFetchHeaders` (D33): `Headers{"x-hwid":"abc","X-Device-OS":"linux"}` → сервер видит `X-Hwid: abc`, `X-Device-Os: linux`; файл/stdin заголовки игнорируют.
+  - `TestLoadErrorDoesNotLeakHeaderValues` (D33): сервер отвечает 403 / висит до таймаута → `err.Error()` не содержит `secret-hwid-value`.
+  - `TestHeadersRedacted` (D33): `json.Marshal(Headers{"x-hwid":"s3cr3t"})` → `{"x-hwid":"<redacted>"}`; slog JSON-handler с атрибутом `"headers", h` → в выводе нет `s3cr3t`, есть `<redacted>`; `Plain()` возвращает `s3cr3t`.
+  - `TestCheckHeaders` (таблица): `x-hwid` ок; `bad name`, `""`-значение, значение с `\n`, `User-Agent`, `host`, пара `X-Hwid`/`x-hwid` → issue с ожидаемой подстрокой.
   - `TestLoadHTTPTimeout` (P13; сервер висит, `FetchTimeout: 10*time.Millisecond` → ошибка содержит `timed out after 10ms`).
   - `TestLoadHTTPNon2xx` (`404 Not Found` в тексте), `TestLoadEmptyRemote` (P14), `TestLoadEmptyFile` (P15, `"   \n"`), `TestLoadStdinBase64` (P17), `TestLoadEmptyStdin` (P18).
   - `TestDecodeAuto` (таблица, P11 + 01 §3.2): std, url-safe, без padding, с переносами каждые 20 символов, с пробелами по краям → decoded; `hello world`, `vless://…` plain, base64 текста без `://`, `!` внутри → не decoded.
   - `TestLoadBase64FormatInvalid` → ошибка `is not valid base64`.
 - [ ] **Step 2: Failing tests (`subscription`):** `TestScanLinesNumbersAndCRLF` (`"a\r\n\r\n b \n"` → `[{1,"a","a"},{3," b ","b"}]`), `TestScanLinesTrailingNewline` (P20: одна строка + `\n` → 1 Line), `TestScanLinesLoneCRNotSeparator`.
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `go test -race ./internal/common/...` → PASS.
-- [ ] **Step 6: Commit** `feat(common): add subscription input loading and line scanning` (body: D9, D27).
+- [ ] **Step 6: Commit** `feat(common): add subscription input loading and line scanning` (body: D9, D27, D33).
 
 ---
 
 ### Task 1.7: `vless` — разбор строки подписки через `net/url`
 
-**Read:** `01` §5 (смысл проверок и reason-коды), §16 п.4–11, §17.4; `04` §4.4; `09` §1.1 (строки `userinfo`, `host:port`); `11-xray-vless-matrix.md` §4, §4.1; `07` D9, D18, D26, D27 (O7); README плана O11, O13.
+**Read:** `01` §5 (смысл проверок и reason-коды), §16 п.4–11, §17.4; `04` §4.4; `09` §1.1 (строки `userinfo`, `host:port`); `11-xray-vless-matrix.md` §4, §4.1; `12-real-subscriptions.md` §2, §4, §9 п.5; `07` D9, D18, D26, D27 (O7), D28, D33; README плана O11, O13, O16.
 
 **Files:**
 - Create: `internal/common/vless/parse.go`, `parse_test.go`, `testdata/` не нужен (использовать `testdata/reference/scd/corpus/ts-parse.json` через относительный путь `../../../testdata/reference/...`)
@@ -209,10 +215,10 @@
 - Consumes: `subscription.Line` (1.6).
 - Produces:
   - `type Param struct{ Key, Value string }`
-  - `type Link struct{ Line int; Raw, Label, ID, Address string; Port int; Params []Param }` + `func (l Link) Get(key string) (string, bool)`. Ключи lowercased; порядок — первого появления; при дубле значение последнего (позиция первого). Address — `u.Hostname()` (IPv6 без скобок).
+  - `type Link struct{ Line int; Raw, Label, ID, Address string; Port int; Params []Param; Ignored []string }` + `func (l Link) Get(key string) (string, bool)`. `Ignored` — ключи вне `AllowedParams` в порядке появления (D28); в `Params` они **не** попадают; `normalize` (4.3) превращает непустой `Ignored` в warning `param_ignored`. Ключи lowercased; порядок — первого появления; при дубле значение последнего (позиция первого). Address — `u.Hostname()` (IPv6 без скобок).
   - `type Skip struct{ Line int; Raw string; Label *string; Code, Reason string; Details []string }` (JSON-теги `line, raw, label,omitempty, reasonCode, reason, details,omitempty`)
   - Коды: `const (CodeUnsupportedScheme="unsupported_scheme"; CodeInvalidURI="invalid_uri"; CodeMissingRequiredField="missing_required_field"; CodeUnsupportedValue="unsupported_value"; CodeUnsupportedCombo="unsupported_combo"; CodeDuplicateTag="duplicate_tag")`
-  - `var AllowedParams = []string{"type","security","encryption","flow","sni","fp","alpn","pcs","vcn","ech","pbk","sid","spx","pqv","allowinsecure","headertype","host","path","mode","extra","fm","servicename","authority","seed","mtu","tti","support-x25519mlkem768","x_padding_bytes"}` — **общий белый список scd и sfc** (D27 O7): параметры стандарта #716 (вкл. grpc/kcp-параметры — чтобы ссылка с `type=grpc` получила понятный `unsupported_combo` в normalize, а не `unsupported_param`) + нестандартные параметры генераторов из 11 §4.1 (принимаются и игнорируются — README плана O13). Это список **известных** параметров (документация + тесты). Неизвестные параметры (D28) **игнорируются**: ссылка не отбрасывается, в результат `Parse` попадает warning `param_ignored` с именами (лог `debug`).
+  - `var AllowedParams = []string{"type","security","encryption","flow","sni","fp","alpn","pcs","vcn","ech","pbk","sid","spx","pqv","allowinsecure","headertype","host","path","mode","extra","fm","cs","heartbeatperiod","servicename","authority","seed","mtu","tti","support-x25519mlkem768","x_padding_bytes"}` — **общий белый список scd и sfc** (D27 O7): параметры стандарта #716 (вкл. grpc/kcp-параметры — чтобы ссылка с `type=grpc` получила понятный `unsupported_combo` в normalize, а не `unsupported_param`) + `cs` (TLS cipherSuites) и `heartbeatperiod` (ws, расширение Remnawave) — D33, 12 §3 + нестандартные параметры генераторов из 11 §4.1 (принимаются и игнорируются — README плана O13). Это список **известных** параметров (документация + тесты). Неизвестные параметры (D28) **игнорируются**: ссылка не отбрасывается, их имена попадают в `Link.Ignored` (дальше — warning `param_ignored`, лог уровня `debug`). Параметры из `AllowedParams`, неприменимые к transport/security (O16), здесь не различаются — их молча отбрасывает normalize (4.3 п.9), warning за них нет.
   - `func Parse(l subscription.Line) (Link, *Skip)`.
 - Порядок проверок (reason — дословно, это пользовательский текст отчётов):
   1. нет `://` → `unsupported_scheme` «The line does not contain a supported URI scheme.»
@@ -221,18 +227,20 @@
   4. label: фрагмент отрезается **до** `url.Parse` — `rest, frag, _ := strings.Cut(trimmed, "#")`, в `url.Parse` идёт `rest`; label = `url.PathUnescape(frag)`; ошибка → `invalid_uri` «The line label is not valid percent-encoding.» (O11). (Если отдать `url.Parse` строку с `#100%`, он сам падает `invalid URL escape "%"` на шаге 2 и O11-текст недостижим — проверено ревью; поэтому шаги 2 и 4 выполняются над `rest` и `frag` соответственно.)
   5. id = `u.User.Username()`; пусто → `missing_required_field` «The VLESS URI does not contain a user id.» (D18; label задан)
   6. host пуст, порт пуст/не число/вне 1..65535 → `missing_required_field` «The VLESS URI does not contain a valid address and port.»
-  7. query: свой разбор `u.RawQuery` по `&` (пустые сегменты пропускаются; ключ/значение через `url.QueryUnescape`, при ошибке — сырое значение); ключи вне `AllowedParams` → игнорируются, warning `param_ignored` `Ignored unknown VLESS parameter(s): a, b.` (в порядке появления) — D28. Код `unsupported_param` больше не выдаётся (константу удалить).
+  7. query: свой разбор `u.RawQuery` по `&` (пустые сегменты пропускаются; ключ/значение через `url.QueryUnescape`, при ошибке — сырое значение); ключи вне `AllowedParams` → в `Link.Ignored` (в порядке появления, без дублей); текст warning'а в 4.3 — `Ignored unknown VLESS parameter(s): a, b.` — D28. Код `unsupported_param` больше не выдаётся (константу удалить).
 
 - [ ] **Step 1: Failing tests** `parse_test.go` (таблица):
   - ok: `VLESS://<uuid>@Example.COM:0443?Type=TCP&Security=TLS#x` → Address `Example.COM`, Port 443, Params `[{type,TCP},{security,TLS}]`, Label `x`.
   - ok: `#🇩🇪 Берлин#2` → Label `🇩🇪 Берлин#2`; `#Hello%20World` → `Hello World`; без `#` → `""`.
   - ok: `sni=a&sni=b` → `sni=b`; `path=/a+b%2Fc` → `/a b/c`; `path=/a;x` → `/a;x`; `[2001:db8::1]:443` → Address `2001:db8::1`.
   - ok: id `my-user` (не UUID, D18) и uppercase UUID — без skip.
-  - skip: `trojan://x` (scheme), `vless:uuid@h:443` (scheme), `vless://u@ho st:443` (invalid_uri), `vless://@h:443` (user id), `vless://u@h` / `vless://u@h:0` / `vless://u@h:65536` (address and port), `#100%` (O11, invalid_uri), `foo=bar&ech=x&zz=1` → details `["foo","zz"]`.
+  - skip: `trojan://x` (scheme), `vless:uuid@h:443` (scheme), `vless://u@ho st:443` (invalid_uri), `vless://@h:443` (user id), `vless://u@h` / `vless://u@h:0` / `vless://u@h:65536` (address and port), `#100%` (O11, invalid_uri).
+  - ok (D28): `foo=bar&ech=x&zz=1` → без skip, `Params == [{ech,x}]`, `Ignored == ["foo","zz"]`; `cs=TLS_AES_128_GCM_SHA256&heartbeatPeriod=30` → оба в `Params` (ключ `heartbeatperiod`), `Ignored` пуст.
   - ok: каждый ключ `AllowedParams` (в т.ч. `serviceName` в любом регистре, `support-x25519mlkem768`, `x_padding_bytes`, `fm`, `pqv`, `ech`) — без skip (`TestAllowedParamsAccepted`).
   - `TestParseCorpusAgainstTS`: для каждой строки `ts-parse.json` с `ts.ok==true` — Go тоже ok (на уровне `Parse`); для `ts.reasonCode=="unsupported_scheme"` — тот же код; для `ts.reasonCode=="unsupported_param"` — Go ok (D28: неизвестные параметры игнорируются; при ключах вне `AllowedParams` — warning `param_ignored`). Прочие расхождения — только по списку `allowedDiffs` в тесте с комментарием-причиной (D9/D18/D26/O11).
+  - `TestParseRealShapes` (12 §9 п.5): все 54 строки `docker/fixtures/real-shapes/remnawave.txt` + `provider2.txt` (и `provider2.b64` после `inputsrc.DecodeAuto` — те же 50 `Link`) → `Parse` без skip и с пустым `Ignored`; у строк `remnawave.txt` ключи `Params` по порядку = `encryption,type,path,mode,extra,security,sni,fp,alpn`, `path` декодирован (`%2F` → начинается с `/`), `json.Valid([]byte(extra))`; у `provider2.txt` ключи = `type,path,security,alpn`; label `🇩🇪DE-1-X` и `🇨🇴 Colombia, Bogotá` декодированы.
   - `TestParseD26CorpusStageParse`: строки `d26-expect.json` со `stage=="parse"` → skip с тем же `reasonCode`; все остальные строки `d26-links.txt` проходят `Parse` без skip.
 - [ ] **Step 2: Run** `go test ./internal/common/vless/` → FAIL.
 - [ ] **Step 3: Implement** `parse.go`.
 - [ ] **Step 4: Run** `go test -race ./internal/common/... && golangci-lint run` → PASS.
-- [ ] **Step 5: Commit** `feat(common): add VLESS share-link parser on net/url` (body: D9, D18, D26, D27).
+- [ ] **Step 5: Commit** `feat(common): add VLESS share-link parser on net/url` (body: D9, D18, D26, D27, D28, D33).
