@@ -23,10 +23,18 @@ func New() *cobra.Command {
 				Valid      bool   `json:"valid"`
 			}{l.Path, true})
 		}),
-		configCommand("print-config", "Print normalized config", func(cmd *cobra.Command, l config.Loaded) error {
-			return jsonout.Write(cmd.OutOrStdout(), l.Config)
-		}),
+		printConfigCommand(),
 	)
+	return cmd
+}
+
+func printConfigCommand() *cobra.Command {
+	var includeSecrets bool
+	cmd := configCommand("print-config", "Print normalized config (secrets redacted)", func(cmd *cobra.Command, l config.Loaded) error {
+		return jsonout.Write(cmd.OutOrStdout(), l.Config.Printed(includeSecrets))
+	})
+	cmd.Flags().BoolVar(&includeSecrets, "include-secrets", false,
+		"Print subscription inputs and fetchHeaders values unredacted")
 	return cmd
 }
 

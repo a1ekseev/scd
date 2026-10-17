@@ -47,6 +47,21 @@ func (h Headers) Plain() map[string]string {
 	return maps.Clone(map[string]string(h))
 }
 
+// Printed returns the headers for printing: the real values when
+// includeSecrets, otherwise every value "<redacted>"; nil when h is empty.
+func (h Headers) Printed(includeSecrets bool) map[string]string {
+	if len(h) == 0 {
+		return nil
+	}
+	m := h.Plain()
+	if !includeSecrets {
+		for k := range m {
+			m[k] = redacted
+		}
+	}
+	return m
+}
+
 // HeaderIssue describes one invalid fetchHeaders entry.
 type HeaderIssue struct {
 	Key, Message string

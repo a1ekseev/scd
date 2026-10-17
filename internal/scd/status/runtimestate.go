@@ -60,17 +60,9 @@ type runtimeStateSnapshot struct {
 }
 
 type rsConfig struct {
-	Subscription rsSubscription                  `json:"subscription"`
+	Subscription config.PrintedSubscription      `json:"subscription"`
 	Target       config.SubscriptionTargetConfig `json:"target"`
 	Resources    config.ResourceConfig           `json:"resources"`
-}
-
-// rsSubscription is the subscription config with fetchHeaders printed with
-// real values or "<redacted>" depending on includeSecrets (the shallower
-// field hides the embedded one, which always redacts).
-type rsSubscription struct {
-	config.SubscriptionConfig
-	FetchHeaders map[string]string `json:"fetchHeaders,omitempty"`
 }
 
 type rsServiceState struct {
@@ -377,43 +369,8 @@ func buildExpected(ctx context.Context, sub config.SubscriptionConfig, res confi
 // fetchHeaders redacted) and its target (monitor URLs redacted, also in the
 // copy inside the subscription) unless includeSecrets.
 func redactedConfig(sub config.SubscriptionConfig, res config.ResourceConfig, includeSecrets bool) rsConfig {
-	target := redactTarget(sub.Target, includeSecrets)
-	out := rsSubscription{SubscriptionConfig: sub}
-	out.Target = target
-	if !includeSecrets {
-		out.Input = inputsrc.RedactInput(sub.Input)
-	}
-	if len(sub.FetchHeaders) > 0 {
-		out.FetchHeaders = sub.FetchHeaders.Plain()
-		if !includeSecrets {
-			for k := range out.FetchHeaders {
-				out.FetchHeaders[k] = "<redacted>"
-			}
-		}
-	}
-	return rsConfig{Subscription: out, Target: target, Resources: res}
-}
-
-// redactTarget returns a copy of t with the monitor request URL, the
-// balancer monitor request URL and the remote ping URL redacted.
-func redactTarget(t config.SubscriptionTargetConfig, includeSecrets bool) config.SubscriptionTargetConfig {
-	if includeSecrets {
-		return t
-	}
-	if r := t.Monitor.Request; r != nil {
-		c := *r
-		c.URL = inputsrc.RedactURL(c.URL)
-		t.Monitor.Request = &c
-	}
-	if r := t.BalancerMonitor.Request; r != nil {
-		c := *r
-		c.URL = inputsrc.RedactURL(c.URL)
-		t.BalancerMonitor.Request = &c
-	}
-	if t.BalancerMonitor.RemotePing.URL != "" {
-		t.BalancerMonitor.RemotePing.URL = inputsrc.RedactURL(t.BalancerMonitor.RemotePing.URL)
-	}
-	return t
+	out := sub.Printed(includeSecrets)
+	return rsConfig{Subscription: out, Target: out.Target, Resources: res}
 }
 
 // sortedStrings returns s sorted with strings.Compare (D23).

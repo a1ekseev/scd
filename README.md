@@ -52,11 +52,11 @@ output goes to stdout and logs go to stderr.
 | Command | Purpose |
 |---|---|
 | `scd validate-config --config f` | Validate. Prints `{"configPath": "<abs>", "valid": true}`. Warnings go to stderr as `warning: <path>: <text>`, exit code 0. |
-| `scd print-config --config f` | Print the normalized config as JSON (defaults applied, `input` made absolute, `fetchHeaders` values `<redacted>`). |
+| `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
 | `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`. |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
 | `scd generate --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one subscription without touching Xray. |
-| `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print. |
+| `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input` and `fetchHeaders` redacted as in scd unless `--include-secrets`). |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
 
 None of the services hot-reload the config. Restart after a change.
@@ -385,9 +385,9 @@ downloads from `http(s)` URLs. The default is `scd/<version>`.
 `subscriptions[].fetchHeaders` (scd and sfc) adds request headers. An example
 is `x-hwid` for a Remnawave HWID device limit. `User-Agent` (use
 `fetchUserAgent`), `Host`, `Content-Length`, `Transfer-Encoding` and
-`Connection` are not allowed. **Values are secrets**: `print-config`, logs,
-error texts and `/api/runtime-state` (unless `includeSecrets: true`) show
-`<redacted>`. Use `${NAME}` to take a value from the environment:
+`Connection` are not allowed. **Values are secrets**: `print-config` (unless
+`--include-secrets`), logs, error texts and `/api/runtime-state` (unless
+`includeSecrets: true`) show `<redacted>`. Use `${NAME}` to take a value from the environment:
 
 ```yaml
 fetchHeaders:
