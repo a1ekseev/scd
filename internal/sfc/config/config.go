@@ -206,17 +206,10 @@ func checkPathRoute(n *schema.Node, route string) {
 }
 
 // isCleanURLPath reports whether route is unchanged by httpserve.CleanPath
-// and by url.PathEscape of each segment.
+// and is its own escaped form (url.URL.EscapedPath, which requests are
+// matched on: "," and ";" stay as is, "%", spaces and non-ASCII do not).
 func isCleanURLPath(route string) bool {
-	if httpserve.CleanPath(route) != route {
-		return false
-	}
-	for seg := range strings.SplitSeq(route[1:], "/") {
-		if url.PathEscape(seg) != seg {
-			return false
-		}
-	}
-	return true
+	return httpserve.CleanPath(route) == route && (&url.URL{Path: route}).EscapedPath() == route
 }
 
 func parseOutput(n *schema.Node, seen *ids) Output {
