@@ -530,6 +530,8 @@ as is). The same parser validates configs and drives the scheduler.
   empty schedule, and expressions that never fire (`0 0 31 2 *`).
 - A loop runs its first tick at start, then on each slot without drift. A slot
   that arrives during a running tick is skipped (`*_tick_skipped_overrun`).
+  Slots missed while the host was suspended or the clock jumped are not
+  replayed: one overrun is logged and the loop resumes at the next slot.
 
 ## Logging
 

@@ -305,3 +305,48 @@ func TestRunLoggedOmitsEmptyCauses(t *testing.T) {
 		}
 	})
 }
+
+// staleOnce is a fake schedule whose first Next lies an hour in the past, as
+// after a wall-clock jump or a suspend; later calls step by d.
+type staleOnce struct {
+	d    time.Duration
+	used bool
+}
+
+func (s *staleOnce) Next(t time.Time) time.Time {
+	if !s.used {
+		s.used = true
+		return t.Add(-time.Hour)
+	}
+	return t.Add(s.d)
+}
+
+// Final review M1: missed slots are not caught up in a burst; one overrun is
+// reported and the loop continues from the next slot after now.
+func TestRunDoesNotCatchUpMissedSlots(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		var mu sync.Mutex
+		starts, overruns := 0, 0
+		task := func(context.Context) error {
+			mu.Lock()
+			starts++
+			mu.Unlock()
+			return nil
+		}
+		hooks := Hooks{OnOverrun: func(time.Time) {
+			mu.Lock()
+			overruns++
+			mu.Unlock()
+		}}
+		done := make(chan struct{})
+		go func() { Run(ctx, &staleOnce{d: 15 * time.Second}, task, hooks); close(done) }()
+		time.Sleep(20 * time.Second)
+		synctest.Wait()
+		cancel()
+		<-done
+		if starts != 2 || overruns != 1 {
+			t.Errorf("starts = %d, overruns = %d; want 2 and 1", starts, overruns)
+		}
+	})
+}
