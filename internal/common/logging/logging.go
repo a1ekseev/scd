@@ -3,9 +3,12 @@
 package logging
 
 import (
+	"encoding"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 )
 
 // Levels beyond the standard slog set.
@@ -39,13 +42,12 @@ func New(w io.Writer, level, format string) (*slog.Logger, error) {
 	default:
 		return nil, fmt.Errorf("unsupported log level %q (expected fatal, error, warn, info, debug, trace or silent)", level)
 	}
-	opts := &slog.HandlerOptions{Level: lvl, ReplaceAttr: replaceLevel}
 	var h slog.Handler
 	switch format {
 	case "json":
-		h = slog.NewJSONHandler(w, opts)
+		h = slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lvl, ReplaceAttr: replaceLevel})
 	case "pretty":
-		h = slog.NewTextHandler(w, opts)
+		h = slog.NewTextHandler(w, &slog.HandlerOptions{Level: lvl, ReplaceAttr: replacePretty})
 	default:
 		return nil, fmt.Errorf("unsupported log format %q (expected json or pretty)", format)
 	}
@@ -64,6 +66,32 @@ func replaceLevel(groups []string, a slog.Attr) slog.Attr {
 			case LevelFatal:
 				a.Value = slog.StringValue("FATAL")
 			}
+		}
+	}
+	return a
+}
+
+// replacePretty is the pretty (text) ReplaceAttr: the level names of
+// replaceLevel, and slices, arrays, maps and structs rendered as their JSON
+// text instead of Go's %+v (which shows Go field names), so nested values
+// such as subscriptions, failedItems or causes read like in the json format.
+// Errors, fmt.Stringers, encoding.TextMarshalers, []byte, time.Time and
+// time.Duration keep the text handler's rendering; so does a value that
+// cannot be marshalled.
+func replacePretty(groups []string, a slog.Attr) slog.Attr {
+	a = replaceLevel(groups, a)
+	if a.Value.Kind() != slog.KindAny {
+		return a
+	}
+	v := a.Value.Any()
+	switch v.(type) {
+	case nil, error, fmt.Stringer, encoding.TextMarshaler, []byte: // time.Time and time.Duration are Stringers
+		return a
+	}
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct:
+		if b, err := json.Marshal(v); err == nil {
+			a.Value = slog.StringValue(string(b))
 		}
 	}
 	return a

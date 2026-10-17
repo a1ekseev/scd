@@ -3,8 +3,10 @@ package logging
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewLevels(t *testing.T) {
@@ -112,5 +114,73 @@ func TestNewRejectsUnknownFormat(t *testing.T) {
 	want := `unsupported log format "text" (expected json or pretty)`
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %s", err, want)
+	}
+}
+
+type prettyItem struct {
+	ID      string `json:"id"`
+	Message string `json:"message,omitempty"`
+}
+
+type prettyStringer struct{ A int }
+
+func (prettyStringer) String() string { return "stringer-text" }
+
+func TestPrettyRendersCompositeValuesAsJSON(t *testing.T) {
+	var buf bytes.Buffer
+	l, err := New(&buf, "info", "pretty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Info("Hello.",
+		"event", "x",
+		"subscriptions", []prettyItem{{ID: "a", Message: "m"}, {ID: "b"}},
+		"causes", []string{"first", "second cause"},
+		"counts", map[string]int{"b": 2, "a": 1},
+		"item", prettyItem{ID: "c"},
+		"err", errors.New("plain error"),
+		"str", prettyStringer{A: 1},
+		"at", time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC),
+		"took", 1500*time.Millisecond,
+		"raw", []byte("hi"),
+	)
+	s := buf.String()
+	for _, want := range []string{
+		`subscriptions="[{\"id\":\"a\",\"message\":\"m\"},{\"id\":\"b\"}]"`,
+		`causes="[\"first\",\"second cause\"]"`,
+		`counts="{\"a\":1,\"b\":2}"`,
+		`item="{\"id\":\"c\"}"`,
+		`err="plain error"`,
+		`str=stringer-text`,
+		`at=2026-10-17T12:00:00.000Z`,
+		`took=1.5s`,
+		`raw="hi"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("pretty output lacks %s:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "ID:") || strings.Contains(s, "Message:") {
+		t.Errorf("pretty output has Go field names:\n%s", s)
+	}
+}
+
+func TestJSONKeepsCompositeValuesNested(t *testing.T) {
+	var buf bytes.Buffer
+	l, err := New(&buf, "info", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Info("Hello.", "subscriptions", []prettyItem{{ID: "a"}}, "causes", []string{"x"})
+	var m map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	subs, ok := m["subscriptions"].([]any)
+	if !ok || len(subs) != 1 || subs[0].(map[string]any)["id"] != "a" {
+		t.Errorf("subscriptions = %#v, want nested array", m["subscriptions"])
+	}
+	if causes, ok := m["causes"].([]any); !ok || len(causes) != 1 || causes[0] != "x" {
+		t.Errorf("causes = %#v, want nested array", m["causes"])
 	}
 }
