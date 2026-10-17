@@ -1,6 +1,7 @@
 package status
 
 import (
+	"bytes"
 	"cmp"
 	"log/slog"
 	"net/http"
@@ -95,9 +96,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, pathRuntimeState):
 		h.runtimeState(w, r)
 	default:
-		// The dashboard (task 6.5) renders d.Aggregator.View() here.
+		var page bytes.Buffer
+		if err := RenderDashboard(&page, d.Aggregator.View()); err != nil {
+			panic(err) // 500 via httpserve.Recover (D23)
+		}
 		w.Header().Set("Content-Type", contentTypeHTML)
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(page.Bytes())
 	}
 }
 

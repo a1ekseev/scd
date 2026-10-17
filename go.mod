@@ -5,6 +5,7 @@ go 1.27.0
 toolchain go1.27.2
 
 require (
+	github.com/chromedp/chromedp v0.21.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/xtls/xray-core v1.260327.1-0.20261010092107-701af60772cd // = Xray v26.10.10 (701af60), pre-release; Go tag v1.261010.0 does not exist
@@ -18,7 +19,9 @@ require (
 require (
 	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e // indirect
+	github.com/chromedp/cdproto v0.157.8 // indirect
 	github.com/cloudflare/circl v1.6.5 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260213210345-44df1a37e875 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect

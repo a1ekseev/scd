@@ -71,7 +71,10 @@ func (a *Aggregator) sortedRemotes() []*remoteState {
 }
 
 // View returns the dashboard view: the local snapshot (zero before the
-// first store) and the remotes sorted by id.
+// first store) and the remotes sorted by id. The returned snapshots share
+// their slices and RemoteView.Snapshot with the aggregator and must not be
+// mutated: stored snapshots are only ever replaced, never modified, so
+// readers need no lock.
 func (a *Aggregator) View() AggregatedView {
 	a.mu.Lock()
 	defer a.mu.Unlock()
