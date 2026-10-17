@@ -239,21 +239,32 @@ func (p *probe) handshake(t target) error {
 	return nil
 }
 
-// readHead reads until CRLFCRLF or EOF and returns everything received.
+// maxHead caps the bytes read while waiting for the end of the response
+// head (final review M10).
+const maxHead = 64 << 10
+
+// readHead reads until CRLFCRLF or EOF and returns everything received. A
+// head longer than maxHead is an invalid response.
 func (p *probe) readHead(c net.Conn) ([]byte, error) {
 	var buf []byte
 	tmp := make([]byte, 4096)
-	for !bytes.Contains(buf, []byte("\r\n\r\n")) {
+	for {
 		n, err := c.Read(tmp)
+		from := max(0, len(buf)-3) // the separator may straddle two reads
 		buf = append(buf, tmp[:n]...)
+		if bytes.Contains(buf[from:], []byte("\r\n\r\n")) {
+			return buf, nil
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-				break
+				return buf, nil
 			}
 			return nil, p.fail(err)
 		}
+		if len(buf) > maxHead {
+			return nil, verbatim("Invalid HTTP response from monitored endpoint.")
+		}
 	}
-	return buf, nil
 }
 
 func parseHead(resp []byte) (status, bodyBytes int, err error) {
