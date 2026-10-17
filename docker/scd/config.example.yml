@@ -1,0 +1,75 @@
+# ВРЕМЕННЫЙ ТЕСТОВЫЙ КОНФИГ scd (temporary test config, no real secrets).
+# Будет заменён реальным конфигом владельца. Скопируйте в docker/scd/config.yml
+# (файл в .gitignore), который монтирует docker-compose.yml в /app/config/config.yml.
+#
+# Подписка читается из локальной фикстуры с фейковыми VLESS-ссылками.
+# Путь относительный (разрешается от каталога конфига):
+#   локально:   docker/scd/../fixtures/subscription.txt
+#   в Docker:   /app/config/../fixtures/subscription.txt = /app/fixtures/subscription.txt
+# Поэтому docker-compose должен монтировать фикстуры для сервиса scd:
+#   - ./docker/fixtures:/app/fixtures:ro
+
+subscriptions:
+  - id: test-fixture
+    input: ../fixtures/subscription.txt
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    target:
+      # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
+      # (docker/xray/config/01_api.json).
+      address: xray:8080
+      timeoutMs: 5000
+      # Статические ресурсы из docker/xray/config/*.json — scd их не удаляет.
+      fixedOutbounds:
+        - direct     # 06_outbound.json
+        - blocked    # 06_outbound.json
+        - api        # тег API (01_api.json)
+      fixedInbounds:
+        - socks-proxy  # 03_inbound.json
+        - wg-proxy     # 03_inbound.json
+        - api          # тег API (01_api.json)
+      fixedRouting:
+        - direct       # 04_routing.json ruleTag
+        - x-balancer   # 04_routing.json ruleTag
+      # Совпадает с observatory.subjectSelector и balancers[].selector
+      # (04_routing.json / 05_observatory.json).
+      observatorySubjectSelectorPrefix: x-observe-
+      # Сгенерированные SOCKS-инбаунды внутри контейнера xray (наружу не публикуются).
+      inboundSocks:
+        listen: 0.0.0.0
+        portRange:
+          start: 20000
+          end: 20099
+      # Мониторинг выключен: хосты в фикстуре фейковые, проверки всегда падали бы.
+      monitor:
+        enabled: false
+      balancerMonitor:
+        enabled: false
+
+runtime:
+  # Dockerfile запускает `daemon`, поэтому нужен режим daemon + расписание.
+  mode: daemon
+  schedule: "*/5 * * * *"
+
+logging:
+  level: info
+  format: pretty
+
+resources:
+  outbounds:
+    enabled: true
+  inbounds:
+    enabled: true
+  routing:
+    enabled: true
+
+statusServer:
+  enabled: true
+  # Внутри контейнера 8080; compose публикует как 127.0.0.1:9090.
+  listen: 0.0.0.0:8080
+  instanceId: scd-test
+  runtimeState:
+    enabled: true
+    includeRaw: false
+    includeSecrets: false
