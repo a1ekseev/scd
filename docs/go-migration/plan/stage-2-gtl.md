@@ -27,7 +27,7 @@
 
 **Interfaces:**
 - Consumes: `configload.Load(path, configload.EnvNone, nil)`, `schema.*`, `listenaddr.Parse`.
-- Produces: `type Config struct{ Server struct{ Listen string `json:"listen"` } `json:"server"`; Logging struct{ Level, Format string } `json:"logging"`; Load struct{ Path string `json:"path"`; MaxSizeKb int64 `json:"maxSizeKb"` } `json:"load"` }` (порядок JSON: server, logging, load); `func Load(path string) (Config, error)`.
+- Produces: `type Config struct{ Server struct{ Listen string `json:"listen"` } `json:"server"`; Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`; Load struct{ Path string `json:"path"`; MaxSizeKb int64 `json:"maxSizeKb"` } `json:"load"` }` (порядок JSON: server, logging, load); `func Load(path string) (Config, error)`.
 - Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..8796093022207`.
 - CLI: `validate-config --config <path>` → stdout `Config is valid\n`; `print-config --config <path>` → `jsonout.Write(cfg)`; `--config` обязателен (`MarkFlagRequired`).
 
@@ -90,7 +90,9 @@
   ```bash
   go test -race ./internal/gtl/... && go build -o bin/scd ./cmd/scd
   sed 's/0.0.0.0:8080/127.0.0.1:18790/' docker/gtl/config.example.yml > /tmp/gtl.yml
-  (./bin/scd gtl serve --config /tmp/gtl.yml & echo $! > /tmp/gtl.pid; sleep 1; curl -s http://127.0.0.1:18790/load/1 | sha256sum; kill $(cat /tmp/gtl.pid))
+  ./bin/scd gtl serve --config /tmp/gtl.yml & p=$!; sleep 1
+  curl -s http://127.0.0.1:18790/load/1 | sha256sum
+  kill -TERM $p; wait $p; echo exit=$?
   ```
-  Expected: sha256 `8ab783947bae918d01b74448625dfd0fef119e16e97d6fc9fdf15e310c87cb01`, процесс завершился с кодом 0.
+  Expected: sha256 `8ab783947bae918d01b74448625dfd0fef119e16e97d6fc9fdf15e310c87cb01` (ревью пересчитало этот вектор Go-реализацией xorshift32 — совпадает, как и `fill8` для offset 0/65536/2^32/2^32+65536), затем `exit=0`.
 - [ ] **Step 5: Commit** `feat(gtl): add scd gtl serve with graceful shutdown` (body: D7, D10, O10).

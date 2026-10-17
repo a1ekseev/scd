@@ -45,9 +45,9 @@
   - `internal/archtest/imports_test.go` `TestServicesDoNotImportEachOther`: обходит `internal/scd`, `internal/sfc`, `internal/gtl` (`go/parser` с `parser.ImportsOnly`), ни один файл не импортирует `github.com/a1ekseev/scd/internal/<другой сервис>`; `internal/common/...` не импортирует ни один сервис.
 - [ ] **Step 2: Run** `go test ./...` → FAIL (нет пакетов/функций).
 - [ ] **Step 3: Реализация** `go.mod` (`go get github.com/spf13/cobra@latest`), `root.go`, заглушки, `main.go`.
-- [ ] **Step 4: `.golangci.yml`** (v2): `version: "2"`; `linters.default: standard`; `linters.enable: [errorlint, gocritic, revive, bodyclose, contextcheck, noctx, modernize, usestdlibvars, perfsprint, misspell, unconvert]`; `formatters.enable: [gofumpt, goimports]`; `formatters.settings.goimports.local-prefixes: [github.com/a1ekseev/scd]`; `run.build-tags: [xraylive, visual]`.
-- [ ] **Step 5: CI-джоба `go`** в `.github/workflows/docker.yml`: `actions/checkout@v5` → `actions/setup-go@v7` (`go-version-file: go.mod`, `cache: true`) → `go mod verify` → `go vet ./...` → `golangci/golangci-lint-action@v9` (`version: v2.15.0`) → `go run golang.org/x/vuln/cmd/govulncheck@latest ./...` → `go test -race -count=1 ./...` → `go build -o bin/scd ./cmd/scd` → `./bin/scd --help`.
-- [ ] **Step 6: Verify:** `go vet ./... && go test -race ./... && golangci-lint run && go build -o bin/scd ./cmd/scd && ./bin/scd --help && ./bin/scd sfc --help && ./bin/scd gtl --help`. Expected: всё зелёное, help печатается.
+- [ ] **Step 4: `.golangci.yml`** (v2): `version: "2"`; `linters.default: standard`; `linters.enable: [errorlint, gocritic, revive, bodyclose, contextcheck, noctx, modernize, usestdlibvars, perfsprint, misspell, unconvert]`; `linters.exclusions.presets: [std-error-handling]`; `formatters.enable: [gofumpt, goimports]`; `formatters.settings.goimports.local-prefixes: [github.com/a1ekseev/scd]`; `run.build-tags: [xraylive, visual]`. Проверка: `golangci-lint config verify` → без ошибок (ревью проверило ровно этот набор на v2.15.0). Все пакеты задачи — с `// Package … ` комментарием, экспортируемые идентификаторы — с doc-комментариями (revive `package-comments`/`exported`, см. «Lint» в README плана).
+- [ ] **Step 5: CI-джоба `go`** в `.github/workflows/docker.yml`: `actions/checkout@v7` → `actions/setup-go@v7` (`go-version-file: go.mod`, `cache: true`) → `go mod verify` → `go vet ./...` → `golangci/golangci-lint-action@v9` (`version: v2.15.0`) → `go run golang.org/x/vuln/cmd/govulncheck@latest ./...` → `go test -race -count=1 ./...` → `go build -o bin/scd ./cmd/scd` → `./bin/scd --help`.
+- [ ] **Step 6: Verify:** `go vet ./... && go test -race ./... && golangci-lint fmt && golangci-lint config verify && golangci-lint run && go build -o bin/scd ./cmd/scd && ./bin/scd --help && ./bin/scd sfc --help && ./bin/scd gtl --help`. Expected: всё зелёное, help печатается. CI-шаг govulncheck локально не воспроизводится (403 на `vuln.go.dev` из песочницы) — проверяется только в CI; в CI `go run …govulncheck@latest` собирается toolchain'ом 1.27.2 от setup-go и работает (локально без `GOTOOLCHAIN=go1.27.2` он собрался бы go1.26 и упал бы — см. README плана).
 - [ ] **Step 7: Commit** `feat(cli): bootstrap Go module, root command and Go CI job` (body: D1, D10).
 
 ---
@@ -118,19 +118,21 @@
 - Create: `internal/common/cronloop/cronloop.go`, `cronloop_test.go`
 
 **Interfaces:**
-- Produces (`cron`): `type Schedule interface{ Next(time.Time) time.Time }`; `func Parse(expr string) (Schedule, error)` — `robfig/cron/v3` `NewParser(SecondOptional|Minute|Hour|Dom|Month|Dow|Descriptor)`, дополнительно отвергает `""` (`cron expression must not be empty`) и `@every …` (`@every is not supported`); часовой пояс — `time.Local`.
+- Produces (`cron`): `type Schedule interface{ Next(time.Time) time.Time }`; `func Parse(expr string) (Schedule, error)` — `robfig/cron/v3` `NewParser(SecondOptional|Minute|Hour|Dom|Month|Dow|Descriptor)`, дополнительно отвергает `""` (`cron expression must not be empty`), `@every …` (`@every is not supported`), префиксы `TZ=`/`CRON_TZ=` (`time zone prefixes are not supported`) и выражения, которые никогда не срабатывают: `s.Next(time.Date(2026,1,1,0,0,0,0,time.UTC)).IsZero()` → `cron expression never matches` (robfig принимает `0 0 31 2 *` и возвращает нулевое `Next` — проверено ревью; без проверки `cronloop` ушёл бы в цикл без сна); часовой пояс — `time.Local`.
 - Produces (`cronloop`):
-  - `func Run(ctx context.Context, s cron.Schedule, task func(context.Context) error, h Hooks)`; `type Hooks struct{ OnError func(error); OnOverrun func(scheduledAt time.Time) }`. Алгоритм `03` §3.2: первый тик сразу; `scheduledAt = s.Next(prevScheduled)`; сон через `time.NewTimer` с `select` на `ctx.Done()` (D7: выход сразу, не ждать слот); занятый тик → `OnOverrun`, слот пропускается; при выходе ждёт активную задачу. Задача получает `ctx` (отмена — ответственность задачи).
+  - `func Run(ctx context.Context, s cron.Schedule, task func(context.Context) error, h Hooks)`; `type Hooks struct{ OnError func(error); OnOverrun func(scheduledAt time.Time) }`. Алгоритм `03` §3.2: первый тик сразу; `scheduledAt = s.Next(prevScheduled)`; если `scheduledAt.IsZero()` — новых тиков не планировать, ждать `ctx.Done()` (защита от busy-loop; `Parse` такие выражения уже отвергает); сон через `time.NewTimer` с `select` на `ctx.Done()` (D7: выход сразу, не ждать слот); занятый тик → `OnOverrun`, слот пропускается; при выходе ждёт активную задачу. Задача получает `ctx` (отмена — ответственность задачи).
   - `func RunLogged(ctx context.Context, s cron.Schedule, task func(context.Context) error, log *slog.Logger, ev Events, attrs ...any)`; `type Events struct{ OverrunEvent, OverrunMsg, FailureEvent, FailureMsg string }`. Overrun → `log.Warn(OverrunMsg, attrs..., "event", OverrunEvent, "scheduledAt", <RFC3339 millis UTC>)`; ошибка → `log.Error(FailureMsg, attrs..., "event", FailureEvent, "error", err.Error(), ["causes", []string])`.
   - `func Causes(err error) []string` — сообщения из `interface{ Unwrap() []error }` (непустые), иначе `nil`.
 
 - [ ] **Step 1: Failing tests (`cron`):**
   - `TestParseMatchesReferenceNext`: для каждой записи `cron-next.json` (в `TestMain` установить `time.Local = time.UTC` — эталоны сняты при `TZ=UTC`) три последовательных `Next` равны эталону.
-  - `TestParseRejects`: каждая строка `cron-rejected.json` → ошибка.
+  - `TestParseRejects`: каждая строка `cron-rejected.json` → ошибка (включая `0 0 31 2 *` → `never matches`).
+  - `TestParseAcceptsRobfigExtras`: `@midnight`, `@annually`, `0 0 ? * *` → ок (расширение относительно TS, документируется в 7.3).
 - [ ] **Step 2: Failing tests (`cronloop`, `testing/synctest`):**
   - `TestRunSkipsOverrunWithoutDrift` (`03` §10.1 п.1): расписание каждые 100 мс (фейковый `Schedule`), первый тик блокируется до первого overrun → старты `[0ms, 200ms]`, overrun один на `100ms`.
   - `TestRunStopsImmediatelyOnCancel` (D7): слот через 1 час, `cancel()` → `Run` возвращается без продвижения часов дальше `0`.
   - `TestRunWaitsForActiveTask`: cancel во время задачи → `Run` возвращается после завершения задачи.
+  - `TestRunZeroNextDoesNotSpin`: фейковый `Schedule`, у которого `Next` возвращает `time.Time{}` → ровно один (первый) запуск задачи, затем `Run` спит до `cancel()`.
   - `TestCausesFromJoin` (`03` §10.1 п.2): `errors.Join(errors.New("first cause"), errors.New("second cause"))` → `["first cause","second cause"]`.
   - `TestRunLoggedOverrunLog` / `TestRunLoggedFailureLogsCauses` (`03` §10.1 п.3–4, `04` §11 п.3–4): JSON-handler в буфер; overrun → warn с `event`, `subscriptionId`, `scheduledAt`; ошибка → ровно один error с `causes`; loop продолжает работу.
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement** (`go get github.com/robfig/cron/v3@v3.0.1`). **Step 5: Run** `go test -race ./internal/common/...` → PASS.
@@ -208,7 +210,7 @@
   1. нет `://` → `unsupported_scheme` «The line does not contain a supported URI scheme.»
   2. `url.Parse(trimmed)` ошибка → `invalid_uri` «The line is not a valid URI.»
   3. scheme (lowercase) ≠ `vless` → `unsupported_scheme` `Unsupported scheme "<scheme>:".`
-  4. label = `url.PathUnescape(u.EscapedFragment())`; ошибка → `invalid_uri` «The line label is not valid percent-encoding.» (O11)
+  4. label: фрагмент отрезается **до** `url.Parse` — `rest, frag, _ := strings.Cut(trimmed, "#")`, в `url.Parse` идёт `rest`; label = `url.PathUnescape(frag)`; ошибка → `invalid_uri` «The line label is not valid percent-encoding.» (O11). (Если отдать `url.Parse` строку с `#100%`, он сам падает `invalid URL escape "%"` на шаге 2 и O11-текст недостижим — проверено ревью; поэтому шаги 2 и 4 выполняются над `rest` и `frag` соответственно.)
   5. id = `u.User.Username()`; пусто → `missing_required_field` «The VLESS URI does not contain a user id.» (D18; label задан)
   6. host пуст, порт пуст/не число/вне 1..65535 → `missing_required_field` «The VLESS URI does not contain a valid address and port.»
   7. query: свой разбор `u.RawQuery` по `&` (пустые сегменты пропускаются; ключ/значение через `url.QueryUnescape`, при ошибке — сырое значение); ключи вне `AllowedParams` → `unsupported_param` `Unsupported VLESS parameter(s): a, b.` + details (в порядке появления).

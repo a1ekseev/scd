@@ -67,17 +67,28 @@ Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
 - JSON API status-сервера (`/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state`) — контракт: имена и схема полей сохраняются; новые поля только аддитивно, `version` = 1 (D3, D22, D23).
 - Дашборд визуально идентичен TS-версии (D3), проверка — visual regression (задача 6.5).
 - Graceful immediate shutdown через `signal.NotifyContext` (D7).
-- Сборка бинаря **всегда** `go build -o bin/scd ./cmd/scd` (пока в корне есть каталог `scd/`, `go build ./cmd/scd` без `-o` попытается писать в каталог). `/bin/` добавляется в `.gitignore` в задаче 1.1.
-- Локальный Go 1.24.7: toolchain 1.27.2 скачивается автоматически (`GOTOOLCHAIN=auto`, через прокси). golangci-lint ставить собранным новым toolchain: `GOTOOLCHAIN=go1.27.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0`.
-- Docker-демона в песочнице нет: всё, что требует Docker, проверяется в CI (этап 7); локально — только `go test`, `go build`, CLI-смоуки.
-- `**/config.yml` игнорируется git; трекаются только `docker/{scd,sfc,gtl}/config.example.yml`, `docker/fixtures/*`, `docker/README.md`.
+- Сборка бинаря **всегда** `go build -o bin/scd ./cmd/scd` (пока в корне есть каталог `scd/`, `go build ./cmd/scd` без `-o` падает: `go: build output "scd" already exists and is a directory` — проверено). `/bin/` добавляется в `.gitignore` в задаче 1.1. Каталоги `scd/`, `sfc/`, `gtl/` (включая `node_modules`) Go-инструментам не мешают: `go list ./...`, `go vet ./...`, `go test ./...`, `golangci-lint run` их игнорируют (нет `.go`-файлов) — проверено.
+- Локальный Go 1.24.7: toolchain 1.27.2 скачивается автоматически (`GOTOOLCHAIN=auto`, через прокси). **Любой `go run|go install <tool>@<ver>` локально запускать с `GOTOOLCHAIN=go1.27.2`**: иначе `auto` берёт toolchain по `go`-строке самого инструмента (govulncheck → go1.26) и анализ падает на `package requires newer Go version go1.27 (application built with go1.26)` (проверено). golangci-lint: `GOTOOLCHAIN=go1.27.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0` (или релизный бинарь v2.15.0 — он собран go1.27.0 и работает с этим модулем; проверено). govulncheck локально недоступен (прокси песочницы отдаёт 403 на `vuln.go.dev`) — только в CI.
+- Docker **доступен** (`docker info`, buildx v0.37, compose v5.6; Docker Hub и `gcr.io/distroless/*` тянутся). **Блокируется** скачивание слоёв `ghcr.io` (манифесты читаются, блобы — нет), поэтому `ghcr.io/xtls/xray-core:26.10.10` локально подменяется образом из релизного архива (команды — «Локальный образ Xray» ниже). Docker-шаги этапа 7 (сборка образа, compose-smoke) можно и нужно прогонять локально; CI их повторяет.
+- `**/config.yml` игнорируется git; трекаются только `docker/{scd,sfc,gtl}/config.example.yml`, `docker/fixtures/*`, `docker/README.md`. Локальные `docker/*/config.yml` скрипты плана **не перезаписывают** (там будут реальные конфиги владельца, D12).
+
+**Локальный образ Xray 26.10.10** (вместо недоступного ghcr; релизный ассет проверен: `Xray 26.10.10 … 701af60 (go1.27.2 linux/amd64)`, sha256 совпадает с `.dgst`):
+```bash
+d=$(mktemp -d) && cd "$d"
+curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.10.10/Xray-linux-64.zip
+curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.10.10/Xray-linux-64.zip.dgst
+grep -q "$(sha256sum Xray-linux-64.zip | cut -d' ' -f1)" Xray-linux-64.zip.dgst && unzip -q Xray-linux-64.zip -d out
+printf 'FROM alpine:3.22\nCOPY out/xray /usr/local/bin/xray\nCOPY out/geoip.dat out/geosite.dat /usr/local/share/xray/\nENV XRAY_LOCATION_ASSET=/usr/local/share/xray\nENTRYPOINT ["/usr/local/bin/xray"]\n' > Dockerfile
+docker build -q -t ghcr.io/xtls/xray-core:26.10.10 .   # локальный тег; compose не будет его тянуть (pull_policy missing)
+```
+Тот же `out/xray` годится как `SCD_XRAY_BIN` для live-тестов (5.6).
 
 ## Соглашения
 
 **Раскладка модуля (итоговая):**
 ```
 go.mod, go.sum, .golangci.yml, Dockerfile, .dockerignore, docker-compose.yml, README.md, AGENTS.md
-cmd/scd/main.go                  точка входа: internal/cli.Execute(os.Args, os.Stdout, os.Stderr) → os.Exit
+cmd/scd/main.go                  точка входа: os.Exit(internal/cli.Execute(os.Args[1:], os.Stdout, os.Stderr))
 internal/cli/                    корневая cobra-команда, версия, монтирование scd/sfc/gtl
 internal/archtest/               тест запрета импортов между сервисами
 internal/common/
@@ -95,13 +106,18 @@ tools/golden/                   Node-скрипты этапа 0 (удаляют
 
 **Стиль тестов:** stdlib `testing`, table-driven, `t.Run` с именами кейсов; `httptest`, `bufconn`, `testing/synctest` для времени; без моков там, где можно поднять настоящий объект (in-process gRPC, `httptest.Server`, `net.Listen("tcp","127.0.0.1:0")`). Сравнение protobuf — `proto.Equal`/поля через `GetInstance()`, не байты. Сравнение JSON с эталонами — семантическое (unmarshal в `any` и `reflect.DeepEqual`), кроме отмеченных мест. Тестовые хелперы — в `_test.go` или `internal/.../testutil` (не в production-типах). Live-тесты: build tag `xraylive` + env `SCD_XRAY_BIN`; visual: build tag `visual` + env `SCD_CHROME`; без env тест вызывает `t.Skip`.
 
-**Lint:** `.golangci.yml` (v2, задача 1.1): `linters.default: standard` + `errorlint, gocritic, revive, bodyclose, contextcheck, noctx, modernize, usestdlibvars, perfsprint, misspell, unconvert`; `formatters: gofumpt, goimports`. Без baseline, без `//nolint` без комментария-причины.
+**Lint:** `.golangci.yml` (v2, задача 1.1): `linters.default: standard` + `errorlint, gocritic, revive, bodyclose, contextcheck, noctx, modernize, usestdlibvars, perfsprint, misspell, unconvert`; `linters.exclusions.presets: [std-error-handling]`; `formatters: gofumpt, goimports`. Без baseline, без `//nolint` без комментария-причины. Конфиг проверен `golangci-lint config verify` на v2.15.0 (все линтеры существуют). Что это значит для кода (проверено на прототипе):
+- revive по умолчанию включает `package-comments` и `exported`: **каждый пакет** начинается с `// Package <name> …`, **каждый экспортируемый** тип/функция/метод/переменная имеет doc-комментарий, иначе `golangci-lint run` красный;
+- `noctx`: никаких `http.Get`/`http.Post`/`net.Dial` без контекста — только `http.NewRequestWithContext` + `Client.Do`, `(&net.Dialer{}).DialContext`;
+- `errorlint`: сравнение ошибок только `errors.Is/As`;
+- `std-error-handling` снимает шум errcheck на `defer resp.Body.Close()` и подобных;
+- перед `golangci-lint run` выполнять `golangci-lint fmt` (gofumpt + goimports с `local-prefixes`).
 
 **Проверки после каждой задачи (минимум):**
 ```bash
 go vet ./...
 go test -race ./...
-golangci-lint run
+golangci-lint fmt && golangci-lint run
 go build -o bin/scd ./cmd/scd
 ```
 плюс CLI-смоуки, указанные в задаче.
@@ -136,9 +152,9 @@ EOF
 | 2 | `bin/scd gtl validate-config --config docker/gtl/config.example.yml` ок; golden SHA-256 из 05 §4.5 совпадают; тесты 05 §10 перенесены |
 | 3 | `bin/scd sfc validate-config/print-config/refresh --config docker/sfc/config.example.yml` ок; выход refresh совпадает с эталоном 0.3; тесты 04 §11 перенесены |
 | 4 | `bin/scd validate-config` и `bin/scd generate` работают на `docker/` фикстурах; тесты 01 §17 и 09 §7.11 перенесены; каждый поддерживаемый параметр ссылки доходит до proto (unit-golden) |
-| 5 | apply против fake Xray покрывает 02 §2, rollback/fixed/порядок RPC; live-тест `-tags xraylive` проходит против бинаря Xray 26.10.10 (локально при наличии бинаря, обязательно в CI после 7.2) |
+| 5 | apply против fake Xray покрывает 02 §2, rollback/fixed/порядок RPC; live-тест `-tags xraylive` проходит против бинаря Xray 26.10.10 (локально — релизный бинарь, см. «Локальный образ Xray»; в CI — шаг, добавленный в 5.6) |
 | 6 | `bin/scd sync`/`daemon` работают против fake и live Xray; JSON API семантически равен эталонам 0.4; visual regression дашборда проходит (`-tags visual`); тесты 03 §10 и 10 §6.9 перенесены |
-| 7 | В репозитории нет TS/Node (`git ls-files | grep -E '\.(ts|js)$|package(-lock)?\.json'` пусто), CI только Go, один образ (amd64+arm64), compose на одном образе, AGENTS.md/README.md описывают Go-раскладку |
+| 7 | В репозитории нет TS/Node (`git ls-files | grep -vE '^internal/scd/status/web/' | grep -E '\.(ts|mjs|js)$|package(-lock)?\.json|tsconfig'` пусто; браузерный `dashboard.js` дашборда — не Node-код и исключён явно), CI только Go, один образ (amd64+arm64), compose на одном образе, compose-smoke зелёный локально и в CI, AGENTS.md/README.md описывают Go-раскладку |
 
 ## Как исполнять (subagent-driven-development)
 
@@ -174,7 +190,7 @@ EOF
 | D1 | Go 1.27, свежие deps, CI vet/lint/govulncheck/race | 1.1 (go.mod, .golangci.yml, Go-джоба), 7.2 (финальный CI) |
 | D2 | Xray API строго: RPC, порядок, fixed, rollback, хэши, repair/rejoin, lock, тексты | 5.1, 5.3, 5.4, 6.1, 6.3, 5.6 |
 | D3 | Дашборд визуально тот же, JSON API контракт | 0.4, 6.4, 6.5, 6.6 |
-| D4 | xray-core pseudo-version + образ 26.10.10, обновлять вместе | 4.5 (go.mod), 7.1 (compose), 7.2 (CI-проверка коммита ↔ тега) |
+| D4 | xray-core pseudo-version + образ 26.10.10, обновлять вместе | 4.3 (`go get` по коммиту → go.mod), 5.6 (CI-скачивание релиза), 7.1 (compose, `.xray-version`), 7.2 (CI-проверка коммита ↔ тега) |
 | D5 | нативные пакеты xray-core (перекрыт D19) | 4.5, 5.1 |
 | D6 | ws path/Host и TLS fingerprint доходят до Xray | 4.5 (unit), 5.6 (live) |
 | D7 | Немедленный graceful shutdown | 1.4 (cronloop), 2.3, 3.4, 6.7 |
@@ -192,8 +208,8 @@ EOF
 | D19 | JSON → `infra/conf` → gRPC; все параметры доходят до Xray | 4.5, 5.2, 5.6 |
 | D20 | TS удаляется последним; эталоны — Go testdata | 0.1–0.4, 7.3 |
 | D21 | Сдвиг портов допустим, проверка ёмкости `portRange` | 4.7 |
-| D22 | Balancer selection на дашборде | 4.1 (конфиг), 5.5 (RPC), 6.6 (цикл, state, API, UI), 7.1 (`01_api.json`) |
-| D23 | Ошибка портов валит только target; cron robfig; SOCKS общий дедлайн; panic → 500; сортировки; порядок ключей JSON; README-ограничения | 6.1, 1.4, 6.2, 1.5/6.4 (httpserve), 6.4, 7.3 |
+| D22 | Balancer selection на дашборде | 4.1 (конфиг), 5.5 (RPC), 6.6 (цикл, state, API, UI, `docker/xray/config/01_api.json` + `ObservatoryService`), 7.1 (compose-smoke проверяет `balancerSelection`) |
+| D23 | Ошибка портов валит только target; cron robfig (+ отказ от никогда не срабатывающих выражений); SOCKS общий дедлайн; panic → 500; сортировки; порядок ключей JSON; README-ограничения | 6.1, 1.4, 6.2, 1.5/6.4 (httpserve), 6.4, 7.3 |
 
 ## Трассировка инвентарей тестов
 
@@ -267,3 +283,4 @@ EOF
 3. **Подписка с CRLF/BOM/пустыми строками/хвостовыми пробелами.** Ожидание: те же entries и теги, что у чистого текста (кроме строк, у которых меняется `raw`). Тест — 1.6 (`TestLoadFileWithBOM`), 4.6 (`TestBuildManifestCRLFEqualsLF`).
 4. **Переполнение `portRange` у одного target.** Ожидание (D23): только этот target failed с понятным текстом, остальные применены. Тест — 6.1 (`TestSyncPortRangeOverflowFailsOnlyThatTarget`).
 5. **Враждебные строки в remote snapshot / label** (`<script>`, кавычки, очень длинный label). Ожидание: дашборд экранирует (html/template), JSON passthrough без изменений, ничего не падает (panic → 500, D23). Тест — 6.5 (`TestDashboardEscapesHostileStrings`), 6.4 (`TestRemoteSnapshotPassthroughKeepsUnknownFields`).
+6. **Ссылка, которую `infra/conf` принимает, а живой Xray отвергает на `AddOutbound`** (добавлено ревью: ML-KEM-ключ правильной длины, но не валидный ключ — `conf.Build()` OK, `AddOutbound` → `proxy/vless/outbound: failed to use encryption > mlkem: invalid polynomial encoding`, проверено на 26.10.10). Ожидание: строка пропускается на этапе манифеста (`unsupported_value`), а не валит outbound-apply всего target'а с rollback. Тест — 4.4 (`TestMLKEMInvalidKeySkipped`), 5.6 (`TestLiveEveryParamReachesXray` — все принятые entries добавляются без ошибок).
