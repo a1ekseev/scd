@@ -33,6 +33,9 @@ jobs:
       - name: Check Xray version pin
         run: bash scripts/check-xray-version.sh
 
+      - name: Check Go-only tree
+        run: bash scripts/check-no-node.sh
+
       - name: Vet
         run: go vet ./...
 

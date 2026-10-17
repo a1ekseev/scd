@@ -1,8 +1,12 @@
 # Reference outputs from the TypeScript services
 
-Captured from the TS implementation before it is removed, so the Go rewrite can be
-checked against them. Regenerate with `tools/golden/` (see its README; removed in
-task 7.3).
+Captured from the TS implementation before it was removed, so the Go rewrite can be
+checked against them. These files are frozen Go test data (D20): the TS services and the
+capture scripts (`tools/golden/`) are gone from the tree, so the references cannot be
+regenerated. The TS references were captured by commits `a67b320`..`e6c9839`
+(tooling and TS sources as of `e6c9839`: `git show e6c9839:tools/golden/README.md`);
+later commits only add Go-side fixtures (`scd/status/fixtures/selection-*.json`).
+Script names below (`tools/golden/*.mjs`) refer to that commit.
 
 Fields depending on ICU (country `nameEn`, `localeCompare` order) are informational:
 Go is not required to reproduce them. Captured on the Node version recorded in
