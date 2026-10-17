@@ -6,6 +6,7 @@ import (
 
 	"github.com/xtls/xray-core/core"
 
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
@@ -109,7 +110,7 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, entri
 	}
 
 	finish()
-	r.AppliedAt = timestamp(m.now())
+	r.AppliedAt = jsonout.Timestamp(m.now())
 	return r, nil
 }
 

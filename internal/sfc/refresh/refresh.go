@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/subscription"
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/sfc/cache"
@@ -80,7 +81,7 @@ func (r *Refresher) Run(ctx context.Context) Report {
 	slices.SortFunc(reports, func(a, b OutputReport) int { return strings.Compare(a.ID, b.ID) })
 
 	rep := Report{
-		RefreshedAt: r.now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		RefreshedAt: jsonout.Timestamp(r.now()),
 		SourceCount: sources,
 		OutputCount: len(reports),
 		Outputs:     reports,
