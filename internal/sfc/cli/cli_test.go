@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -151,5 +153,53 @@ server:
 		if strings.Contains(out, s) || strings.Contains(errs, s) {
 			t.Errorf("output contains %s:\nstdout %s\nstderr %s", s, out, errs)
 		}
+	}
+}
+
+// Final review I3: print-config redacts the subscription input and the
+// fetchHeaders values unless --include-secrets is given.
+func TestPrintConfigSecrets(t *testing.T) {
+	t.Setenv("HW", "HEADERSECRET")
+	p := filepath.Join(t.TempDir(), "config.yml")
+	body := `subscriptions:
+  - id: main
+    input: https://sub.example.com/sub/PATHTOKEN?token=QUERYTOKEN
+    pathRoute: /s
+    fetchHeaders: {x-hwid: "${HW}"}
+    outputs:
+      - id: out
+        labelExcludeRegex: x
+runtime:
+  refreshSchedule: "@hourly"
+server:
+  listen: :8080
+`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secrets := []string{"PATHTOKEN", "QUERYTOKEN", "HEADERSECRET"}
+
+	code, out, errs := run("print-config", "--config", p)
+	if code != 0 || !strings.Contains(out, `"input": "https://sub.example.com/<redacted>"`) {
+		t.Fatalf("code %d out %s err %s", code, out, errs)
+	}
+	for _, s := range secrets {
+		if strings.Contains(out+errs, s) {
+			t.Errorf("print-config leaks %s:\n%s", s, out)
+		}
+	}
+
+	code, raw, errs := run("print-config", "--config", p, "--include-secrets")
+	if code != 0 {
+		t.Fatalf("code %d err %s", code, errs)
+	}
+	for _, s := range secrets {
+		if !strings.Contains(raw, s) {
+			t.Errorf("print-config --include-secrets lacks %s:\n%s", s, raw)
+		}
+	}
+	keyRe := regexp.MustCompile(`(?m)^\s*"([^"]+)":`)
+	if a, b := keyRe.FindAllString(out, -1), keyRe.FindAllString(raw, -1); !slices.Equal(a, b) {
+		t.Errorf("key order differs:\n%v\n%v", a, b)
 	}
 }

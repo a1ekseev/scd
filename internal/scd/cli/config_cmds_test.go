@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -206,4 +208,93 @@ resources: {}
 	if code != 0 || strings.Contains(out+errs, "s3cr3t") {
 		t.Fatalf("validate: code %d out %s err %s", code, out, errs)
 	}
+}
+
+// Final review I3: print-config redacts the subscription input, the monitor,
+// balancer monitor and remote ping URLs and the fetchHeaders values unless
+// --include-secrets is given.
+const secretConfig = `
+subscriptions:
+  - id: s1
+    input: https://sub.example.com/sub/INPUTTOKEN?k=INPUTQUERY
+    fetchHeaders: {x-hwid: "${SCD_TEST_HWID}"}
+    target:
+      address: 127.0.0.1:8080
+      inboundSocks: {listen: 127.0.0.1, portRange: {start: 20000, end: 20010}}
+      monitor:
+        enabled: true
+        schedule: "* * * * *"
+        request: {url: "https://probe.example.com/p/MONTOKEN?q=MONQUERY", expectedStatus: 204}
+      balancerMonitor:
+        enabled: true
+        schedule: "* * * * *"
+        socks5: {host: 127.0.0.1, port: 1080}
+        request: {url: "https://bprobe.example.com/b/BALTOKEN", expectedStatus: 204}
+        remotePing: {enabled: true, url: "https://kuma.example.com/api/push/PUSHTOKEN?status=up"}
+runtime: {mode: daemon, schedule: "* * * * *"}
+logging: {}
+resources: {outbounds: {enabled: true}, inbounds: {enabled: true}, routing: {enabled: true}}
+`
+
+var secretTokens = []string{"INPUTTOKEN", "INPUTQUERY", "HEADERSECRET", "MONTOKEN", "MONQUERY", "BALTOKEN", "PUSHTOKEN"}
+
+func writeSecretConfig(t *testing.T) string {
+	t.Helper()
+	t.Setenv("SCD_TEST_HWID", "HEADERSECRET")
+	p := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(p, []byte(secretConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestPrintConfigRedactsSecretsByDefault(t *testing.T) {
+	code, out, errs := run("print-config", "--config", writeSecretConfig(t))
+	if code != 0 {
+		t.Fatalf("code %d err %s", code, errs)
+	}
+	for _, s := range secretTokens {
+		if strings.Contains(out+errs, s) {
+			t.Errorf("print-config leaks %s:\n%s", s, out)
+		}
+	}
+	for _, want := range []string{
+		`"input": "https://sub.example.com/<redacted>"`,
+		`"url": "https://probe.example.com/<redacted>"`,
+		`"url": "https://bprobe.example.com/<redacted>"`,
+		`"url": "https://kuma.example.com/<redacted>"`,
+		`"x-hwid": "<redacted>"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("print-config lacks %s:\n%s", want, out)
+		}
+	}
+}
+
+func TestPrintConfigIncludeSecrets(t *testing.T) {
+	p := writeSecretConfig(t)
+	code, out, errs := run("print-config", "--config", p, "--include-secrets")
+	if code != 0 {
+		t.Fatalf("code %d err %s", code, errs)
+	}
+	for _, s := range secretTokens {
+		if !strings.Contains(out, s) {
+			t.Errorf("print-config --include-secrets lacks %s:\n%s", s, out)
+		}
+	}
+	_, red, _ := run("print-config", "--config", p)
+	if got, want := jsonKeys(out), jsonKeys(red); !slices.Equal(got, want) {
+		t.Errorf("key order differs from the redacted form:\n%v\n%v", got, want)
+	}
+}
+
+var keyRe = regexp.MustCompile(`(?m)^\s*"([^"]+)":`)
+
+// jsonKeys lists the object keys of an indented JSON document in order.
+func jsonKeys(doc string) []string {
+	var out []string
+	for _, m := range keyRe.FindAllStringSubmatch(doc, -1) {
+		out = append(out, m[1])
+	}
+	return out
 }
