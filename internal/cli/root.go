@@ -46,6 +46,9 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
+	if ie, ok := errors.AsType[*cliutil.InterruptedError](err); ok {
+		return ie.ExitCode() // the command printed its report and logged the cancel
+	}
 	if !errors.Is(err, cliutil.ErrReportFailed) {
 		fmt.Fprintln(stderr, err.Error())
 	}

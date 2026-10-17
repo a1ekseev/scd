@@ -853,6 +853,9 @@ func TestCanceledSyncStartsNoFurtherApply(t *testing.T) {
 	if n := len(f.logs.events(t, "apply_failed")); n != 0 {
 		t.Errorf("apply_failed events = %d, want 0", n)
 	}
+	if r.Canceled != PhaseTargets {
+		t.Errorf("Canceled = %q, want %q", r.Canceled, PhaseTargets)
+	}
 }
 
 // Final review I1: a cancellation stops loading the remaining subscriptions.
@@ -880,6 +883,9 @@ func TestCanceledSyncStopsLoading(t *testing.T) {
 	if r.Failed != 0 || len(f.logs.events(t, "subscription_fetch_failed")) != 0 {
 		t.Errorf("cancel reported as failure: %+v", r)
 	}
+	if r.Canceled != PhaseLoad {
+		t.Errorf("Canceled = %q, want %q", r.Canceled, PhaseLoad)
+	}
 }
 
 // Final review I1: a load cut short by the cancellation is not a failure.
@@ -897,10 +903,10 @@ func TestCanceledLoadIsNotReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Failed != 0 || len(r.Targets) != 0 {
+	if r.Failed != 0 || len(r.Targets) != 0 || r.Canceled != PhaseLoad {
 		t.Errorf("report = %+v", r)
 	}
-	for _, ev := range []string{"subscription_fetch_failed", "apply_failed"} {
+	for _, ev := range []string{"subscription_fetch_failed", "apply_failed", "sync_canceled"} {
 		if n := len(f.logs.events(t, ev)); n != 0 {
 			t.Errorf("%s events = %d", ev, n)
 		}

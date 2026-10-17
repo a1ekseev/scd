@@ -46,7 +46,20 @@ type Report struct {
 	Successful  int            `json:"successful"`
 	Failed      int            `json:"failed"`
 	Outputs     []OutputReport `json:"outputs"`
+	// Canceled is the phase a cancellation cut the refresh short in
+	// (PhaseLoad or PhaseSubscriptions), empty for a complete refresh. Not
+	// part of the JSON.
+	Canceled string `json:"-"`
 }
+
+// Cancellation phases of Report.Canceled.
+const (
+	// PhaseLoad: a subscription's load was cut short (its outputs are kept
+	// unchanged and left out of the report).
+	PhaseLoad = "load"
+	// PhaseSubscriptions: cancelled before the next subscription.
+	PhaseSubscriptions = "subscriptions"
+)
 
 // Refresher refreshes the outputs of a config. Run must not be called
 // concurrently.
@@ -64,19 +77,24 @@ type Refresher struct {
 // Run refreshes the enabled subscriptions one after another and returns the
 // report with outputs sorted by id. Failures are reported per output, never
 // returned. After ctx is cancelled no further subscription is refreshed and
-// the remaining ones are left out of the report (their state is kept).
+// the remaining ones are left out of the report (their state is kept);
+// Report.Canceled names the phase. The refresher does not log it: `scd sfc
+// refresh` does (warn), serve only at debug.
 func (r *Refresher) Run(ctx context.Context) Report {
 	reports := []OutputReport{}
 	sources := 0
+	canceled := ""
 	for _, sub := range r.Cfg.Config.Subscriptions {
 		if !sub.Enabled {
 			continue
 		}
 		if ctx.Err() != nil {
+			canceled = PhaseSubscriptions
 			break
 		}
 		subReports, ok := r.refreshSubscription(ctx, sub)
 		if !ok {
+			canceled = PhaseLoad
 			break
 		}
 		sources++
@@ -89,6 +107,7 @@ func (r *Refresher) Run(ctx context.Context) Report {
 		SourceCount: sources,
 		OutputCount: len(reports),
 		Outputs:     reports,
+		Canceled:    canceled,
 	}
 	for _, o := range reports {
 		if o.OK {
@@ -128,9 +147,7 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 		return reports, true
 	}
 	if ctx.Err() != nil {
-		log.Info("Subscription refresh canceled; state kept.",
-			"event", "subscription_refresh_canceled", "subscriptionId", sub.ID)
-		return nil, false
+		return nil, false // the caller reports the cancellation
 	}
 
 	// The loader's error holds the input URL (a secret, D33).

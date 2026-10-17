@@ -18,8 +18,8 @@ import (
 // syncCommand is `scd sync` (03 §2.4): one sync with a fresh memory state.
 // The report JSON goes to stdout and logs to stderr (D27 O10); failed
 // items exit 1 without another message. SIGINT/SIGTERM cancel the run: the
-// Xray apply in flight finishes, nothing new starts and the report of what
-// was done is printed (D7).
+// Xray apply in flight finishes, nothing new starts, sync_canceled is logged
+// at warn, the partial report is printed and the exit code is 130/143 (D7).
 func syncCommand() *cobra.Command {
 	return configCommand("sync", "Sync subscriptions to Xray once and print the report", func(cmd *cobra.Command, l config.Loaded) error {
 		ctx, stop := sigctx.NotifyContext(cmd.Context())
@@ -35,8 +35,16 @@ func syncCommand() *cobra.Command {
 			log.LogAttrs(ctx, slog.LevelError, "Sync failed.", slog.String("event", "sync_failed"), slog.String("error", err.Error()))
 			return err
 		}
+		if report.Canceled != "" {
+			log.LogAttrs(ctx, slog.LevelWarn, "Sync interrupted; remaining subscriptions and targets were not synced.",
+				slog.String("event", "sync_canceled"), slog.String("phase", report.Canceled),
+				slog.String("signal", sigctx.Reason(ctx)))
+		}
 		if err := jsonout.Write(cmd.OutOrStdout(), report); err != nil {
 			return err
+		}
+		if report.Canceled != "" {
+			return &cliutil.InterruptedError{Signal: sigctx.Reason(ctx)}
 		}
 		if report.Failed > 0 {
 			return cliutil.ErrReportFailed

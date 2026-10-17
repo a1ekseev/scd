@@ -47,7 +47,9 @@ func (s *Syncer) now() time.Time {
 // context.WithoutCancel(ctx) with the per-call timeouts of the client, so a
 // cancellation never stops an apply halfway (Review Focus 1). After a
 // cancellation no further subscription is loaded and no further target is
-// applied; those are left out of the report. Every
+// applied; those are left out of the report and Report.Canceled names the
+// phase. The syncer does not log the cancellation: `scd sync` does (warn),
+// the daemon stays quiet. Every
 // subscription or target failure is part of the report, so the error is
 // reserved for failures of the whole run (none exist at present).
 func (s *Syncer) Run(ctx context.Context) (Report, error) {
@@ -110,23 +112,25 @@ func (s *Syncer) perform(ctx context.Context) Report {
 	for _, f := range failed {
 		targets = append(targets, s.failedLoad(ctx, f))
 	}
-	for i, l := range loaded {
+	canceled := ""
+	if ctx.Err() != nil {
+		canceled = PhaseLoad
+	}
+	for _, l := range loaded {
+		if canceled != "" {
+			break
+		}
 		r, sk, ok := s.syncSubscription(ctx, l)
 		if !ok {
-			s.logCanceled(ctx, len(loaded)-i)
+			canceled = PhaseTargets
 			break
 		}
 		targets = append(targets, r)
 		skipped = append(skipped, sk...)
 	}
-	return aggregate(targets, skipped, startedAt, s.now())
-}
-
-// logCanceled logs, at debug, that a cancelled sync left the remaining
-// targets alone (final review I1).
-func (s *Syncer) logCanceled(ctx context.Context, remaining int) {
-	s.Log.LogAttrs(ctx, slog.LevelDebug, "Sync canceled; remaining targets skipped.",
-		slog.String("event", "sync_canceled"), slog.Int("remainingTargets", remaining))
+	rep := aggregate(targets, skipped, startedAt, s.now())
+	rep.Canceled = canceled
+	return rep
 }
 
 // failedLoad reports a subscription whose input could not be loaded: one

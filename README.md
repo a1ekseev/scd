@@ -53,10 +53,10 @@ output goes to stdout and logs go to stderr.
 |---|---|
 | `scd validate-config --config f` | Validate. Prints `{"configPath": "<abs>", "valid": true}`. Warnings go to stderr as `warning: <path>: <text>`, exit code 0. |
 | `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
-| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining targets are skipped and the report is printed. |
+| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
 | `scd generate --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one subscription without touching Xray. |
-| `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input` and `fetchHeaders` redacted as in scd unless `--include-secrets`). |
+| `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input` and `fetchHeaders` redacted as in scd unless `--include-secrets`). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
 
 None of the services hot-reload the config. Restart after a change.

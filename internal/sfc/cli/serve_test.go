@@ -227,7 +227,9 @@ func TestServeStopCancelsAndWaitsForActiveRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg, []byte(strings.Replace(string(raw), abs, upstream.URL, 1)), 0o600); err != nil {
+	body := strings.Replace(string(raw), abs, upstream.URL, 1)
+	body = strings.Replace(body, "level: info", "level: debug", 1)
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -245,7 +247,7 @@ func TestServeStopCancelsAndWaitsForActiveRefresh(t *testing.T) {
 		t.Fatalf("stop took %s", d)
 	}
 	// The cancelled refresh finished before RunServe returned.
-	if !strings.Contains(logs.String(), `"event":"subscription_refresh_canceled"`) {
+	if !strings.Contains(logs.String(), `"event":"refresh_tick_canceled"`) {
 		t.Fatalf("active refresh not awaited:\n%s", logs.String())
 	}
 }

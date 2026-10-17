@@ -74,7 +74,10 @@ func serve(ctx context.Context, l config.Loaded, stderr io.Writer) error {
 				return nil // the start-up refresh already ran
 			}
 			log.Info("Refresh tick started.", "event", "refresh_tick")
-			r.Run(ctx)
+			if rep := r.Run(ctx); rep.Canceled != "" {
+				// Shutdown, not a failure: debug only.
+				log.Debug("Refresh tick canceled.", "event", "refresh_tick_canceled", "phase", rep.Canceled)
+			}
 			return nil
 		}
 		cronloop.RunLogged(loopCtx, sched, tick, log, refreshEvents)

@@ -775,6 +775,9 @@ server:
 	if len(rep.Outputs) != 1 || rep.Outputs[0].ID != "out-a" {
 		t.Errorf("outputs = %+v, want only out-a", rep.Outputs)
 	}
+	if rep.Canceled != PhaseSubscriptions {
+		t.Errorf("Canceled = %q, want %q", rep.Canceled, PhaseSubscriptions)
+	}
 }
 
 // Final review I2: the subscription URL (a token in the path and query) never
@@ -868,13 +871,14 @@ func TestRefreshCanceledLoadIsNotAFailure(t *testing.T) {
 		return inputsrc.Loaded{}, c.Err()
 	}
 	rep := r.Run(ctx)
-	if rep.Failed != 0 || len(rep.Outputs) != 0 {
+	if rep.Failed != 0 || len(rep.Outputs) != 0 || rep.Canceled != PhaseLoad {
 		t.Errorf("report = %+v", rep)
 	}
 	if after := r.State.get("out-germany"); after.LastError != "" || after.LastRefreshAt != before.LastRefreshAt {
 		t.Errorf("state changed: %+v", after)
 	}
-	if n := len(rec.events(t, "subscription_refresh_failed")) + len(rec.events(t, "subscription_source_cache_used")); n != 0 {
+	if n := len(rec.events(t, "subscription_refresh_failed")) + len(rec.events(t, "subscription_source_cache_used")) +
+		len(rec.events(t, "subscription_refresh_canceled")); n != 0 {
 		t.Errorf("failure events = %d", n)
 	}
 }

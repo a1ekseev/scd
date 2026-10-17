@@ -38,7 +38,18 @@ type Report struct {
 	Targets   []TargetReport `json:"targets"`
 	// Skipped holds every loaded subscription's skipped lines once.
 	Skipped []vless.Skip `json:"skipped"`
+	// Canceled is the phase a cancellation cut the run short in (PhaseLoad
+	// or PhaseTargets), empty for a complete run. Not part of the JSON.
+	Canceled string `json:"-"`
 }
+
+// Cancellation phases of Report.Canceled.
+const (
+	// PhaseLoad: cancelled while loading subscriptions; no target was synced.
+	PhaseLoad = "load"
+	// PhaseTargets: cancelled between targets; the remaining ones were skipped.
+	PhaseTargets = "targets"
+)
 
 // emptyReport is the report of an overlapping run (03 §2.4).
 func emptyReport(now time.Time) Report {
