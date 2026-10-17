@@ -1,7 +1,8 @@
 // Package xrayfake is an in-process fake Xray API server on bufconn with the
 // observable semantics of Xray v26.10.10 (08 §3, 02 §6 level 2): the
-// HandlerService outbound/inbound RPCs and the RoutingService rule RPCs used
-// by scd, the exact Xray error texts (codes.Unknown), shuffled List*
+// HandlerService outbound/inbound RPCs, the RoutingService rule and balancer
+// RPCs and the ObservatoryService used by scd (D22, 10 §6.9), the exact Xray
+// error texts (codes.Unknown), shuffled List*
 // responses, GetInstance() on every TypedMessage of an Add, per-method
 // failure injection and delays, and a log of calls. It is meant for tests of
 // every package above xrayapi.
@@ -16,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xtls/xray-core/app/observatory"
+	obscmd "github.com/xtls/xray-core/app/observatory/command"
 	handlercmd "github.com/xtls/xray-core/app/proxyman/command"
 	routercmd "github.com/xtls/xray-core/app/router/command"
 	"github.com/xtls/xray-core/common/serial"
@@ -44,9 +47,12 @@ type Server struct {
 	outbounds map[string]*core.OutboundHandlerConfig
 	inbounds  map[string]*core.InboundHandlerConfig
 	rules     []xrayapi.Rule
+	balancers map[string]*fakeBalancer
 	calls     []string
 	failNext  map[string]error
 	delays    map[string]time.Duration
+
+	observations []*observatory.OutboundStatus
 
 	noRouting     bool
 	noObservatory bool
@@ -91,9 +97,9 @@ func WithoutRoutingService() Option {
 	return func(s *Server) { s.noRouting = true }
 }
 
-// WithoutObservatoryService leaves ObservatoryService unregistered
-// (codes.Unimplemented). The fake registers that service from task 5.5 on;
-// until then it is never served and the option only records the intent.
+// WithoutObservatoryService leaves ObservatoryService unregistered: its RPC
+// fails with codes.Unimplemented "unknown service …", as on an Xray whose
+// api.services lack it. It is registered by default.
 func WithoutObservatoryService() Option {
 	return func(s *Server) { s.noObservatory = true }
 }
@@ -105,6 +111,7 @@ func Start(t testing.TB, opts ...Option) (*Server, xrayapi.Client) {
 	s := &Server{
 		outbounds: map[string]*core.OutboundHandlerConfig{},
 		inbounds:  map[string]*core.InboundHandlerConfig{},
+		balancers: map[string]*fakeBalancer{},
 		failNext:  map[string]error{},
 		delays:    map[string]time.Duration{},
 		listener:  bufconn.Listen(1 << 20),
@@ -116,6 +123,9 @@ func Start(t testing.TB, opts ...Option) (*Server, xrayapi.Client) {
 	handlercmd.RegisterHandlerServiceServer(s.grpc, &handlerService{s: s})
 	if !s.noRouting {
 		routercmd.RegisterRoutingServiceServer(s.grpc, &routingService{s: s})
+	}
+	if !s.noObservatory {
+		obscmd.RegisterObservatoryServiceServer(s.grpc, &observatoryService{s: s})
 	}
 	go func() { _ = s.grpc.Serve(s.listener) }()
 	t.Cleanup(s.grpc.Stop)
@@ -197,15 +207,17 @@ func (s *Server) Inbound(tag string) *core.InboundHandlerConfig {
 // "ListOutbounds", "AddOutbound:<tag>", "RemoveOutbound:<tag>",
 // "ListInbounds", "AddInbound:<tag>", "RemoveInbound:<tag>", "ListRule",
 // "AddRule:<ruleTag>-><outboundTag>" (one per rule; "AddRule" when the
-// config cannot be decoded) and "RemoveRule:<ruleTag>".
+// config cannot be decoded), "RemoveRule:<ruleTag>",
+// "GetBalancerInfo:<balancerTag>",
+// "OverrideBalancerTarget:<balancerTag>-><target>" and "GetOutboundStatus".
 func (s *Server) Calls() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Clone(s.calls)
 }
 
-// FailNext makes the next call of method (an RPC name such as "AddOutbound"
-// or "ListRule") fail with err, typically a status.Error, without touching
+// FailNext makes the next call of method (an RPC name such as "AddOutbound",
+// "ListRule" or "GetBalancerInfo") fail with err, typically a status.Error, without touching
 // the state. It applies once.
 func (s *Server) FailNext(method string, err error) {
 	s.mu.Lock()

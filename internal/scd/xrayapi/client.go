@@ -1,15 +1,17 @@
 // Package xrayapi is the only scd package that talks gRPC to Xray: a Client
-// over the xray-core command services (HandlerService and RoutingService
-// today; read-only balancer/observatory RPCs follow in task 5.5) built on the
-// native xray-core v26.10.10 types (D2, D4). One *grpc.ClientConn is kept per
+// over the xray-core command services (HandlerService, RoutingService and the
+// read-only balancer/observatory RPCs of D22) built on the native xray-core
+// v26.10.10 types (D2, D4). One *grpc.ClientConn is kept per
 // target, every RPC runs under its own context.WithTimeout(timeout), and every
-// error is mapped to *Error with the texts of 02 §2.7.
+// error is mapped to *Error with the texts of 02 §2.7 (the read-only D22 RPCs
+// add *ServiceDisabledError and *BalancerNotFoundError, 10 §6.1).
 package xrayapi
 
 import (
 	"context"
 	"time"
 
+	obscmd "github.com/xtls/xray-core/app/observatory/command"
 	handlercmd "github.com/xtls/xray-core/app/proxyman/command"
 	"github.com/xtls/xray-core/app/router"
 	routercmd "github.com/xtls/xray-core/app/router/command"
@@ -58,14 +60,6 @@ type RoutingAPI interface {
 	RemoveRule(ctx context.Context, ruleTag string) error
 }
 
-// BalancerAPI holds the read-only RoutingService balancer RPC
-// (GetBalancerInfo, D22); its methods are added in task 5.5.
-type BalancerAPI any
-
-// ObservatoryAPI holds the read-only ObservatoryService RPC
-// (GetOutboundStatus, D22); its methods are added in task 5.5.
-type ObservatoryAPI any
-
 // Client is the complete Xray API surface used by scd.
 type Client interface {
 	OutboundAPI
@@ -102,6 +96,8 @@ func DialWith(address string, timeout time.Duration, opts ...grpc.DialOption) (C
 		timeout: timeout,
 		handler: handlercmd.NewHandlerServiceClient(conn),
 		routing: routercmd.NewRoutingServiceClient(conn),
+
+		observatory: obscmd.NewObservatoryServiceClient(conn),
 	}, nil
 }
 
@@ -111,6 +107,8 @@ type client struct {
 	timeout time.Duration
 	handler handlercmd.HandlerServiceClient
 	routing routercmd.RoutingServiceClient
+
+	observatory obscmd.ObservatoryServiceClient
 }
 
 // call runs one RPC under its own timeout and maps its error.
