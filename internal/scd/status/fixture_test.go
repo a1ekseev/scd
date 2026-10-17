@@ -16,6 +16,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/topology"
+	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
 // refStatusDir holds the task 0.4 references (fixtures and TS outputs).
@@ -185,12 +186,17 @@ func loadFixture(t *testing.T, name string) loaded {
 	return loaded{now: f.Now, cfg: config.Loaded{Path: "/fixture/config.yml", Config: cfg}, mem: mem, agg: agg}
 }
 
-// deps returns handler dependencies for l. Dial fails: the four captured
-// endpoints never reach Xray.
+// errFixtureDial is returned by the fixture dialer.
+var errFixtureDial = errors.New("fixture: Xray must not be dialled")
+
+// deps returns handler dependencies for l. Dial fails: no fixture test may
+// reach a real Xray address.
 func (l loaded) deps() Deps {
 	return Deps{
 		Config: l.cfg, Memory: l.mem, Aggregator: l.agg,
-		Dial:     nil,
+		Dial: func(string, time.Duration) (xrayapi.Client, error) {
+			return nil, errFixtureDial
+		},
 		Now:      func() time.Time { return l.now },
 		Hostname: func() (string, error) { return "", errors.New("hostname must not be used") },
 		Log:      discardLogger(),

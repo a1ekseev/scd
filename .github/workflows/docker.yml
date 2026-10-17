@@ -153,6 +153,13 @@ jobs:
       - name: Run live Xray tests
         run: SCD_XRAY_BIN="$RUNNER_TEMP/xray/xray" go test -tags xraylive -race -count=1 ./internal/scd/livetest/...
 
+      - name: Set up Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+
+      - name: Run dashboard visual regression
+        run: SCD_CHROME=${{ steps.chrome.outputs.chrome-path }} go test -tags visual -count=1 ./internal/scd/status/...
+
       - name: Build
         run: go build -o bin/scd ./cmd/scd
 

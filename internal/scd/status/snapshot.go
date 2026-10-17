@@ -130,7 +130,9 @@ type InstanceSnapshot struct {
 }
 
 // RemoteView is the collection state of one remote instance for the
-// dashboard. Snapshot is nil until the first successful collection.
+// dashboard. Snapshot is nil until the first successful collection; it is
+// the aggregator's stored snapshot, shared and read-only (it is replaced on
+// the next collection, never mutated), so it must not be modified.
 type RemoteView struct {
 	ID, APIURL                              string
 	LastAttemptAt, LastSuccessAt, LastError string
