@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/state"
 )
 
@@ -25,7 +26,9 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"formatBalancerStatus":   formatBalancerStatus,
 	"formatRemotePushStatus": formatRemotePushStatus,
 	"metricClass":            metricClass,
-	"metric":                 func(label, value string) metricView { return metricView{label, value} },
+	"metric":                 func(label, value string) metricView { return metricView{Label: label, Value: value} },
+	"selectionCard":          selectionCard,
+	"tunnelCards":            tunnelCards,
 	"orIdle":                 func(s string) string { return cmp.Or(s, state.BalancerIdle) },
 	"orDash":                 func(s string) string { return cmp.Or(s, "-") },
 }).ParseFS(web, "web/dashboard.html.tmpl"))
@@ -34,6 +37,10 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 // handler serves the dashboard on every non-API path, so the page cannot
 // load assets by relative URL.
 var dashboardCSS, dashboardJS = mustRead("web/dashboard.css"), mustRead("web/dashboard.js")
+
+// selectionCSS styles the balancer selection view (D22); it is inlined only
+// when a target has a selection, so pages without one stay as in TS (D3).
+var selectionCSS = mustRead("web/selection.css")
 
 func mustRead(name string) string {
 	b, err := web.ReadFile(name)
@@ -57,8 +64,8 @@ type instanceView struct {
 	Snapshot              *InstanceSnapshot
 }
 
-// metricView is one metric pill.
-type metricView struct{ Label, Value string }
+// metricView is one metric pill; Title, when set, becomes its tooltip.
+type metricView struct{ Label, Value, Title string }
 
 // RenderDashboard writes the HTML status dashboard of agg (03 §6.6): one
 // tab per instance (the local one, if stored, first and active), each with
@@ -66,7 +73,11 @@ type metricView struct{ Label, Value string }
 // the page has no external resources. The snapshots of agg are not
 // modified.
 func RenderDashboard(w io.Writer, agg AggregatedView) error {
-	data := dashboardData{CSS: template.CSS(dashboardCSS), JS: template.JS(dashboardJS)}
+	css := dashboardCSS
+	if hasSelection(agg) {
+		css += "\n" + selectionCSS
+	}
+	data := dashboardData{CSS: template.CSS(css), JS: template.JS(dashboardJS)}
 	if agg.Local.CapturedAt != "" {
 		local := agg.Local
 		data.Instances = append(data.Instances, instanceView{
@@ -167,6 +178,21 @@ func metricClass(label, value string) string {
 		default:
 			return " metric-balancer-na"
 		}
+	case "Observatory":
+		switch {
+		case strings.HasPrefix(value, balancer.ObservatoryAlive):
+			return " metric-observatory-alive"
+		case value == balancer.ObservatoryDead:
+			return " metric-observatory-dead"
+		case value == balancer.ObservatoryAwaiting:
+			return " metric-observatory-awaiting"
+		case value == balancer.ObservatoryNA, value == "unavailable":
+			return " metric-observatory-na"
+		default:
+			return ""
+		}
+	case "Error":
+		return " metric-state-degraded"
 	case "Remote Push":
 		switch {
 		case strings.Contains(value, "delivered up"):
@@ -181,4 +207,180 @@ func metricClass(label, value string) string {
 	default:
 		return ""
 	}
+}
+
+// hasSelection reports whether any target of agg has a balancer selection.
+func hasSelection(agg AggregatedView) bool {
+	snaps := []*InstanceSnapshot{&agg.Local}
+	for _, r := range agg.Remotes {
+		snaps = append(snaps, r.Snapshot)
+	}
+	for _, s := range snaps {
+		if s == nil {
+			continue
+		}
+		for _, sub := range s.Subscriptions {
+			for _, t := range sub.Targets {
+				if t.BalancerSelection != nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// selectionCardView is the "Xray selection" card of a target (10 §6.7).
+type selectionCardView struct {
+	// Class is healthy, degraded or idle.
+	Class       string
+	BalancerTag string
+	Metrics     []metricView
+}
+
+// selectionCard is the selection card of t, nil without a selection.
+func selectionCard(t GroupedStatusTarget) *selectionCardView {
+	v := t.BalancerSelection
+	if v == nil {
+		return nil
+	}
+	latency := "-"
+	if v.SelectedDelayMs != nil {
+		latency = strconv.FormatInt(*v.SelectedDelayMs, 10) + " ms"
+	}
+	obs, obsTitle := observatorySummary(v, t.Tunnels)
+	c := &selectionCardView{
+		Class:       selectionClass(v, t.Tunnels),
+		BalancerTag: v.BalancerTag,
+		Metrics: []metricView{
+			{Label: "Selected", Value: selectedText(v)},
+			{Label: "Latency", Value: latency},
+			{Label: "Since", Value: cmp.Or(v.SelectedSince, "-")},
+			{Label: "Observatory", Value: obs, Title: obsTitle},
+		},
+	}
+	if v.State == state.SelectionError {
+		c.Metrics = append(c.Metrics, metricView{Label: "Error", Value: v.LastError})
+	}
+	return c
+}
+
+// selectedText is the Selected metric: the tunnel ("<country> · <name>")
+// or the raw tag of an unmanaged outbound, "override → <tag>", "pool (<n>)"
+// with the strategy hint, or "none (fallback/default outbound)"; while the
+// check fails the last value is marked stale.
+func selectedText(v *BalancerSelectionView) string {
+	var s string
+	switch state.Mode(v.Mode) {
+	case state.ModeOverride:
+		s = "override → " + v.SelectedOutboundTag
+	case state.ModeSingle:
+		s = v.SelectedOutboundTag
+		if v.SelectedTunnelID != "" {
+			s = cmp.Or(v.SelectedCountryISO2, "-") + " · " + v.SelectedDisplayName
+		}
+	case state.ModePool:
+		s = "pool (" + strconv.Itoa(len(v.PrincipleTargets)) + ")"
+		if v.Strategy != "" {
+			s += " · " + v.Strategy
+		}
+	case state.ModeNone:
+		s = "none (fallback/default outbound)"
+	case state.ModeUnknown:
+		s = "unknown"
+	default:
+		return "-"
+	}
+	if v.State == state.SelectionError {
+		s += " (stale)"
+	}
+	return s
+}
+
+// observatorySummary is the Observatory metric of the card: "<alive>/<n>
+// alive" over the tunnels the observatory can see, "unavailable" with the
+// error as tooltip, "n/a" when no tunnel is observable and "-" before the
+// first check.
+func observatorySummary(v *BalancerSelectionView, tunnels []StatusTunnel) (value, title string) {
+	if v.ObservatoryError != "" {
+		return "unavailable", v.ObservatoryError
+	}
+	if v.State == state.SelectionIdle {
+		return "-", ""
+	}
+	alive, total := 0, 0
+	for _, tn := range tunnels {
+		switch tn.ObservatoryStatus {
+		case balancer.ObservatoryAlive:
+			alive++
+			total++
+		case balancer.ObservatoryDead, balancer.ObservatoryAwaiting:
+			total++
+		}
+	}
+	if total == 0 {
+		return balancer.ObservatoryNA, ""
+	}
+	return strconv.Itoa(alive) + "/" + strconv.Itoa(total) + " alive", ""
+}
+
+// selectionClass is the card state (10 §6.7, D22 p.5): degraded on a failed
+// check, without alive candidates, for an override outside the target's
+// tunnels and for a selected tunnel observed dead; idle before the first
+// check and for an unknown principle target; healthy otherwise.
+func selectionClass(v *BalancerSelectionView, tunnels []StatusTunnel) string {
+	mode := state.Mode(v.Mode)
+	switch {
+	case v.State == state.SelectionError || (v.State == state.SelectionOK && mode == state.ModeNone):
+		return state.TunnelDegraded
+	case v.State != state.SelectionOK || mode == state.ModeUnknown:
+		return state.TunnelIdle
+	case mode == state.ModeOverride && (v.SelectedManaged == nil || !*v.SelectedManaged):
+		return state.TunnelDegraded
+	}
+	for _, tn := range tunnels {
+		if tn.BalancerSelected != nil && *tn.BalancerSelected && tn.ObservatoryStatus == balancer.ObservatoryDead {
+			return state.TunnelDegraded
+		}
+	}
+	return state.TunnelHealthy
+}
+
+// tunnelCard is a tunnel of the dashboard with its balancer selection
+// decoration (only when the target has a polled selection).
+type tunnelCard struct {
+	StatusTunnel
+	Selected    bool
+	Badge       string
+	Observatory *metricView
+}
+
+// tunnelCards returns the tunnels of t in order with their selection badge
+// (Selected, or Pool for a candidate in pool mode) and Observatory metric.
+func tunnelCards(t GroupedStatusTarget) []tunnelCard {
+	cards := make([]tunnelCard, 0, len(t.Tunnels))
+	for _, tn := range t.Tunnels {
+		c := tunnelCard{StatusTunnel: tn}
+		if v := t.BalancerSelection; v != nil && tn.ObservatoryStatus != "" {
+			c.Selected = tn.BalancerSelected != nil && *tn.BalancerSelected
+			switch {
+			case c.Selected:
+				c.Badge = "Selected"
+			case state.Mode(v.Mode) == state.ModePool && tn.BalancerCandidate != nil && *tn.BalancerCandidate:
+				c.Badge = "Pool"
+			}
+			m := metricView{Label: "Observatory", Value: tn.ObservatoryStatus}
+			switch tn.ObservatoryStatus {
+			case balancer.ObservatoryAlive:
+				if tn.ObservatoryDelayMs != nil {
+					m.Value += " · " + strconv.FormatInt(*tn.ObservatoryDelayMs, 10) + " ms"
+				}
+			case balancer.ObservatoryDead:
+				m.Title = tn.ObservatoryLastError
+			}
+			c.Observatory = &m
+		}
+		cards = append(cards, c)
+	}
+	return cards
 }

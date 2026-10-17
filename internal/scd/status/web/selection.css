@@ -1,0 +1,20 @@
+.node-card.is-selected { border-color: rgba(22, 134, 77, .55); box-shadow: 0 0 0 2px rgba(22, 134, 77, .22), 0 10px 24px rgba(72, 55, 32, .06); }
+.node-badge {
+  display: inline-block;
+  margin: 0 6px 0 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(194, 122, 18, .16);
+  color: #8a5307;
+  font-size: 11px;
+  font-weight: 750;
+  vertical-align: 1px;
+}
+.is-selected .node-badge { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+.metric-observatory-alive { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+.metric-observatory-dead { background: rgba(197, 57, 49, .14); color: #8f241f; }
+.metric-observatory-awaiting { background: rgba(194, 122, 18, .16); color: #8a5307; }
+.metric-observatory-na { background: rgba(139, 133, 128, .14); color: #5f5a55; }
+.metric-observatory-alive .metric-label, .metric-observatory-dead .metric-label,
+.metric-observatory-awaiting .metric-label, .metric-observatory-na .metric-label { color: currentColor; opacity: .74; }
+.metric[title] { cursor: help; }

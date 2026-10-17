@@ -52,6 +52,16 @@ subscriptions:
         enabled: false
       balancerMonitor:
         enabled: false
+      # Какой outbound сейчас выбирает балансер Xray (карточка «Xray selection»
+      # на дашборде, D22): read-only опрос GetBalancerInfo + GetOutboundStatus.
+      # balancerTag = routing.balancers[].tag (04_routing.json), не ruleTag.
+      # Расписание с секундами (6 полей) = probeInterval observatory (15s).
+      # Требует "ObservatoryService" в api.services (01_api.json) и секцию
+      # observatory (05_observatory.json), иначе Xray не стартует.
+      balancerSelection:
+        enabled: true
+        balancerTag: x-balancer
+        schedule: "*/15 * * * * *"
 
 runtime:
   # Dockerfile запускает `daemon`, поэтому нужен режим daemon + расписание.

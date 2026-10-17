@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -74,6 +75,69 @@ type rsSubscription struct {
 
 type rsServiceState struct {
 	BalancerMonitor *rsBalancerMonitor `json:"balancerMonitor,omitempty"`
+	// BalancerSelection is set when target.balancerSelection is enabled
+	// (D22, 10 §6.6).
+	BalancerSelection *rsBalancerSelection `json:"balancerSelection,omitempty"`
+}
+
+// rsBalancerSelection is the complete balancer selection state: the
+// grouped view plus the state-only fields and every observatory status
+// (sorted by tag; omitted when the observatory is disabled or failed).
+type rsBalancerSelection struct {
+	BalancerSelectionView
+	PreviousSelectedTag  string          `json:"previousSelectedTag,omitempty"`
+	ConsecutiveFailures  int             `json:"consecutiveFailures"`
+	Observatory          []rsObservation `json:"observatory,omitzero"`
+	ObservatoryCheckedAt string          `json:"observatoryCheckedAt,omitempty"`
+}
+
+// rsObservation is one ObservatoryService status (10 §3.1); healthPing is
+// set by burstObservatory only.
+type rsObservation struct {
+	Tag        string        `json:"tag"`
+	Alive      bool          `json:"alive"`
+	DelayMs    *int64        `json:"delayMs,omitempty"`
+	LastError  string        `json:"lastError,omitempty"`
+	LastSeenAt string        `json:"lastSeenAt,omitempty"`
+	LastTryAt  string        `json:"lastTryAt,omitempty"`
+	HealthPing *rsHealthPing `json:"healthPing,omitempty"`
+}
+
+type rsHealthPing struct {
+	All         int64   `json:"all"`
+	Fail        int64   `json:"fail"`
+	AverageMs   float64 `json:"averageMs"`
+	DeviationMs float64 `json:"deviationMs"`
+	MinMs       float64 `json:"minMs"`
+	MaxMs       float64 `json:"maxMs"`
+}
+
+// runtimeSelection is the runtime-state form of s.
+func runtimeSelection(t config.SubscriptionTargetConfig, s *state.SelectionState, tunnels []*state.Tunnel) *rsBalancerSelection {
+	out := &rsBalancerSelection{
+		BalancerSelectionView: selectionView(t.BalancerSelection, t.ObservatorySubjectSelectorPrefix, s, tunnels),
+		PreviousSelectedTag:   s.PreviousSelectedTag,
+		ConsecutiveFailures:   s.ConsecutiveFailures,
+		ObservatoryCheckedAt:  formatOptTime(s.ObservatoryCheckedAt),
+	}
+	if s.Observatory != nil {
+		out.Observatory = make([]rsObservation, 0, len(s.Observatory))
+		for _, tag := range slices.Sorted(maps.Keys(s.Observatory)) {
+			o := s.Observatory[tag]
+			ro := rsObservation{
+				Tag: o.Tag, Alive: o.Alive, DelayMs: clone(o.DelayMs), LastError: o.LastError,
+				LastSeenAt: formatOptTime(o.LastSeenAt), LastTryAt: formatOptTime(o.LastTryAt),
+			}
+			if hp := o.HealthPing; hp != nil {
+				ro.HealthPing = &rsHealthPing{
+					All: hp.All, Fail: hp.Fail, AverageMs: durationMs(hp.Average), DeviationMs: durationMs(hp.Deviation),
+					MinMs: durationMs(hp.Min), MaxMs: durationMs(hp.Max),
+				}
+			}
+			out.Observatory = append(out.Observatory, ro)
+		}
+	}
+	return out
 }
 
 // rsBalancerMonitor is the complete balancer monitor state.
@@ -203,6 +267,9 @@ func BuildRuntimeState(ctx context.Context, d Deps, subscriptionID, targetAddres
 	if d.Memory != nil {
 		d.Memory.View(state.Key(subscriptionID, targetAddress), func(t *state.Target) {
 			snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&t.Balancer), t.Balancer.ConsecutiveFailures}
+			if sub.Target.BalancerSelection.Enabled {
+				snap.ServiceState.BalancerSelection = runtimeSelection(sub.Target, &t.BalancerSelection, t.Tunnels)
+			}
 		})
 	}
 	snap.Runtime.Outbounds = classifyOutbounds(outbounds, sub.Target, expected.Outbounds, opts, &snap.Diff.Outbounds)

@@ -132,6 +132,22 @@ Notes:
   `index.html` and the Go HTML in the same browser and compares those.
 - Informational: `capturedAt`/timestamps (frozen), order of ICU-sorted lists outside the asserted groups.
 
+#### Balancer selection extension (task 6.6, D22)
+
+`fixtures/selection-*.json` extend the contract with the Go-only balancer selection (10 §6.6); they have **no TS
+reference** (the feature does not exist in TS) — their Go golden dashboards are
+`testdata/golden/scd/status/selection-*.html` (`go test ./internal/scd/status -run TestDashboardSelectionGolden -update`).
+The Go tests that compare with TS (`TestJSONMatchesTSReference`, `TestDashboardTextMatchesTS`, the visual test) skip them.
+
+| Key | Meaning |
+|---|---|
+| `config.subscriptions[].balancerSelection` | `target.balancerSelection` (`enabled`, `balancerTag`, `schedule`, `observatory`, `strategy?`) |
+| `targets[].balancerSelection` | `state.SelectionState`: the keys of the JSON view where they overlap (`balancerTag`, `state` `ok\|error`, `mode`, `selectedOutboundTag` = selected tag, `overrideTarget`, `principleTargets`, `selectedSince`, `lastCheckedAt`, `lastSuccessAt`, `lastFailureAt`, `lastError`, `observatoryError`) plus `previousSelectedTag`, `consecutiveFailures`, `observatoryCheckedAt` and `observatory` (`[{tag, alive, delayMs?, lastError?, lastSeenAt?, lastTryAt?, healthPing?{all, fail, averageMs, deviationMs, minMs, maxMs}}]`, `null` = unavailable) |
+
+Fixtures: `selection-single`, `selection-override`, `selection-pool` (strategy `random`, one dead candidate),
+`selection-none`, `selection-error` (stale selection), `selection-observatory-unavailable`, `selection-repaired`
+(repaired `nl-1` with a stale prefixed observatory entry, rejoined `at-1` awaiting observation, stale `x-observe-gone`).
+
 #### runtime-state (`scd/status/runtime-state/`)
 
 `cases.json` holds the inputs (subscription line or remote input, target overrides on top of
