@@ -12,155 +12,109 @@ on:
       - 'v*.*.*'
 
 jobs:
+  # Runs on pull requests, master and release tags; publish needs it.
   verify:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          node-version: 24.14.0
-          cache: npm
-          cache-dependency-path: |
-            scd/package-lock.json
-            sfc/package-lock.json
-            gtl/package-lock.json
+          go-version-file: go.mod
+          cache: true
 
-      - name: Install dependencies
-        working-directory: ./scd
-        run: npm ci
+      - name: Verify modules
+        run: go mod verify
 
-      - name: Typecheck
-        working-directory: ./scd
-        run: npm run typecheck
+      - name: Check Xray version pin
+        run: bash scripts/check-xray-version.sh
+
+      - name: Check Go-only tree
+        run: bash scripts/check-no-node.sh
+
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags 'xraylive visual' ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+
+      - name: Vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
       - name: Run tests
-        working-directory: ./scd
-        run: npm test
+        run: go test -race -count=1 ./...
 
-      - name: Install sfc dependencies
-        working-directory: ./sfc
-        run: npm ci
+      - name: Download Xray
+        run: |
+          read -r xray_version _ < .xray-version
+          base="https://github.com/XTLS/Xray-core/releases/download/v${xray_version}"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/Xray-linux-64.zip"
+          curl -fsSLO "$base/Xray-linux-64.zip.dgst"
+          want=$(tr -d '\r' < Xray-linux-64.zip.dgst | sed -n 's/^SHA2-256= *//p')
+          got=$(sha256sum Xray-linux-64.zip | cut -d' ' -f1)
+          if [ -z "$want" ] || [ "$want" != "$got" ]; then
+            echo "Xray-linux-64.zip sha256 $got does not match .dgst SHA2-256 '$want'" >&2
+            exit 1
+          fi
+          unzip -q Xray-linux-64.zip -d xray
+          ./xray/xray version
 
-      - name: Typecheck sfc
-        working-directory: ./sfc
-        run: npm run typecheck
+      - name: Run live Xray tests
+        run: SCD_XRAY_BIN="$RUNNER_TEMP/xray/xray" go test -tags xraylive -race -count=1 ./internal/scd/livetest/...
 
-      - name: Run sfc tests
-        working-directory: ./sfc
-        run: npm test
+      - name: Set up Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
 
-      - name: Install gtl dependencies
-        working-directory: ./gtl
-        run: npm ci
+      - name: Run dashboard visual regression
+        run: SCD_CHROME=${{ steps.chrome.outputs.chrome-path }} go test -tags visual -count=1 ./internal/scd/status/...
 
-      - name: Typecheck gtl
-        working-directory: ./gtl
-        run: npm run typecheck
+      - name: Build
+        run: go build -o bin/scd ./cmd/scd
 
-      - name: Run gtl tests
-        working-directory: ./gtl
-        run: npm test
+      - name: Validate example configs
+        run: |
+          ./bin/scd validate-config --config docker/scd/config.example.yml
+          ./bin/scd sfc validate-config --config docker/sfc/config.example.yml
+          ./bin/scd gtl validate-config --config docker/gtl/config.example.yml
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+  smoke:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./scd
-          file: ./scd/Dockerfile
-          push: false
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Validate compose files
+        run: docker compose -f docker-compose.yml -f docker/compose.smoke.yml config -q
 
-      - name: Build sfc Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./sfc
-          file: ./sfc/Dockerfile
-          push: false
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build gtl Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./gtl
-          file: ./gtl/Dockerfile
-          push: false
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Compose smoke
+        run: bash scripts/compose-smoke.sh
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.14.0
-          cache: npm
-          cache-dependency-path: |
-            scd/package-lock.json
-            sfc/package-lock.json
-            gtl/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./scd
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: ./scd
-        run: npm run typecheck
-
-      - name: Run tests
-        working-directory: ./scd
-        run: npm test
-
-      - name: Install sfc dependencies
-        working-directory: ./sfc
-        run: npm ci
-
-      - name: Typecheck sfc
-        working-directory: ./sfc
-        run: npm run typecheck
-
-      - name: Run sfc tests
-        working-directory: ./sfc
-        run: npm test
-
-      - name: Install gtl dependencies
-        working-directory: ./gtl
-        run: npm ci
-
-      - name: Typecheck gtl
-        working-directory: ./gtl
-        run: npm run typecheck
-
-      - name: Run gtl tests
-        working-directory: ./gtl
-        run: npm test
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -182,64 +136,17 @@ jobs:
             type=semver,pattern={{version}}
           labels: |
             org.opencontainers.image.title=scd
-            org.opencontainers.image.description=Subscription Control Daemon
-
-      - name: Extract sfc Docker metadata
-        id: meta_sfc
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/a1ekseev/sfc
-          tags: |
-            type=raw,value=latest
-            type=semver,pattern={{version}}
-          labels: |
-            org.opencontainers.image.title=sfc
-            org.opencontainers.image.description=Subscription Filter Control
-
-      - name: Extract gtl Docker metadata
-        id: meta_gtl
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/a1ekseev/gtl
-          tags: |
-            type=raw,value=latest
-            type=semver,pattern={{version}}
-          labels: |
-            org.opencontainers.image.title=gtl
-            org.opencontainers.image.description=Gen Test Load
+            org.opencontainers.image.description=Subscription Control Daemon (scd, sfc, gtl)
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
-          context: ./scd
-          file: ./scd/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push sfc Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./sfc
-          file: ./sfc/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta_sfc.outputs.tags }}
-          labels: ${{ steps.meta_sfc.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push gtl Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./gtl
-          file: ./gtl/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta_gtl.outputs.tags }}
-          labels: ${{ steps.meta_gtl.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

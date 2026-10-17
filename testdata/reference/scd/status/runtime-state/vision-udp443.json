@@ -1,0 +1,183 @@
+{
+  "subscriptionId": "source-1",
+  "targetAddress": "127.0.0.1:8080",
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "subscription": {
+      "id": "source-1",
+      "input": "<input>",
+      "enabled": true,
+      "format": "plain",
+      "fetchTimeoutMs": 5000,
+      "target": {
+        "address": "127.0.0.1:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [
+          "direct",
+          "blocked"
+        ],
+        "fixedInbounds": [],
+        "fixedRouting": [],
+        "visionUdp443Override": true,
+        "inboundSocks": {
+          "listen": "127.0.0.1",
+          "portRange": {
+            "start": 20000,
+            "end": 20010
+          }
+        },
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancerMonitor": {
+          "enabled": false,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          },
+          "remotePing": {
+            "enabled": false,
+            "timeoutMs": 5000,
+            "viaSocks": false
+          }
+        },
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    },
+    "target": {
+      "address": "127.0.0.1:8080",
+      "timeoutMs": 5000,
+      "fixedOutbounds": [
+        "direct",
+        "blocked"
+      ],
+      "fixedInbounds": [],
+      "fixedRouting": [],
+      "visionUdp443Override": true,
+      "inboundSocks": {
+        "listen": "127.0.0.1",
+        "portRange": {
+          "start": 20000,
+          "end": 20010
+        }
+      },
+      "monitor": {
+        "enabled": false,
+        "maxParallel": 10,
+        "retry": {
+          "attempts": 1,
+          "delayMs": 250
+        }
+      },
+      "balancerMonitor": {
+        "enabled": false,
+        "retry": {
+          "attempts": 1,
+          "delayMs": 250
+        },
+        "remotePing": {
+          "enabled": false,
+          "timeoutMs": 5000,
+          "viaSocks": false
+        }
+      },
+      "observatorySubjectSelectorPrefix": "x-observe-"
+    },
+    "resources": {
+      "outbounds": {
+        "enabled": true
+      },
+      "inbounds": {
+        "enabled": true
+      },
+      "routing": {
+        "enabled": true
+      }
+    }
+  },
+  "serviceState": {},
+  "expected": {
+    "source": "<input>",
+    "outbounds": [
+      {
+        "baseTunnelId": "vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "displayName": "🇩🇪 Германия, Extra",
+        "countryIso2": "DE",
+        "initialTag": "x-observe-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "fallbackTag": "vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "flow": "xtls-rprx-vision-udp443"
+      }
+    ],
+    "inbounds": [
+      {
+        "baseTunnelId": "vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "displayName": "🇩🇪 Германия, Extra",
+        "countryIso2": "DE",
+        "tag": "in-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "endpoint": "127.0.0.1:20000"
+      }
+    ],
+    "routingRules": [
+      {
+        "baseTunnelId": "vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "displayName": "🇩🇪 Германия, Extra",
+        "countryIso2": "DE",
+        "ruleTag": "route-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "inboundTag": "in-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "outboundInitialTag": "x-observe-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "outboundFallbackTag": "vless-de-c2574453-tcp-reality-vision-6300bbbb"
+      }
+    ]
+  },
+  "runtime": {
+    "outbounds": [
+      {
+        "tag": "x-observe-vless-de-c2574453-tcp-reality-vision-6300bbbb",
+        "classification": "managed-initial",
+        "parsed": {
+          "protocol": "vless",
+          "address": "vpn.example.test",
+          "port": 443,
+          "flow": "xtls-rprx-vision-udp443",
+          "encryption": "none",
+          "network": "tcp",
+          "alpn": [],
+          "security": "reality",
+          "fingerprint": "chrome",
+          "sni": "io.example.test"
+        }
+      }
+    ],
+    "inbounds": [],
+    "routingRules": []
+  },
+  "diff": {
+    "outbounds": {
+      "matched": [
+        "x-observe-vless-de-c2574453-tcp-reality-vision-6300bbbb"
+      ],
+      "matchedFallback": [],
+      "missing": [],
+      "unexpected": []
+    },
+    "inbounds": {
+      "matched": [],
+      "missing": [
+        "in-vless-de-c2574453-tcp-reality-vision-6300bbbb"
+      ],
+      "unexpected": []
+    },
+    "routingRules": {
+      "matched": [],
+      "missing": [
+        "route-vless-de-c2574453-tcp-reality-vision-6300bbbb"
+      ],
+      "unexpected": []
+    }
+  }
+}

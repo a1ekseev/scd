@@ -1,0 +1,7 @@
+[
+  "load.maxSizeKb",
+  "load.path",
+  "logging.format",
+  "logging.level",
+  "server.listen"
+]

@@ -1,0 +1,10 @@
+{
+  "observatory": {
+    "subjectSelector": [
+      "x-observe-"
+    ],
+    "probeURL": "http://127.0.0.1:{{PROBE_PORT}}/generate_204",
+    "probeInterval": "2s",
+    "enableConcurrency": true
+  }
+}

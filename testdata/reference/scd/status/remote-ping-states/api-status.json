@@ -1,0 +1,30 @@
+{
+  "tunnels": [
+    {
+      "subscriptionId": "ping-failed",
+      "targetAddress": "127.0.0.1:8082",
+      "displayName": "Alpha",
+      "countryIso2": "AT",
+      "endpoint": "127.0.0.1:22000",
+      "state": "healthy",
+      "lastHttpStatus": 204,
+      "lastLatencyMs": 42,
+      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessHttpStatus": 204,
+      "lastSuccessLatencyMs": 42,
+      "balanced": true,
+      "balancerMonitorState": "degraded",
+      "balancerMonitorLastError": "SOCKS5 connect timed out",
+      "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingState": "failed",
+      "balancerMonitorRemotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingLastStatusCode": 500,
+      "balancerMonitorRemotePingLastError": "push failed",
+      "balancerMonitorRemotePingLastReportedStatus": "down",
+      "balancerMonitorRemotePingLastReportedMsg": "SOCKS5 connect timed out"
+    }
+  ]
+}

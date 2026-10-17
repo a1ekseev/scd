@@ -1,0 +1,11 @@
+# Форма боевого конфига gtl владельца (2026-10-17), секретов нет.
+server:
+  listen: 172.18.3.5:8080
+
+load:
+  path: /load
+  maxSizeKb: 10240
+
+logging:
+  level: info
+  format: json

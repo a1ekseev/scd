@@ -1,0 +1,19 @@
+[
+  "logging.format",
+  "logging.level",
+  "runtime.refreshSchedule",
+  "server.listen",
+  "subscriptions[].enabled",
+  "subscriptions[].fetchTimeoutMs",
+  "subscriptions[].format",
+  "subscriptions[].id",
+  "subscriptions[].input",
+  "subscriptions[].outputs[].enabled",
+  "subscriptions[].outputs[].id",
+  "subscriptions[].outputs[].labelIncludeRegex",
+  "subscriptions[].outputs[].name",
+  "subscriptions[].outputs[].profileTitle",
+  "subscriptions[].outputs[].profileUpdateInterval",
+  "subscriptions[].outputs[].userAgent[]",
+  "subscriptions[].pathRoute"
+]

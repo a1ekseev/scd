@@ -6,7 +6,8 @@
       "HandlerService",
       "LoggerService",
       "StatsService",
-      "RoutingService"
+      "RoutingService",
+      "ObservatoryService"
     ]
   }
 }
