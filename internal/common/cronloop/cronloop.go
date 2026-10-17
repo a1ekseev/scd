@@ -1,8 +1,9 @@
 // Package cronloop runs a task on a cron schedule: the first tick starts
 // immediately, following slots are computed from the previous slot (no
 // drift), a slot that arrives while the task is still running is skipped and
-// reported as an overrun, and cancelling the context stops the loop at once
-// (D7) after waiting for the active task.
+// reported as an overrun, slots already in the past (after a wall-clock jump
+// or suspend) are reported as one overrun and skipped, and cancelling the
+// context stops the loop at once (D7) after waiting for the active task.
 package cronloop
 
 import (
@@ -53,6 +54,18 @@ func Run(ctx context.Context, s cron.Schedule, task func(context.Context) error,
 		if scheduledAt.IsZero() {
 			<-ctx.Done()
 			return
+		}
+		if now := time.Now(); !scheduledAt.After(now) {
+			// Slots were missed (wall-clock jump, suspend, a late wake-up):
+			// report the first one and resume from now instead of firing
+			// every missed slot in a burst.
+			if h.OnOverrun != nil {
+				h.OnOverrun(scheduledAt)
+			}
+			if scheduledAt = s.Next(now); scheduledAt.IsZero() {
+				<-ctx.Done()
+				return
+			}
 		}
 		timer := time.NewTimer(time.Until(scheduledAt))
 		select {
