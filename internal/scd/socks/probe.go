@@ -47,7 +47,8 @@ type Response struct {
 
 var statusLineRe = regexp.MustCompile(`^HTTP/1\.[01]\s+(\d{3})`)
 
-// verbatim builds an error whose text is part of the TS-compatible contract
+// verbatim exists so TS-contract texts (capitalised, trailing period) bypass error-string lint.
+// It builds an error whose text is part of the TS-compatible contract
 // (capitalised, with a trailing period; it reaches lastError and Remote Push).
 func verbatim(format string, args ...any) error {
 	return fmt.Errorf(format, args...)
@@ -76,7 +77,7 @@ func (p phase) timeoutMessage(ms int64) string {
 }
 
 type target struct {
-	host    string // as sent in SOCKS CONNECT (IPv6 keeps brackets, like WHATWG hostname)
+	host    string // domain for ATYP 3 / Host header (IPv6 keeps brackets for the header only)
 	port    int
 	hostHdr string
 	path    string
@@ -84,6 +85,8 @@ type target struct {
 	sniHost string
 	isIPv4  bool
 	ipv4    [4]byte
+	isIPv6  bool
+	ipv6    [16]byte
 }
 
 func invalidURL(raw string) error {
@@ -119,9 +122,18 @@ func parseTarget(raw string) (target, error) {
 	if t.port != defPort {
 		t.hostHdr += ":" + strconv.Itoa(t.port)
 	}
-	if a, err := netip.ParseAddr(name); err == nil && a.Is4() {
-		t.isIPv4 = true
-		t.ipv4 = a.As4()
+	if a, err := netip.ParseAddr(name); err == nil {
+		switch {
+		case a.Is4():
+			t.isIPv4 = true
+			t.ipv4 = a.As4()
+		case a.Is6():
+			t.isIPv6 = true
+			t.ipv6 = a.As16()
+		}
+	}
+	if !t.isIPv4 && !t.isIPv6 && len(name) > 255 {
+		return target{}, invalidURL(raw)
 	}
 	path := u.EscapedPath()
 	if path == "" {
@@ -136,10 +148,14 @@ func parseTarget(raw string) (target, error) {
 
 func connectRequest(t target) []byte {
 	b := []byte{5, 1, 0}
-	if t.isIPv4 {
+	switch {
+	case t.isIPv4:
 		b = append(b, 1)
 		b = append(b, t.ipv4[:]...)
-	} else {
+	case t.isIPv6:
+		b = append(b, 4)
+		b = append(b, t.ipv6[:]...)
+	default:
 		b = append(b, 3, byte(len(t.host)))
 		b = append(b, t.host...)
 	}
