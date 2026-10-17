@@ -1,6 +1,10 @@
+# One image (ghcr.io/a1ekseev/scd, built from ./Dockerfile) runs all three
+# services with different `command:` (D10). Xray image version is pinned in
+# .xray-version together with go.mod (scripts/check-xray-version.sh, D4).
 services:
   xray:
-    image: ghcr.io/xtls/xray-core:26.3.27
+    image: ghcr.io/xtls/xray-core:26.10.10
+    pull_policy: missing
     container_name: xray-test
     restart: unless-stopped
     ports:
@@ -8,10 +12,12 @@ services:
     volumes:
       - ./docker/xray/config:/usr/local/etc/xray/config:ro
     command: run -confdir /usr/local/etc/xray/config
-  
+
   scd:
     build:
-      context: ./scd
+      context: .
+    image: ghcr.io/a1ekseev/scd:local
+    # default CMD: ["scd", "daemon", "--config", "/app/config/config.yml"]
     container_name: scd
     depends_on:
       - xray
@@ -21,9 +27,12 @@ services:
     volumes:
       - ./docker/scd/config.yml:/app/config/config.yml:ro
       - ./docker/fixtures:/app/fixtures:ro
+
   sfc:
     build:
-      context: ./sfc
+      context: .
+    image: ghcr.io/a1ekseev/scd:local
+    command: ["scd", "sfc", "serve", "--config", "/app/config/config.yml"]
     container_name: sfc
     restart: unless-stopped
     ports:
@@ -35,7 +44,9 @@ services:
 
   gtl:
     build:
-      context: ./gtl
+      context: .
+    image: ghcr.io/a1ekseev/scd:local
+    command: ["scd", "gtl", "serve", "--config", "/app/config/config.yml"]
     container_name: gtl
     restart: unless-stopped
     ports:
