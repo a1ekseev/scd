@@ -95,6 +95,10 @@ func TestParseOK(t *testing.T) {
 			address: "h", port: 443, id: uuid, label: "a\uFFFDb",
 		},
 		{
+			name: "password dropped, URL path ignored", raw: "vless://u:pw@h:443/p?type=ws#l",
+			address: "h", port: 443, id: "u", label: "l", params: []Param{p("type", "ws")},
+		},
+		{
 			name: "surrounding white space trimmed", raw: "  vless://" + uuid + "@h:443#ws  ",
 			address: "h", port: 443, id: uuid, label: "ws",
 		},
@@ -143,6 +147,9 @@ func TestParseSkip(t *testing.T) {
 		{"space in host", "vless://u@ho st:443", CodeInvalidURI, badURI, nil},
 		{"not a URL", "foo bar ://", CodeInvalidURI, badURI, nil},
 		{"bare % in label (O11)", "vless://" + uuid + "@h:443#100%", CodeInvalidURI, badLabel, nil},
+		{"extra colon in host:port", "vless://u@h:443:80", CodeInvalidURI, badURI, nil},
+		{"unbracketed IPv6", "vless://u@2001:db8::1:443", CodeInvalidURI, badURI, nil},
+		{"IPv6 zone id", "vless://u@[fe80::1%25eth0]:443", CodeInvalidURI, badURI, nil},
 		{"empty id", "vless://@h:443#l", CodeMissingRequiredField, noID, new("l")},
 		{"no userinfo", "vless://h:443", CodeMissingRequiredField, noID, new("")},
 		{"no port", "vless://u@h", CodeMissingRequiredField, noAddress, new("")},
@@ -272,17 +279,25 @@ func goOutcome(l subscription.Line) outcome {
 	return outcome{ok: true, label: &link.Label}
 }
 
-// parseStage reports whether a TS skip was produced while parsing the URI
-// itself; any other TS skip comes from normalisation, which runs after Parse.
-func parseStage(code, reason string) bool {
+// tsStage tells where a TS skip was produced: "parse" (the URI itself) or
+// "normalize" (after Parse). An unknown reason returns "".
+func tsStage(code, reason string) string {
 	switch code {
 	case CodeUnsupportedScheme, CodeInvalidURI:
-		return true
+		return "parse"
+	case "unsupported_param", CodeUnsupportedValue, CodeUnsupportedCombo:
+		return "normalize"
 	case CodeMissingRequiredField:
-		return reason == "The VLESS URI does not contain a valid address and port." ||
-			reason == "The VLESS URI does not contain a valid UUID."
+		switch reason {
+		case "The VLESS URI does not contain a valid address and port.",
+			"The VLESS URI does not contain a valid UUID.":
+			return "parse"
+		case `REALITY VLESS requires parameter "sid".`,
+			"WebSocket VLESS requires a path.":
+			return "normalize"
+		}
 	}
-	return false
+	return ""
 }
 
 func TestParseCorpusAgainstTS(t *testing.T) {
@@ -294,11 +309,12 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 		Line int    `json:"line"`
 		Raw  string `json:"raw"`
 		TS   struct {
-			OK         *bool   `json:"ok"`
-			ReasonCode string  `json:"reasonCode"`
-			Reason     string  `json:"reason"`
-			Label      *string `json:"label"`
-			Error      string  `json:"error"`
+			OK         *bool    `json:"ok"`
+			ReasonCode string   `json:"reasonCode"`
+			Reason     string   `json:"reason"`
+			Label      *string  `json:"label"`
+			Details    []string `json:"details"`
+			Error      string   `json:"error"`
 		} `json:"ts"`
 	}
 	if err := json.Unmarshal(data, &corpus); err != nil {
@@ -327,18 +343,35 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 			want = outcome{code: "TS error: " + c.TS.Error}
 		case *c.TS.OK:
 			want = outcome{ok: true, label: c.TS.Label}
-		case c.TS.ReasonCode == "unsupported_param":
-			// D28: unknown parameters are ignored, the link is kept.
-			want = outcome{ok: true, label: c.TS.Label}
-		case !parseStage(c.TS.ReasonCode, c.TS.Reason):
-			// Normalisation-stage skip: Parse must accept the URI.
-			want = outcome{ok: true, label: c.TS.Label}
 		default:
-			want = outcome{code: c.TS.ReasonCode, label: c.TS.Label}
+			switch tsStage(c.TS.ReasonCode, c.TS.Reason) {
+			case "parse":
+				want = outcome{code: c.TS.ReasonCode, label: c.TS.Label}
+			case "normalize":
+				// Normalisation-stage skip (unknown params included, D28):
+				// Parse must accept the URI.
+				want = outcome{ok: true, label: c.TS.Label}
+			default:
+				t.Errorf("line %d: unclassified TS skip %s %q", c.Line, c.TS.ReasonCode, c.TS.Reason)
+				continue
+			}
 		}
 		lines := subscription.ScanLines(c.Raw)
 		if len(lines) != 1 {
 			t.Fatalf("line %d: ScanLines gave %d lines", c.Line, len(lines))
+		}
+		if c.TS.ReasonCode == "unsupported_param" {
+			// D28: TS's unknown keys minus AllowedParams are Go's Ignored keys.
+			var wantIgnored []string
+			for _, k := range c.TS.Details {
+				if !slices.Contains(AllowedParams, k) {
+					wantIgnored = append(wantIgnored, k)
+				}
+			}
+			link, _ := Parse(lines[0])
+			if !slices.Equal(link.Ignored, wantIgnored) {
+				t.Errorf("line %d: Ignored = %q, want %q", c.Line, link.Ignored, wantIgnored)
+			}
 		}
 		got := goOutcome(lines[0])
 		d, allowed := allowedDiffs[c.Line]
