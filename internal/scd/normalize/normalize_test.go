@@ -154,6 +154,9 @@ func TestProfileMatrix(t *testing.T) {
 			if tc.flow != "" {
 				q = append(q, "flow="+tc.flow)
 			}
+			if strings.EqualFold(tc.security, "reality") {
+				q = append(q, "pbk="+testPbk) // the only required REALITY parameter (4.4)
+			}
 			n, w := mustEntry(t, strings.Join(q, "&"), Policy{})
 			if n.Profile != tc.profile || n.Network != tc.network || n.Flow != tc.wantFlow {
 				t.Fatalf("got profile %s network %s flow %q, want %s %s %q",
@@ -264,6 +267,16 @@ func TestMLKEMInvalidKeySkipped(t *testing.T) {
 		"padded base64":                      x25519Enc(t) + "=",
 		"good key then bad key":              x25519Enc(t) + "." + strings.TrimPrefix(notKey, prefix),
 		"padding segments only":              prefix + "100-111-1111.75-0-111",
+		// Xray slices the padding off the front (vless.go:357-371): padding
+		// after a key corrupts both.
+		"key then padding":              x25519Enc(t) + ".100-111-1111",
+		"key, padding, key":             x25519Enc(t) + ".100-111-1111." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"padding abc":                   prefix + "abc." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"padding not numbers":           prefix + "100-x-111." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"first padding below 35":        prefix + "100-34-111." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"first padding count below 100": prefix + "99-111-111." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"empty padding segment":         prefix + "100-111-111.." + strings.TrimPrefix(x25519Enc(t), prefix),
+		"padding over 65553":            prefix + "100-111-111.0-0-0.0-65553-1." + strings.TrimPrefix(x25519Enc(t), prefix),
 	}
 	for name, enc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -276,15 +289,17 @@ func TestMLKEMInvalidKeySkipped(t *testing.T) {
 	}
 }
 
-func TestMLKEMPaddingSegmentsNotValidated(t *testing.T) {
+func TestMLKEMValidPaddingAccepted(t *testing.T) {
 	key := strings.TrimPrefix(x25519Enc(t), "mlkem768x25519plus.native.0rtt.")
-	enc := "mlkem768x25519plus.native.0rtt.100-111-1111.75-0-111." + key
-	if err := validateMLKEM(enc); err != nil {
-		t.Fatal(err)
-	}
-	n, w := mustEntry(t, "type=tcp&encryption="+enc, Policy{})
-	if n.Encryption != enc || w != nil {
-		t.Fatalf("got %q %v", n.Encryption, w)
+	for _, padding := range []string{"100-111-1111.75-0-111", "100-35-35", "100-111-1111.75-0-111.50-0-3333.1-1-1"} {
+		enc := "mlkem768x25519plus.native.0rtt." + padding + "." + key
+		if err := validateMLKEM(enc); err != nil {
+			t.Fatalf("%s: %v", padding, err)
+		}
+		n, w := mustEntry(t, "type=tcp&encryption="+enc, Policy{})
+		if n.Encryption != enc || w != nil {
+			t.Fatalf("got %q %v", n.Encryption, w)
+		}
 	}
 	// Mode and rtt are left to conf (stage xray): not checked here.
 	for _, mode := range []string{"foo.0rtt", "native.2rtt"} {
@@ -529,9 +544,9 @@ func TestNormalizedFields(t *testing.T) {
 }
 
 // d26Owner lists the corpus rows that stage scd skips in later tasks
-// (applySecurity 4.4, applyTransport 4.5); until then they are entries.
+// (applyTransport 4.5); until then they are entries.
 var d26Owner = map[int]string{
-	55: "4.4 pbk", 63: "4.5 heartbeatPeriod", 90: "4.5 extra", 91: "4.5 extra", 92: "4.5 fm",
+	63: "4.5 heartbeatPeriod", 90: "4.5 extra", 91: "4.5 extra", 92: "4.5 fm",
 }
 
 func TestD26Corpus(t *testing.T) {

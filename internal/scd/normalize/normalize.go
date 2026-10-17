@@ -215,7 +215,7 @@ func Normalize(l vless.Link, p Policy) (Normalized, []Warning, *vless.Skip) {
 			return skip(vless.CodeUnsupportedValue, reasonAllowInsecure, "allowInsecure="+v)
 		}
 		n.AllowInsecure = &insecure
-		if insecure && !hasListValue(get("pcs")) && !hasListValue(get("vcn")) {
+		if insecure && splitList(get("pcs")) == nil && splitList(get("vcn")) == nil {
 			if !p.AllowInsecure {
 				return skip(vless.CodeUnsupportedValue, reasonInsecureDeny)
 			}
@@ -250,16 +250,6 @@ func Normalize(l vless.Link, p Policy) (Normalized, []Warning, *vless.Skip) {
 // #2, #4, #12, #13).
 func visionAllowed(sc scope, mlkem bool) bool {
 	return mlkem || (sc.network == "tcp" && (sc.security == "tls" || sc.security == "reality"))
-}
-
-// hasListValue reports whether a comma-separated list has a non-blank item.
-func hasListValue(v string) bool {
-	for item := range strings.SplitSeq(v, ",") {
-		if strings.TrimSpace(item) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // truncate cuts s to n runes, marking a cut with "…".
