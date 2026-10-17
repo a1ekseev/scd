@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (`go 1.27.0`, `toolchain go1.27.2`), cobra, `go.yaml.in/yaml/v3`, `github.com/robfig/cron/v3` (только парсер), `log/slog`, stdlib `regexp`/`net/url`/`encoding/base64`/`net/http`/`html/template`+`embed`, `github.com/xtls/xray-core` (pseudo-version 26.10.10) + `google.golang.org/grpc` (+ `grpc/test/bufconn`), `testing/synctest`, `github.com/chromedp/chromedp` (только тесты под build tag `visual`), golangci-lint v2.15.0, govulncheck.
 
-**Spec:** `docs/go-migration/07-decisions.md` (высший приоритет), затем `11-xray-vless-matrix.md` (матрица VLESS-outbound'ов v26.10.10 в scope D26 и маппинг параметров — источник истины для 0.5, 1.7, 4.3–4.7, 5.6), `00-overview.md`, `09-subscriptions-xray-26.10.10.md`, `10-balancer-selection.md`, `08-xray-26.10.10.md`, `02-scd-xray-api.md`, `01-scd-domain.md`, `03-scd-runtime.md`, `04-sfc.md`, `05-gtl.md`, `06-go-stack.md`. При противоречии действует документ выше по списку. Читать 01/03/04/05/06 с поправкой на D9: «повторить Node 1:1» означает «поведение зафиксировать тестом, реализовать идиоматично на Go».
+**Spec:** `docs/go-migration/07-decisions.md` (высший приоритет), затем `11-xray-vless-matrix.md` (матрица VLESS-outbound'ов v26.10.10 в scope D26 и маппинг параметров — источник истины для 0.5, 1.7, 4.3–4.7, 5.6; §4 — с поправкой D28/O16 в начале раздела), `12-real-subscriptions.md` (реальные подписки: формы ссылок, `cs`/`heartbeatPeriod`, обезличенные фикстуры `docker/fixtures/real-shapes/`, 14 правок плана §9 — приняты D33), `00-overview.md`, `09-subscriptions-xray-26.10.10.md`, `10-balancer-selection.md`, `08-xray-26.10.10.md`, `02-scd-xray-api.md`, `01-scd-domain.md`, `03-scd-runtime.md`, `04-sfc.md`, `05-gtl.md`, `06-go-stack.md`. При противоречии действует документ выше по списку. Читать 01/03/04/05/06 с поправкой на D9: «повторить Node 1:1» означает «поведение зафиксировать тестом, реализовать идиоматично на Go».
 
 ---
 
@@ -16,22 +16,22 @@
 
 | Этап | Файл | Задач | Зависит от |
 |---|---|---|---|
-| 0. Эталоны с TS (до удаления TS) + корпус матрицы D26 | [`stage-0-references.md`](stage-0-references.md) | 5 | — |
-| 1. Каркас и `internal/common` | [`stage-1-skeleton.md`](stage-1-skeleton.md) | 7 | 0 (1.4 читает cron-эталоны 0.2; 1.7 — `ts-parse.json` 0.2 и корпус D26 0.5) |
+| 0. Эталоны с TS (до удаления TS) + корпус матрицы D26 + корпус меток D29 | [`stage-0-references.md`](stage-0-references.md) | 6 | — |
+| 1. Каркас и `internal/common` | [`stage-1-skeleton.md`](stage-1-skeleton.md) | 7 | 0 (1.3 — корпус меток 0.6; 1.4 читает cron-эталоны 0.2; 1.7 — `ts-parse.json` 0.2 и корпус D26 0.5) |
 | 2. gtl | [`stage-2-gtl.md`](stage-2-gtl.md) | 3 | 1 |
-| 3. sfc | [`stage-3-sfc.md`](stage-3-sfc.md) | 4 | 1 |
-| 4. scd: домен (конфиг, разбор, нормализация, билдер, манифест, топология) | [`stage-4-scd-domain.md`](stage-4-scd-domain.md) | 8 | 1, 0.5 |
+| 3. sfc | [`stage-3-sfc.md`](stage-3-sfc.md) | 4 | 1, 0.3 (`real-shapes.json`), 0.6 |
+| 4. scd: домен (конфиг, разбор, нормализация, билдер, манифест, топология) | [`stage-4-scd-domain.md`](stage-4-scd-domain.md) | 8 | 1, 0.2 (`real-shapes-*`), 0.5, 0.6 |
 | 5. scd: Xray API (клиент, fake, apply, live-тесты) | [`stage-5-scd-xray-api.md`](stage-5-scd-xray-api.md) | 7 | 4 |
 | 6. scd: runtime (sync, мониторинг, status server, дашборд, balancer selection, daemon) | [`stage-6-scd-runtime.md`](stage-6-scd-runtime.md) | 7 | 5 |
 | 7. Переключение: Docker, compose, CI, README/AGENTS.md, удаление TS | [`stage-7-cutover.md`](stage-7-cutover.md) | 3 | 2, 3, 6 |
 
-Итого **44 задачи** (после D24–D27: +0.5 корпус матрицы D26, нормализация разбита на 4.3/4.4/4.5, live-тесты — на 5.6/5.7).
+Итого **45 задач** (после D24–D27: +0.5 корпус матрицы D26, нормализация разбита на 4.3/4.4/4.5, live-тесты — на 5.6/5.7; после D29: +0.6 корпус меток; D33 и 14 правок 12 §9 новых задач не добавили — они вошли в 0.2, 0.3, 0.5, 0.6, 1.3, 1.6, 1.7, 3.1, 3.2, 4.1–4.7, 5.2, 5.6, 6.1, 6.4, 7.3).
 
 ### Граф зависимостей
 
 ```
-Stage 0 (0.1 → 0.2, 0.3, 0.4, 0.5)
-   │
+Stage 0 (0.1 → 0.2, 0.3, 0.4, 0.5, 0.6)
+   │     (0.6 нужен до 1.3/3.1/4.1; 0.2/0.3 real-shapes — до 3.2/4.7)
 Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
    │
    ├──► Stage 2 gtl: 2.1 → 2.2 → 2.3 ─────────────────────────────┐
@@ -47,7 +47,7 @@ Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
 
 **Критический путь:** 0.1 → 0.4 (эталоны дашборда нужны 6.5) … 1.1 → 1.7 → 4.1 → 4.8 → 5.1 → 5.7 → 6.1 → 6.7 → 7.1 → 7.3 (34 задачи последовательно; 0.2 и 0.5 должны быть готовы до 1.7).
 
-**Независимые ветки.** Этапы 2 (gtl) и 3 (sfc) не зависят от этапов 4–6 и друг от друга. SDD запрещает параллельных implementer'ов в одном worktree, поэтому по умолчанию они идут последовательно (рекомендуемый порядок: 2 → 3 → 4 …, чтобы каркас обкатался на простом gtl). Параллельно их можно вести только в отдельных git worktree (`superpowers:using-git-worktrees`) с последующим rebase на `move-to-go`. Задачи 0.2, 0.3, 0.4, 0.5 независимы друг от друга (после 0.1); 0.5 не требует Node — только бинарь Xray 26.10.10.
+**Независимые ветки.** Этапы 2 (gtl) и 3 (sfc) не зависят от этапов 4–6 и друг от друга. SDD запрещает параллельных implementer'ов в одном worktree, поэтому по умолчанию они идут последовательно (рекомендуемый порядок: 2 → 3 → 4 …, чтобы каркас обкатался на простом gtl). Параллельно их можно вести только в отдельных git worktree (`superpowers:using-git-worktrees`) с последующим rebase на `move-to-go`. Задачи 0.2, 0.3, 0.4, 0.5, 0.6 независимы друг от друга (после 0.1); 0.5 не требует Node — только бинарь Xray 26.10.10.
 
 ---
 
@@ -64,8 +64,9 @@ Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
 - Поведение — по-Go (D9): Go-тексты ошибок (кроме текстов Xray API-слоя, D2), stdlib base64, `net/url`, `slog`, `regexp` (RE2, D8), `slices.Sort`/`strings.Compare` (D23). Имена лог-событий (`event`) и поля сохраняются (03 §8.1, 04 §7.1, 05 §6).
 - Xray API (D2): тот же набор мутирующих RPC + read-only `GetBalancerInfo`/`GetOutboundStatus` (D22); порядок apply outbound → inbound → routing; fixed-ресурсы сохраняются; rollback только outbound; хэши сохраняются только при успехе всех kinds; repair/rejoin; per-target lock; тексты ошибок API-слоя из 02 §2.7.
 - REALITY: `SpiderX`/`SpiderY` (10 элементов) заполнены всегда (D13, 09 §1.4).
-- VLESS-ссылки (D26): scope — транспорты tcp/raw, ws, xhttp; security tls, reality; шифрование none и `mlkem768x25519plus.*` (в т.ч. при `security=none`). Внутри scope принимается всё, что принимает Xray v26.10.10; skip — только отказ `conf.Build`/живого Xray или транспорт вне scope; неизвестные параметры **игнорируются** (D28, warning `param_ignored`). Матрица и маппинг параметров — `11-xray-vless-matrix.md`; при расхождении с 09 действует 11. Тексты причин skip — дословно из задач 1.7/4.3–4.5/4.7 (ключ ML-KEM — «Invalid VLESS encryption key.», D25).
+- VLESS-ссылки (D26): scope — транспорты tcp/raw, ws, xhttp; security tls, reality; шифрование none и `mlkem768x25519plus.*` (в т.ч. при `security=none`). Внутри scope принимается всё, что принимает Xray v26.10.10; skip — только отказ `conf.Build`/живого Xray или транспорт вне scope; неизвестные параметры **игнорируются** (D28: ссылка принимается, warning `param_ignored`, лог уровня `debug`); параметры, **неприменимые** к выбранным transport/security (O16, напр. `path=/` у tcp без `headerType`), отбрасываются **молча**, без warning (это поправка к вводному абзацу 11 §4). D33: в маппинг добавлены `cs` → `tlsSettings.cipherSuites` и ws `heartbeatPeriod` → `wsSettings.heartbeatPeriod`; `paramcheck.Covered` — 22 параметра. Реальные формы — обезличенные фикстуры `docker/fixtures/real-shapes/{remnawave.txt,provider2.txt,provider2.b64}`; реальные хосты/домены/UUID/ключи/пути подписок **никогда** не пишутся в репозиторий (только эти фикстуры). Матрица и маппинг параметров — `11-xray-vless-matrix.md`; при расхождении с 09 действует 11. Тексты причин skip — дословно из задач 1.7/4.3–4.5/4.7 (ключ ML-KEM — «Invalid VLESS encryption key.», D25).
 - Cron (D24): классический Linux crontab, 5 полей или 6 с ведущими секундами, макросы `@yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly`; один парсер `internal/common/cron` для валидации и планировщика.
+- Секреты подписок (D33): `subscriptions[].fetchHeaders` (scd и sfc) — значения секрет (`inputsrc.Headers`: в JSON/логах `<redacted>`, `print-config` печатает `<redacted>`, runtime-state — `<redacted>` при `includeSecrets: false`); в runtime-state при `includeSecrets: false` скрываются также `path` outbound'ов и xhttp `host` (как URL подписок). Смысл меток scd не интерпретирует сверх страны/города (D33).
 - Логи (D27 O10): все сервисы — `log/slog` в **stderr**, `logging.format: json|pretty`; `--version` только у корневой `scd`. User-Agent загрузки подписок (O9) — `subscriptions[].fetchUserAgent`, по умолчанию `scd/<version>` (`internal/common/buildinfo`).
 - JSON API status-сервера (`/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state`) — контракт: имена и схема полей сохраняются; новые поля только аддитивно, `version` = 1 (D3, D22, D23).
 - Дашборд визуально идентичен TS-версии (D3), проверка — visual regression (задача 6.5).
@@ -150,11 +151,11 @@ EOF
 
 | Этап | Готово, когда |
 |---|---|
-| 0 | `testdata/reference/` содержит все артефакты из stage-0 (индекс `testdata/reference/README.md`), TS-тесты всех трёх сервисов зелёные на момент снятия, скрипты в `tools/golden/` воспроизводят эталоны одной командой; корпус D26 (`d26-links.txt` + `d26-expect.json`) покрывает каждую строку матрицы 11 §3 и каждый параметр 11 §4 |
+| 0 | `testdata/reference/` содержит все артефакты из stage-0 (индекс `testdata/reference/README.md`), TS-тесты всех трёх сервисов зелёные на момент снятия, скрипты в `tools/golden/` воспроизводят эталоны одной командой; корпус D26 (`d26-links.txt` + `d26-expect.json`) покрывает каждую строку матрицы 11 §3, каждый параметр 11 §4 + `cs`/`heartbeatPeriod` (D33) и строки `RS1`/`RS2` из фикстур real-shapes; эталоны real-shapes TS (0.2, 0.3) и корпус меток с 54 реальными метками (0.6) сняты |
 | 1 | `bin/scd --help`, `bin/scd sfc --help`, `bin/scd gtl --help` работают; все `internal/common/*` покрыты тестами; CI-джоба `go` (параллельно Node-джобам) зелёная: vet, golangci-lint, govulncheck, `go test -race` |
 | 2 | `bin/scd gtl validate-config --config docker/gtl/config.example.yml` ок; golden SHA-256 из 05 §4.5 совпадают; тесты 05 §10 перенесены |
 | 3 | `bin/scd sfc validate-config/print-config/refresh --config docker/sfc/config.example.yml` ок; выход refresh совпадает с эталоном 0.3; тесты 04 §11 перенесены |
-| 4 | `bin/scd validate-config` и `bin/scd generate` работают на `docker/` фикстурах и корпусе D26; тесты 01 §17 и 09 §7.11 перенесены; каждый параметр `paramcheck.Covered` доходит до proto (unit-оракул `conf.Build`); результат каждой строки корпуса D26 = `d26-expect.json` |
+| 4 | `bin/scd validate-config` и `bin/scd generate` работают на `docker/` фикстурах и корпусе D26; тесты 01 §17 и 09 §7.11 перенесены; каждый параметр `paramcheck.Covered` (22) доходит до proto (unit-оракул `conf.Build`); результат каждой строки корпуса D26 = `d26-expect.json`; 54/54 строки real-shapes принимаются без warnings |
 | 5 | apply против fake Xray покрывает 02 §2, rollback/fixed/порядок RPC; live-тесты `-tags xraylive` (5.6 — каждый параметр/каждая строка матрицы D26 дошли до Xray через API; 5.7 — REALITY, apply, паритет, balancer) проходят против бинаря Xray 26.10.10 (локально — релизный бинарь, см. «Локальный образ Xray»; в CI — шаг, добавленный в 5.6) |
 | 6 | `bin/scd sync`/`daemon` работают против fake и live Xray; JSON API семантически равен эталонам 0.4; visual regression дашборда проходит (`-tags visual`); тесты 03 §10 и 10 §6.9 перенесены |
 | 7 | В репозитории нет TS/Node (`git ls-files | grep -vE '^internal/scd/status/web/' | grep -E '\.(ts|mjs|js)$|package(-lock)?\.json|tsconfig'` пусто; браузерный `dashboard.js` дашборда — не Node-код и исключён явно), CI только Go, один образ (amd64+arm64), compose на одном образе, compose-smoke зелёный локально и в CI, AGENTS.md/README.md описывают Go-раскладку |
@@ -171,7 +172,7 @@ EOF
 
 ## Открытые вопросы / допущения плана
 
-Статус после ответов владельца D24–D27 (2026-10-17). «Решено» — ответ в 07; «по умолчанию (D27)» — владелец принял вариант плана; «нужен ответ» — новое после экспериментов матрицы (11), до ответа контроллер берёт вариант по умолчанию и ledger'ит `Ruling:`.
+Статус после ответов владельца D24–D33 (2026-10-17). «Решено» — ответ в 07; «по умолчанию (D27)» — владелец принял вариант плана; «нужен ответ» — новое после экспериментов матрицы (11), до ответа контроллер берёт вариант по умолчанию и ledger'ит `Ruling:`.
 
 | # | Вопрос | Где встаёт | Решение / вариант по умолчанию | Статус |
 |---|---|---|---|---|
@@ -187,13 +188,14 @@ EOF
 | O10 | Логи и `--version` | 1.1, 1.5, 2.3 | stderr, `logging.format: json|pretty` у всех; `--version` только у `scd` | решено D27 |
 | O11 | Кривой percent-encoding в label (`#100%`) | 1.7 | skip строки `invalid_uri` «The line label is not valid percent-encoding.» | по умолчанию (D27) |
 | O12 | Двойной refresh sfc при старте | 3.4 | Начальный refresh, затем тики по расписанию | по умолчанию (D27) |
-| O13 | Нестандартные параметры генераторов: `support-x25519mlkem768=true` (3x-ui пишет в **каждую** REALITY-VLESS-ссылку, `x3ui:service.go:1243`) и `x_padding_bytes` (дубль `extra.xPaddingBytes`). По букве D26 «нет ни в стандарте, ни в Xray → skip» это выбросило бы все свежие REALITY-ссылки 3x-ui | 1.7, 4.3 | Принимать и молча игнорировать (в белом списке, в Xray не передаются) | **нужен ответ** |
-| O14 | Cron `?` (robfig принимает, в классическом crontab нет) | 1.4 | Отвергать: `"?" is not supported; use "*"` (D24 «классический Linux») | **нужен ответ** (низкий риск) |
+| O13 | Нестандартные параметры генераторов: `support-x25519mlkem768=true` (3x-ui пишет в **каждую** REALITY-VLESS-ссылку, `x3ui:service.go:1243`) и `x_padding_bytes` (дубль `extra.xPaddingBytes`). По букве D26 «нет ни в стандарте, ни в Xray → skip» это выбросило бы все свежие REALITY-ссылки 3x-ui | 1.7, 4.3 | Принимать и молча игнорировать (в белом списке, в Xray не передаются) | решено D28 |
+| O14 | Cron `?` (robfig принимает, в классическом crontab нет) | 1.4 | `robfig/cron/v3` как есть: `?` принимается (снят D28) | решено D28 |
 | O15 | Требования TS, которые Xray не требует: ws без `path` (TS: «WebSocket VLESS requires a path.»), REALITY без `sni`/`fp`/`sid` (TS: `REALITY VLESS requires parameter …`) | 4.4, 4.5 | По D26 принимать (Xray принимает, 11 §4); обязателен только `pbk` | вывод из D26 |
-| O16 | Параметры, не относящиеся к выбранным transport/security (`alpn`/`ech`/`pcs`/`vcn` при reality, `pbk`/`sid`/`spx`/`pqv` при tls, `host`/`path` у tcp без `headerType=http`, grpc/kcp-параметры) | 4.3 | Молча игнорировать (как Xray и TS для `path` у tcp); остаются в `normalized.query` | вывод из D26 |
-| O17 | `ech` не проверяется ни conf, ни API (`!!!notbase64` принимается, соединение заведомо падает на dial) | 4.4 | Передавать как есть (D26 «skip только то, что Xray отвергает») | вывод из D26 |
+| O16 | Параметры, не относящиеся к выбранным transport/security (`alpn`/`ech`/`pcs`/`vcn` при reality, `pbk`/`sid`/`spx`/`pqv` при tls, `host`/`path` у tcp без `headerType=http`, grpc/kcp-параметры) | 4.3 | Молча игнорировать (как Xray и TS для `path` у tcp), **без** warning; остаются в `normalized.query`. Вводный абзац 11 §4 («warning `param_ignored`») этому противоречил — исправлен поправкой в начале 11 §4; `param_ignored` (`debug`) — только для неизвестных параметров (1.7, 4.3 п.11). На реальной подписке B это 50 лишних warnings за `path=/` на каждый sync (12 §7 п.4) | решено D28 |
+| O17 | `ech` не проверяется ни conf, ни API (`!!!notbase64` принимается, соединение заведомо падает на dial) | 4.4 | Передавать как есть (D26 «skip только то, что Xray отвергает») | решено D28 |
+| O18 | Вопросы 12 §9 п.14: `-X` в метках, редактирование xhttp `path`, нужен ли `fetchHeaders` | 4.1, 5.2, 1.6 | Метки не интерпретируются (фильтры — регулярками владельца); `path`/xhttp `host` скрываются при `includeSecrets: false`; `fetchHeaders` добавляется | решено D33 |
 
-## Трассировка решений D1–D27
+## Трассировка решений D1–D33
 
 | D | Суть | Задачи |
 |---|---|---|
@@ -224,6 +226,12 @@ EOF
 | D25 | «Invalid VLESS encryption key.» | 0.5 (негативная строка), 4.3, 5.6 |
 | D26 | Максимальная совместимость в scope tcp/raw, ws, xhttp × tls, reality × none/ML-KEM; skip только отказ Xray, транспорт вне scope (неизвестные параметры игнорируются, D28); live-тест на каждый параметр | `11-xray-vless-matrix.md`; 0.5, 1.7, 3.2 (sfc), 4.3, 4.4, 4.5, 4.6, 4.7, 5.2, 5.6, 7.3 |
 | D27 | O7 общий белый список scd/sfc; O9 `fetchUserAgent` (default `scd/<version>`); O10 stderr + `json|pretty`, `--version` только у `scd`; прочие O — по умолчанию | 1.1 (`buildinfo`), 1.5, 1.6, 1.7, 2.3, 3.1, 3.2, 4.1, 4.7, 7.3 |
+| D28 | Неизвестные параметры → `param_ignored` (`debug`), неприменимые — молча (O16); cron — `robfig/cron/v3` как есть; O15/O17 приняты | 0.2 (`cron-rejected.json`), 0.5, 1.4, 1.7 (`Link.Ignored`), 3.1, 3.2, 4.1, 4.3 (п.9, п.11), 6.1 (уровни логов), 7.3; поправка 11 §4 |
+| D29 | Фильтры меток include/exclude-списками (RE2, без lookahead) | 0.6, 1.3 (`labelfilter`), 3.1, 4.1, 4.7 |
+| D30 | Боевые конфиги `config.real-shape.yml` — эталон формы | 3.1, 4.1, 6.3, 7.1 |
+| D31 | Обратная совместимость конфигов не требуется | 2.x, 3.1, 4.1, 7.3 |
+| D32 | `docs/CONFIG-MIGRATION.md` дописывается в коммите каждой задачи, меняющей схему/поведение | 1.1 (скелет), 3.1, 3.2, 4.1, 5.2, 6.6, 7.1, 7.3 (`TestConfigMigrationDocCoversKeys`) |
+| D33 | Итоги реальных подписок: теги без изменений; xhttp `path` (и прочие path, xhttp `host`) скрываются при `includeSecrets: false`; `fetchHeaders` в scd/sfc (значения — секрет); `cs`, ws `heartbeatPeriod`; метки не интерпретируются; 14 правок 12 §9 | `fetchHeaders`: 1.3 (`StringMap`), 1.6 (`inputsrc.Headers`), 3.1, 3.2, 4.1, 4.7, 6.1, 6.4, 7.3; редактирование: 5.2, 6.4; `cs`/`heartbeatPeriod`: 0.5, 1.7, 4.4, 4.5, 4.6 (`Covered` 22), 5.6; real-shapes: 0.2, 0.3, 0.5, 0.6, 1.7, 3.2, 4.2–4.7, 5.6 (таблица «Поправки D33» ниже) |
 
 ## Трассировка инвентарей тестов
 
@@ -268,6 +276,7 @@ EOF
 | | 11–20 + доп. (HTTP, payload) | 2.2 |
 | 09 §7.11 | фикстуры, ссылки 3x-ui/v2rayN, neg[0..12], SpiderY | 0.2, 0.5, 4.3–4.7, 5.6 (SpiderY live — 5.7) |
 | 11 §3–§4 | каждая ✓/✗-строка матрицы, каждый параметр (`paramcheck.Covered`), ML-KEM-ключ «conf ✓ / live ✗» | 0.5 (корпус), 4.3–4.5 (normalize), 4.6 (proto-оракул), 4.7 (`TestBuildD26Corpus`), 5.6 (live) |
+| 12 §7, §9 | реальные формы (54 строки), п.1–14 | см. «Поправки D33» ниже |
 | 10 §6.9 | 1 (декодирование, ошибки) | 5.5 |
 | | 2–4 (ResolveSelection, сопоставление тегов, тик) | 6.6 |
 | | 5–6 (JSON, HTML) | 6.6 |
@@ -283,7 +292,9 @@ EOF
 | `OverrideBalancerTarget`, `TestRoute` | D22 п.4, 10 §6.8 |
 | Транспорты grpc, httpupgrade, kcp (и прочие вне tcp/raw, ws, xhttp) | D26: вне scope → `unsupported_combo`; Xray v26.10.10 их поддерживает (11 §1) — задел на будущее |
 | Lua `routing.script`, частные CA, SOCKS UDP снаружи Docker — код | D23: только README |
-| Cron `L`/`W`/`#`/`H`/`?`, `@every`, `@minutely|@weekdays|@weekends`, dow `7`, пустое расписание sfc | D24 (ошибка `validate-config`) |
+| Cron `L`/`W`/`#`/`H`, `@minutely|@weekdays|@weekends`, dow `7`, пустое расписание sfc (`?`, `@every`, `CRON_TZ=` — принимаются, их принимает robfig) | D24, D28 (ошибка `validate-config`) |
+| Интерпретация смысла меток (суффиксы вроде `-X`, «Extra» и т.п.) сверх извлечения страны/города; проверки нейминга | D33: фильтры — регулярками в конфиге владельца |
+| Тег без хоста / смена схемы тега | D33: схема `vless-<cc>-<city>-<profile>-<sha8(raw)>` без изменений |
 | Байтовое совпадение HTML и JSON-форматирования (отступы, порядок ключей remote/local) | D3, D23 |
 | Публикация образов `sfc`/`gtl`, `blanc`, multicall | D10 |
 | Persist хэшей/state между рестартами | не было в TS (03 §RS), D2 |
@@ -300,6 +311,8 @@ EOF
 5. **Враждебные строки в remote snapshot / label** (`<script>`, кавычки, очень длинный label). Ожидание: дашборд экранирует (html/template), JSON passthrough без изменений, ничего не падает (panic → 500, D23). Тест — 6.5 (`TestDashboardEscapesHostileStrings`), 6.4 (`TestRemoteSnapshotPassthroughKeepsUnknownFields`).
 6. **Ссылка, которую `infra/conf` принимает, а живой Xray отвергает на `AddOutbound`** (добавлено ревью: ML-KEM-ключ правильной длины, но не валидный ключ — `conf.Build()` OK, `AddOutbound` → `proxy/vless/outbound: failed to use encryption > mlkem: invalid polynomial encoding`, проверено на 26.10.10). Ожидание: строка пропускается на этапе нормализации (`unsupported_value` «Invalid VLESS encryption key.», D25), а не валит outbound-apply всего target'а с rollback. Тест — 4.3 (`TestMLKEMInvalidKeySkipped`), 5.6 (`TestLiveEveryParamReachesXray` — все принятые entries добавляются без ошибок; `TestLiveRejectsInvalidMLKEMKeyLikeNormalize`).
 7. **Свежая REALITY-ссылка 3x-ui** (`spx`, `pqv`, `pcs`, `support-x25519mlkem768=true`, vision) и xhttp-ссылка 3x-ui (`extra` + `x_padding_bytes`). Ожидание: entry (`tcp-reality-vision` / `xhttp-*`), все стандартные параметры дошли до Xray, нестандартные проигнорированы (O13). Тест — 1.7 (`TestAllowedParamsAccepted`), 4.7 (`TestBuild3xuiRealityLink`), 3.2 (`TestRefreshUsesSharedParamWhitelist`), 5.6 (строки корпуса D26).
+8. **Секреты подписки утекают в вывод** (D33): значение `fetchHeaders` или xhttp `path` в логах (`debug`), `print-config`, `validate-config`, тексте ошибки загрузки, runtime-state без `includeSecrets`. Ожидание: везде `<redacted>`/отсутствует. Тесты — 1.6 (`TestHeadersRedacted`, `TestLoadErrorDoesNotLeakHeaderValues`), 3.1/4.1 (`TestFetchHeaders`, `TestPrintConfigRedactsFetchHeaders`), 5.2 (`TestDescribeOutboundRedactsXHTTPPath`), 6.1 (`TestSyncLogsDoNotLeakFetchHeaders`), 6.4 (`TestRuntimeStateRedactsFetchHeaders`, `TestRuntimeStateRedactsXHTTPPath`).
+9. **Реальная подписка с «шумными» неприменимыми параметрами** (провайдер B: `path=/` у tcp+tls в каждой строке; Remnawave: `mode=stream-up`, `extra` с xmux-строками, ML-KEM `native.0rtt` поверх tls). Ожидание: 54/54 entries, ни одного warning, теги B побайтно = TS. Тесты — 1.7 `TestParseRealShapes`, 4.3 `TestIrrelevantParamsIgnored`, 4.5 `TestNormalizeRealShapes`, 4.7 `TestBuildRealShape*`, 5.6 (live).
 
 
 ## Поправки D29/D30 (2026-10-17)
@@ -313,3 +326,23 @@ EOF
 - **Правило для всех задач:** если задача меняет ключи конфига, значения по умолчанию или видимое через конфиг поведение (2.x gtl, 3.1 sfc, 4.1/4.3/4.7 scd, 1.4 cron, 1.5 logging, 6.6 balancerSelection, 7.1 запуск), она в том же коммите дописывает пункт в `docs/CONFIG-MIGRATION.md` (было → стало, причина, пример). Ревью задачи проверяет это.
 - 3.1 и 4.1 (и 2.x для gtl) создают `docker/<svc>/config.real-shape.go.yml` и раздел «разобранный пример» с пошаговым diff от `config.real-shape.yml`.
 - 7.3: финальная вычитка, тест `TestConfigMigrationDocCoversKeys` (ключи Go-схем vs TS-схем из `testdata/reference` ⇒ все отличия упомянуты), проверка `validate-config` на всех Go-формах; ссылка на документ из README.
+
+## Поправки D33: реальные подписки (`12-real-subscriptions.md` §9, приняты владельцем)
+| 12 §9 | Что | Задача |
+|---|---|---|
+| п.1 | корпус D26: `RS1` (remnawave), `RS2` (provider2), проверка `grep -c` фикстур 4/50 | 0.5 |
+| п.2 | эталоны TS `real-shapes-provider2.{manifest,log}.json`, `real-shapes-remnawave.error.txt` | 0.2 |
+| п.3 | эталон TS-sfc `testdata/reference/sfc/real-shapes.json` (B 50/0/0, A 0/0/0) | 0.3 |
+| п.4 | корпус меток: 54 реальные + граничные, `Extra\nWhiteList` → `allowedDiffs` | 0.6, 4.1 (`TestLabelFilterRealShapeEquivalence`) |
+| п.5 | `TestParseRealShapes` | 1.7 |
+| п.6 | `TestBuildTagRealShapes` | 4.2 |
+| п.7 | `TestNormalizeRealShapes`, `TestMLKEMNative0RTTRealShapeKey` | 4.5, 4.3 |
+| п.8 | `TestToProtoRealShapes`; `TestBuildRealShapeProvider2MatchesTS`, `TestBuildRealShapeRemnawave` | 4.6; 4.7 |
+| п.9 | xhttp `path`/`host` → `<redacted>` при `includeSecrets=false`, `TestDescribeOutboundRedactsXHTTPPath` | 5.2 (+ 6.4) |
+| п.10 | поправка вводного абзаца 11 §4 (неприменимые — молча, `param_ignored` — только неизвестные) | 11 §4 (заметка), README O16, 0.5, 4.3 |
+| п.11 | `TestRefreshRealShapes` (A: `en-server` 4 — намеренное расхождение) | 3.2 |
+| п.12 | live: 54 строки real-shapes в `TestLiveEveryParamReachesXray` | 5.6 |
+| п.13 | `docs/CONFIG-MIGRATION.md` «Подписки»: sfc-выходы получают xhttp/ML-KEM/REALITY+`pqv` строки | 3.2 (+ контекст этапа 3) |
+| п.14 | вопросы владельцу | закрыты D33 (O18): `fetchHeaders` — 1.3, 1.6, 3.1, 3.2, 4.1, 4.7, 6.1, 6.4; `-X` — не интерпретируется (никаких задач); `path` — п.9 |
+| D33 | `cs` → `tlsSettings.cipherSuites`, ws `heartbeatPeriod` → `wsSettings.heartbeatPeriod` | 0.5 (строки корпуса), 1.7 (`AllowedParams`), 4.4, 4.5, 4.6 (`Covered` 20 → 22), 5.6 |
+

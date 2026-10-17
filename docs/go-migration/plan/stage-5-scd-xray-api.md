@@ -8,7 +8,7 @@
 
 **Tech Stack:** `google.golang.org/grpc` (+ `credentials/insecure`, `test/bufconn`, `status`, `codes`), xray-core (`app/proxyman/command`, `app/router/command`, `app/router`, `app/observatory/command`, `app/observatory`, `core`, `common/serial`, `infra/conf`).
 
-**Spec:** `07` D2, D4, D5, D13, D19, D22, D25, D26; `11-xray-vless-matrix.md` (5.6); `02` §1.2, §1.5, §2, §2.7, §3, §6; `08` §2–§3, §7; `10` §2, §3, §6.1, §6.9; `09` §1.4; README плана O5.
+**Spec:** `07` D2, D4, D5, D13, D19, D22, D25, D26, D28, D33; `11-xray-vless-matrix.md` (5.6); `12-real-subscriptions.md` §5, §7 п.9, §9 п.9, п.12 (5.2, 5.6); `02` §1.2, §1.5, §2, §2.7, §3, §6; `08` §2–§3, §7; `10` §2, §3, §6.1, §6.9; `09` §1.4; README плана O5.
 
 ## Контекст этапа
 
@@ -77,7 +77,7 @@
 
 ### Task 5.2: Ресурсы inbound/routing и декодирование для runtime-state
 
-**Read:** `02` §1.3 (SOCKS, Router), §1.5 (listen domain), §1.6 (примеры SOCKS inbound и rule), §2.6; `03` §6.4 (CurrentRuntimeStateSnapshot: `parsed`), §10.5; `testdata/reference/scd/status/runtime-state/*.json` (форма `parsed`); `scd/src/api/protobuf.ts:310-409` (ключи `parsed`, пока файл существует); `07` D19.
+**Read:** `02` §1.3 (SOCKS, Router), §1.5 (listen domain), §1.6 (примеры SOCKS inbound и rule), §2.6; `03` §6.4 (CurrentRuntimeStateSnapshot: `parsed`), §6.5 (редактирование секретов), §10.5; `07` D33; `12-real-subscriptions.md` §7 п.9, §9 п.9; `testdata/reference/scd/status/runtime-state/*.json` (форма `parsed`); `scd/src/api/protobuf.ts:310-409` (ключи `parsed`, пока файл существует); `07` D19.
 
 **Files:**
 - Create: `internal/scd/resources/inbound.go`, `routing.go`, `describe.go`, `resources_test.go`
@@ -87,13 +87,13 @@
 - Produces:
   - `func Inbound(t topology.Tunnel) (*core.InboundHandlerConfig, error)` — через `conf.InboundDetourConfig` из JSON `{"tag":"in-…","listen":<listen>,"port":<port>,"protocol":"socks","settings":{"auth":"noauth","udp":true}}` (`listen` IP → `ip`; `::` → ip; домен кроме `localhost` Xray отвергнет на Add — это его ошибка).
   - `func Rule(t topology.Tunnel, outboundTag string) *router.RoutingRule` — `{TargetTag: &router.RoutingRule_Tag{Tag: outboundTag}, InboundTag: []string{t.InboundTag}, RuleTag: t.RouteTag}`.
-  - `type ParsedOutbound map`-эквивалент со стабильными ключами: `func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[string]any, bool)` — только VLESS-outbound'ы (`SenderConfig`+`vless/outbound.Config`), ключи как в эталоне `runtime-state` (`protocol`, `address`, `port`, `uuid`, `flow`, `encryption`, `network`, `security`, `sni`, `alpn`, `fingerprint`, `host`, `path`, `publicKey`, `shortId` + аддитивно `xhttpMode`); без секретов — без `uuid`, `publicKey`, `shortId`. Значения читаются **корректными** полями (ws из `TransportConfig.ProtocolName=="websocket"`, fingerprint — поле 11; D6). Для профилей D26 (11 §3): `network` — `StreamConfig.ProtocolName` как есть (`tcp|websocket|splithttp`, как TS писал поле 5); `host`/`path`/`xhttpMode` для xhttp — из `splithttp.Config`; при `security=none` (ML-KEM) ключи `security`/`sni`/`fingerprint`/`alpn` отсутствуют; `encryption` — `Account.Encryption` (у ML-KEM — уже без префикса, conf его отрезает; при `includeSecrets=false` для ML-KEM выводится `"mlkem768x25519plus"` вместо ключей).
+  - `type ParsedOutbound map`-эквивалент со стабильными ключами: `func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[string]any, bool)` — только VLESS-outbound'ы (`SenderConfig`+`vless/outbound.Config`), ключи как в эталоне `runtime-state` (`protocol`, `address`, `port`, `uuid`, `flow`, `encryption`, `network`, `security`, `sni`, `alpn`, `fingerprint`, `host`, `path`, `publicKey`, `shortId` + аддитивно `xhttpMode`); без секретов — без `uuid`, `publicKey`, `shortId`, **и** (D33, 12 §9 п.9) значения `path` (ws, xhttp, tcp `headerType=http`) и xhttp `host` заменяются строкой `"<redacted>"` (ключ остаётся, если поле непустое; пустое — как есть): xhttp-путь у реальных подписок — секретоподобная строка (12 §7 п.9). При `includeSecrets=true` — значения как есть. Значения читаются **корректными** полями (ws из `TransportConfig.ProtocolName=="websocket"`, fingerprint — поле 11; D6). Для профилей D26 (11 §3): `network` — `StreamConfig.ProtocolName` как есть (`tcp|websocket|splithttp`, как TS писал поле 5); `host`/`path`/`xhttpMode` для xhttp — из `splithttp.Config`; при `security=none` (ML-KEM) ключи `security`/`sni`/`fingerprint`/`alpn` отсутствуют; `encryption` — `Account.Encryption` (у ML-KEM — уже без префикса, conf его отрезает; при `includeSecrets=false` для ML-KEM выводится `"mlkem768x25519plus"` вместо ключей).
   - `func DescribeInbound(h *core.InboundHandlerConfig) (map[string]any, bool)` (`protocol: "socks"`, `listen`, `portStart`, `portEnd`, `udp`) и `func DescribeRule(r xrayapi.Rule) map[string]any` (`ruleTag`, `outboundTag`, `inboundTags: []`).
   - `func RawBase64(m proto.Message) string` — `proto.MarshalOptions{Deterministic: true}` + `base64.StdEncoding`.
 
-- [ ] **Step 1: Failing tests:** `TestInboundSocksShape` (GetInstance: `ReceiverConfig.PortList.Range[0].From==20000`, `Listen.GetIp()` = 127.0.0.1; `socks.ServerConfig.UdpEnabled`), `TestInboundListenAllIPv6` (`::` → 16-байтный ip), `TestRuleShape`, `TestDescribeOutboundKeysMatchReference` (множество ключей `parsed` для ws/reality = эталонному из `runtime-state/raw-and-secrets.json` ∪ {`xhttpMode`}), `TestDescribeRedactsSecrets` (вкл. ML-KEM-ключи), `TestDescribeXHTTPAndMLKEM` (xhttp: `network=="splithttp"`, `xhttpMode`, `host`, `path`; `tcp-mlkem`: нет `security`), `TestDescribeNonVlessReturnsFalse` (freedom).
+- [ ] **Step 1: Failing tests:** `TestInboundSocksShape` (GetInstance: `ReceiverConfig.PortList.Range[0].From==20000`, `Listen.GetIp()` = 127.0.0.1; `socks.ServerConfig.UdpEnabled`), `TestInboundListenAllIPv6` (`::` → 16-байтный ip), `TestRuleShape`, `TestDescribeOutboundKeysMatchReference` (множество ключей `parsed` для ws/reality = эталонному из `runtime-state/raw-and-secrets.json` ∪ {`xhttpMode`}), `TestDescribeRedactsSecrets` (вкл. ML-KEM-ключи), `TestDescribeOutboundRedactsXHTTPPath` (D33: proto из `ToProto` строки 1 `docker/fixtures/real-shapes/remnawave.txt`; `includeSecrets=false` → `parsed.path=="<redacted>"`, в `jsonout.Marshal(parsed)` нет ни декодированного пути из фикстуры, ни ключа ML-KEM; `includeSecrets=true` → `path` равен пути из ссылки; ws-outbound с `path=/ws` и tcp+http-header — тоже `<redacted>` без секретов; пустой ws `path` → `""`), `TestDescribeXHTTPAndMLKEM` (xhttp: `network=="splithttp"`, `xhttpMode`, `host`, `path`; `tcp-mlkem`: нет `security`), `TestDescribeNonVlessReturnsFalse` (freedom).
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `go test -race ./internal/scd/...` → PASS.
-- [ ] **Step 5: Commit** `feat(scd): build inbound and routing resources and describe runtime objects` (body: D6, D19).
+- [ ] **Step 5: Commit** `feat(scd): build inbound and routing resources and describe runtime objects` (body: D6, D19, D33) — вместе с пунктом `docs/CONFIG-MIGRATION.md` (D32, раздел «Подписки»/runtime-state): при `statusServer.runtimeState.includeSecrets: false` `parsed.path` (и xhttp `host`) теперь `<redacted>`.
 
 ---
 
@@ -172,7 +172,7 @@
 
 ### Task 5.6: Live-стенд Xray 26.10.10 и «каждый параметр дошёл до Xray» (`-tags xraylive`)
 
-**Read:** `07` D6, D19, D25, D26; `11-xray-vless-matrix.md` §2 (методика и программа `scratchpad/plan-update/matrix/main.go` — рабочий образец), §3, §4; `08` §3, §5; `10` §5.1 (стенд); `testdata/reference/scd/corpus/d26-expect.json` (контракт — задача 0.5).
+**Read:** `07` D6, D19, D25, D26, D33; `11-xray-vless-matrix.md` §2 (методика и программа `scratchpad/plan-update/matrix/main.go` — рабочий образец), §3, §4; `12-real-subscriptions.md` §3 (`cs`, `heartbeatPeriod` — проверено живьём), §5 (ожидания для реальных форм), §9 п.12; `08` §3, §5; `10` §5.1 (стенд); `testdata/reference/scd/corpus/d26-expect.json` (контракт — задача 0.5).
 
 **Files:**
 - Create: `internal/scd/livetest/harness_test.go` (`//go:build xraylive`), `params_test.go`
@@ -184,14 +184,14 @@
 - Produces (только тестовые, их использует 5.7): `func startXray(t *testing.T, env ...string) (client xrayapi.Client, socksAddr string, stderr *bytes.Buffer)` — читает `SCD_XRAY_BIN` (нет → `t.Skip("SCD_XRAY_BIN not set")`), подставляет свободные порты в шаблоны, запускает `xray run -confdir <tmp>` с доп. переменными окружения `env`, ждёт готовности `ListOutbounds` (до 10 s), в `Cleanup` убивает процесс и проверяет, что он не упал раньше (exit code / `panic:` в stderr → `t.Errorf`); `func loadD26(t *testing.T) []d26Case` — строки `d26-links.txt` + `d26-expect.json`.
 
 - [ ] **Step 1: Тесты (пишутся сразу как падающие при наличии бинаря):**
-  - `TestLiveEveryParamReachesXray` (D6, D19, D26): для **каждой** `entry`-строки `d26-links.txt` и каждой строки `docker/fixtures/subscription.txt` — `Parse` → `Normalize(Policy{AllowInsecure:true})` → `ToProto` → `AddOutbound` без ошибки → `ListOutbounds` → найти по тегу → `proto.Equal` для `SenderSettings.GetInstance()` и `ProxySettings.GetInstance()` с отправленным **и** для каждого параметра из поля `params` строки в `d26-expect.json` — `paramcheck.Check(param, value, listed) == nil` (значение проверяется в том, что вернул живой Xray). Подтесты по номеру строки корпуса; после — `RemoveOutbound`.
-  - `TestLiveCoverage`: множество проверенных параметров = `paramcheck.Covered`; каждая ✓-строка 11 §3 (`matrixRow` `3#…` в `d26-expect.json`) прошла хотя бы одной строкой.
+  - `TestLiveEveryParamReachesXray` (D6, D19, D26): для **каждой** `entry`-строки `d26-links.txt`, каждой строки `docker/fixtures/subscription.txt` и всех 54 строк `docker/fixtures/real-shapes/remnawave.txt` + `provider2.txt` (12 §9 п.12; ожидание 12 §5: 4/4 и 50/50 добавляются, `listEqual`) — `Parse` → `Normalize(Policy{AllowInsecure:true})` → `ToProto` → `AddOutbound` без ошибки → `ListOutbounds` → найти по тегу → `proto.Equal` для `SenderSettings.GetInstance()` и `ProxySettings.GetInstance()` с отправленным **и** для каждого параметра из поля `params` строки в `d26-expect.json` — `paramcheck.Check(param, value, listed) == nil` (значение проверяется в том, что вернул живой Xray). Для строк real-shapes `params` берётся из строк `RS1`/`RS2` корпуса по файлу-источнику (remnawave → `RS1`, provider2 → `RS2`). Строки корпуса с `cs` и `heartbeatPeriod` (0.5) проверяют D33: `tls.Config.CipherSuites`, `websocket.Config.HeartbeatPeriod` в ответе `ListOutbounds`. Подтесты по номеру строки корпуса; после — `RemoveOutbound`.
+  - `TestLiveCoverage`: множество проверенных параметров = `paramcheck.Covered` (22, вкл. `cs`, `heartbeatperiod`); каждая ✓-строка 11 §3 (`matrixRow` `3#…` в `d26-expect.json`) прошла хотя бы одной строкой.
   - `TestLiveRejectsInvalidMLKEMKeyLikeNormalize` (D25, Review Focus 6): строка с 1184 случайными байтами, собранная **в обход** normalize (`outbound.Build` напрямую) → `ToProto` OK, `AddOutbound` → ошибка, содержащая `invalid polynomial encoding`; та же строка через `Normalize` → skip «Invalid VLESS encryption key.» — доказывает, что проверка normalize нужна.
   - `TestLiveXrayStillAlive`: после всех подтестов `ListOutbounds` отвечает, процесс жив.
 - [ ] **Step 2: Run без бинаря** `go test -tags xraylive ./internal/scd/livetest/...` → все `SKIP`. **С бинарём** (`SCD_XRAY_BIN=<path> go test -tags xraylive -race -count=1 -run 'TestLive(EveryParam|Coverage|RejectsInvalid|XrayStillAlive)' ./internal/scd/livetest/...`) → PASS. Бинарь: релизный архив (README плана, «Локальный образ Xray») или `scratchpad/bin-xray-26.10.10`. Ожидаемый результат подтверждён экспериментом 11 §2 на том же бинаре: 69 outbound'ов `BUILD-OK LIVE-OK listEqual=true`, процесс жив. Если принятый entry падает на `AddOutbound` — это баг normalize/билдера, а не повод исключить строку.
 - [ ] **Step 3: CI-шаг** в джобе `go` (см. Files).
 - [ ] **Step 4: Verify** `go vet -tags xraylive ./... && golangci-lint run && go test -race ./...`.
-- [ ] **Step 5: Commit** `test(scd): add live Xray 26.10.10 parameter matrix tests` (body: D6, D19, D25, D26).
+- [ ] **Step 5: Commit** `test(scd): add live Xray 26.10.10 parameter matrix tests` (body: D6, D19, D25, D26, D33).
 
 ---
 
