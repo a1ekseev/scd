@@ -192,6 +192,8 @@ except `RS1`/`RS2` (lines 83–84, byte-for-byte line 1 of `docker/fixtures/real
 - Only the regex decisions are recorded; the meaning of a label (e.g. the `-X` suffix) is not interpreted (D33).
 - The three filters are mutually exclusive by construction, so only four true/false combinations exist (en only, extra only,
   extraWhitelist only, none); all four are present.
-- The only known divergence from Go (RE2 `labelIncludeRegex`/`labelExcludeRegex`, D29): `Extra\nWhiteList` (TS: `extraWhitelist == false`,
-  because JS `.` does not match `\n`; Go gives `true`). It goes to `allowedDiffs` of `TestLabelFilterRealShapeEquivalence` (task 4.1)
-  with the reason "JS `.` does not match `\n`". `WhiteList\nExtra` and `Extra\nfoo` show the same TS behaviour for the same reason.
+- Known divergences from Go (RE2 `labelIncludeRegex`/`labelExcludeRegex`, D29): exactly the labels with a real `\n`, because JS `.`
+  does not match `\n` (TS `.*` stops at the line break, `.*$` cannot reach the end), while Go looks at the whole label:
+  `Extra\nWhiteList` and `WhiteList\nExtra` (TS `extraWhitelist == false`, Go `true`), `Extra\nfoo` (TS `extra == false`, Go `true`),
+  `foo\nbar` (TS `en == false`, Go `true`). They are the `allowedDiffs` of `TestLabelFilterRealShapeEquivalence`
+  (task 1.3, `internal/common/labelfilter`) with the reason "JS `.` does not match `\n`"; Go behaviour is kept (12 §6.3).
