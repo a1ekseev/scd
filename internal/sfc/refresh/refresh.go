@@ -75,8 +75,12 @@ func (r *Refresher) Run(ctx context.Context) Report {
 		if ctx.Err() != nil {
 			break
 		}
+		subReports, ok := r.refreshSubscription(ctx, sub)
+		if !ok {
+			break
+		}
 		sources++
-		reports = append(reports, r.refreshSubscription(ctx, sub)...)
+		reports = append(reports, subReports...)
 	}
 	slices.SortFunc(reports, func(a, b OutputReport) int { return strings.Compare(a.ID, b.ID) })
 
@@ -99,8 +103,9 @@ func (r *Refresher) Run(ctx context.Context) Report {
 // refreshSubscription loads one subscription, writes the source cache before
 // parsing and builds its outputs; when loading fails it falls back to the
 // source cache, and without one every enabled output fails. The input URL is
-// redacted in logs, errors and the report (D33).
-func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscription) []OutputReport {
+// redacted in logs, errors and the report (D33). ok is false when the load
+// failed because ctx was cancelled; nothing is recorded then.
+func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscription) (reports []OutputReport, ok bool) {
 	log := r.log()
 	in, err := r.input()(ctx, sub.Input, inputsrc.Options{
 		Format:       sub.Format,
@@ -120,7 +125,12 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 		reports := r.buildOutputs(sub, links, false)
 		log.Info("Subscription refreshed.", "event", "subscription_refreshed", "subscriptionId", sub.ID,
 			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputIDs(sub), "parsedEntries", len(links))
-		return reports
+		return reports, true
+	}
+	if ctx.Err() != nil {
+		log.Info("Subscription refresh canceled; state kept.",
+			"event", "subscription_refresh_canceled", "subscriptionId", sub.ID)
+		return nil, false
 	}
 
 	// The loader's error holds the input URL (a secret, D33).
@@ -132,7 +142,7 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 		log.Warn("Subscription refresh used source cache after input load failed.",
 			"event", "subscription_source_cache_used", "subscriptionId", sub.ID, "path", cachePath,
 			"error", msg, "parsedEntries", len(links))
-		return reports
+		return reports, true
 	}
 	log.Error("Subscription source cache is not available after input load failed.",
 		"event", "subscription_source_cache_missed", "subscriptionId", sub.ID, "error", msg,
@@ -140,13 +150,12 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 	log.Error("Subscription refresh failed.",
 		"event", "subscription_refresh_failed", "subscriptionId", sub.ID, "error", msg)
 
-	var reports []OutputReport
 	for _, out := range sub.Outputs {
 		if out.Enabled {
 			reports = append(reports, r.fail(sub, out, msg, false))
 		}
 	}
-	return reports
+	return reports, true
 }
 
 // parse returns the VLESS links of content. Lines that are not usable links

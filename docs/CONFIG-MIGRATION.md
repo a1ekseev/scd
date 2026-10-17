@@ -470,6 +470,8 @@ sfc **не проверяет** применимость параметров к
 | `balancer_selection_tick_failed` | `error` | scd daemon | «Balancer selection tick failed.» |
 | `daemon_stopping` | `info` | scd daemon | «Daemon stopping.», `signal`: `SIGINT`/`SIGTERM` |
 | `http_handler_panic` | `error` | scd, sfc, gtl | паника в HTTP-обработчике (ответ 500) |
+| `sync_canceled` | `debug` | scd sync, daemon | sync прерван сигналом: оставшиеся target'ы не применяются, `remainingTargets` |
+| `subscription_refresh_canceled` | `info` | sfc | загрузка подписки прервана сигналом; состояние выходов не меняется: `subscriptionId` |
 | `subscription_line_param_ignored` | `debug` | sfc | неизвестные параметры строки: `subscriptionId`, `line` (номер), `params` |
 
 У событий `balancer_selection_*` и `balancer_observatory_unavailable` — `subscriptionId`, `targetAddress`, `balancerTag`.

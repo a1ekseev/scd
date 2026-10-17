@@ -244,8 +244,8 @@ func TestServeStopCancelsAndWaitsForActiveRefresh(t *testing.T) {
 	if d := time.Since(start); d >= time.Second {
 		t.Fatalf("stop took %s", d)
 	}
-	// The cancelled refresh finished (cache fallback) before RunServe returned.
-	if !strings.Contains(logs.String(), `"event":"subscription_source_cache_used"`) {
+	// The cancelled refresh finished before RunServe returned.
+	if !strings.Contains(logs.String(), `"event":"subscription_refresh_canceled"`) {
 		t.Fatalf("active refresh not awaited:\n%s", logs.String())
 	}
 }

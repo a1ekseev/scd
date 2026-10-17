@@ -881,3 +881,28 @@ func TestCanceledSyncStopsLoading(t *testing.T) {
 		t.Errorf("cancel reported as failure: %+v", r)
 	}
 }
+
+// Final review I1: a load cut short by the cancellation is not a failure.
+func TestCanceledLoadIsNotReported(t *testing.T) {
+	l := cfg(allKinds, sub("source-a", "/a", target(addrA)))
+	f := newFixture(t, l, map[string]string{"/a": vienna}, addrA)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	f.s.LoadInput = func(c context.Context, _ string, _ inputsrc.Options) (inputsrc.Loaded, error) {
+		cancel()
+		return inputsrc.Loaded{}, fmt.Errorf("unable to download input: %w", c.Err())
+	}
+
+	r, err := f.s.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Failed != 0 || len(r.Targets) != 0 {
+		t.Errorf("report = %+v", r)
+	}
+	for _, ev := range []string{"subscription_fetch_failed", "apply_failed"} {
+		if n := len(f.logs.events(t, ev)); n != 0 {
+			t.Errorf("%s events = %d", ev, n)
+		}
+	}
+}

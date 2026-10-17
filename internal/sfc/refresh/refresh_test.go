@@ -851,3 +851,30 @@ server:
 	}
 	check("failure", rep)
 }
+
+// Final review I1: a load cut short by the cancellation fails no output and
+// keeps the state.
+func TestRefreshCanceledLoadIsNotAFailure(t *testing.T) {
+	cfg := loadConfig(t, baseConfig)
+	src := &source{content: lineDE}
+	r, rec := newRefresher(t, cfg, src)
+	r.Run(t.Context())
+	before := r.State.get("out-germany")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	r.Input = func(c context.Context, _ string, _ inputsrc.Options) (inputsrc.Loaded, error) {
+		cancel()
+		return inputsrc.Loaded{}, c.Err()
+	}
+	rep := r.Run(ctx)
+	if rep.Failed != 0 || len(rep.Outputs) != 0 {
+		t.Errorf("report = %+v", rep)
+	}
+	if after := r.State.get("out-germany"); after.LastError != "" || after.LastRefreshAt != before.LastRefreshAt {
+		t.Errorf("state changed: %+v", after)
+	}
+	if n := len(rec.events(t, "subscription_refresh_failed")) + len(rec.events(t, "subscription_source_cache_used")); n != 0 {
+		t.Errorf("failure events = %d", n)
+	}
+}
