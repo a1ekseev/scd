@@ -78,7 +78,7 @@ func CheckHeaders(h map[string]string) []HeaderIssue {
 		switch {
 		case strings.TrimSpace(v) == "":
 			add("must not be empty")
-		case strings.ContainsAny(v, "\r\n\x00"):
+		case !httpguts.ValidHeaderFieldValue(v):
 			add("must not contain control characters")
 		}
 	}

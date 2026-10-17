@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 )
 
 func TestHeadersRedacted(t *testing.T) {
@@ -26,6 +28,11 @@ func TestHeadersRedacted(t *testing.T) {
 	var back map[string]string
 	if err := json.Unmarshal(b, &back); err != nil || back["x-hwid"] != "<redacted>" || strings.Contains(string(b), "s3cr3t") {
 		t.Fatalf("json.Marshal = %s (%v)", b, err)
+	}
+
+	jb, err := jsonout.Marshal(h)
+	if err != nil || !strings.Contains(string(jb), `"<redacted>"`) || strings.Contains(string(jb), "s3cr3t") {
+		t.Fatalf("jsonout = %s (%v)", jb, err)
 	}
 
 	var buf bytes.Buffer
@@ -56,6 +63,7 @@ func TestCheckHeaders(t *testing.T) {
 		{"bad name", map[string]string{"bad name": "v"}, "bad name", "invalid header name"},
 		{"empty value", map[string]string{"X-A": "  "}, "X-A", "must not be empty"},
 		{"newline", map[string]string{"X-A": "a\nb"}, "X-A", "must not contain control characters"},
+		{"ctl", map[string]string{"X-A": "a\x01b"}, "X-A", "must not contain control characters"},
 		{"nul", map[string]string{"X-A": "a\x00b"}, "X-A", "must not contain control characters"},
 		{"user agent", map[string]string{"User-Agent": "x"}, "User-Agent", "use fetchUserAgent instead"},
 		{"host", map[string]string{"host": "x"}, "host", "header is not allowed"},
