@@ -32,7 +32,7 @@ internal/gtl/         config, generator, server
 Docker: один Dockerfile, target'ы `scd`/`sfc`/`gtl` (distroless/static, кросс-компиляция amd64/arm64 без QEMU). Образы `ghcr.io/a1ekseev/{scd,sfc,gtl}` сохраняются.
 
 ## Стек (кратко, детали — 06 + 07)
-Go 1.27.2 · cobra · свой cron-парсер (семантика cron-parser v5) · `go.yaml.in/yaml/v3` · свой schema-пакет · `log/slog` с pino-форматом · `dlclark/regexp2` · `github.com/xtls/xray-core` (v26.10.10) + `google.golang.org/grpc` · ручной SOCKS5 · `html/template`+`embed` · `x/text/collate` · тесты: testing, httptest, bufconn, synctest · CI: golangci-lint v2.15.0, govulncheck, `go test -race`.
+Go 1.27.2 · cobra · свой cron-парсер (семантика cron-parser v5) · `go.yaml.in/yaml/v3` · свой schema-пакет · `log/slog` с pino-форматом · `dlclark/regexp2` · `github.com/xtls/xray-core` (v26.10.10, псевдоверсия по коммиту) + `google.golang.org/grpc` · ручной SOCKS5 · `html/template`+`embed` · `x/text/collate` · тесты: testing, httptest, bufconn, synctest · CI: golangci-lint v2.15.0, govulncheck, `go test -race`.
 
 ## Главные риски паритета
 1. **Xray API** (02, 08): точная последовательность RPC, fixed-ресурсы, rollback только outbound, per-target lock; два бага кодирования TS (ws `protocol_name`, TLS fingerprint) — в Go исправляются (D2).
@@ -69,4 +69,5 @@ Go 1.27.2 · cobra · свой cron-парсер (семантика cron-parser
 3. `labelIncludeRegex`: `regexp2` (ECMAScript, совместимо с README) — рекомендуется — или RE2 с ограничениями.
 4. Тексты сетевых ошибок (`fetch failed`, ошибки сокетов) — дословно как в Node или go-нативные. Рекомендация: дословно там, где они видны пользователю (дашборд, Remote Push, отчёты).
 5. Docker: публиковать дополнительно `ghcr.io/a1ekseev/blanc`? Пользователи, переопределявшие CMD `node dist/cli.js …`, должны будут его поменять.
-6. Нет `docker/{scd,sfc,gtl}/config.yml` — для smoke-проверок нужны образцы конфигов.
+6. `allowInsecure=1` в подписках: Xray v26.10.10 его больше не поддерживает. Рекомендация — warning в логах, параметр не передаётся (D4).
+7. Нет `docker/{scd,sfc,gtl}/config.yml` — для smoke-проверок нужны образцы конфигов.
