@@ -67,10 +67,12 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 		info            xrayapi.BalancerInfo
 		obs             []xrayapi.OutboundObservation
 		infoErr, obsErr error
+		obsChecked      = bs.Observatory
 	)
 	client, err := d.dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
 	if err != nil {
-		infoErr, obsErr = err, err
+		// Nothing was asked: the observatory is not checked this time.
+		infoErr, obsChecked = err, false
 	} else {
 		var wg sync.WaitGroup
 		wg.Go(func() { info, infoErr = client.GetBalancerInfo(ctx, bs.BalancerTag) })
@@ -89,7 +91,10 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	d.Memory.Ensure(key)
 	var events []logEvent
 	d.Memory.Update(key, func(tg *state.Target) {
-		events = record(&tg.BalancerSelection, bs, now, info, infoErr, obs, obsErr)
+		events = record(&tg.BalancerSelection, bs, now, info, infoErr)
+		if obsChecked || !bs.Observatory {
+			events = append(events, recordObservatory(&tg.BalancerSelection, bs.Observatory, now, obs, obsErr)...)
+		}
 	})
 
 	base := []slog.Attr{
@@ -104,11 +109,9 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	return nil
 }
 
-// record applies one poll result to s and returns the log events of its
-// transitions.
-func record(s *state.SelectionState, bs config.BalancerSelectionConfig, now time.Time,
-	info xrayapi.BalancerInfo, infoErr error, obs []xrayapi.OutboundObservation, obsErr error,
-) []logEvent {
+// record applies one GetBalancerInfo result to s and returns the log events
+// of its transitions.
+func record(s *state.SelectionState, bs config.BalancerSelectionConfig, now time.Time, info xrayapi.BalancerInfo, infoErr error) []logEvent {
 	var events []logEvent
 	s.BalancerTag = bs.BalancerTag
 	s.LastCheckedAt = &now
@@ -151,9 +154,15 @@ func record(s *state.SelectionState, bs config.BalancerSelectionConfig, now time
 		s.LastError = ""
 		s.ConsecutiveFailures = 0
 	}
+	return events
+}
 
+// recordObservatory applies one GetOutboundStatus result to s (or clears
+// the observatory data when it is disabled) and returns the log events.
+func recordObservatory(s *state.SelectionState, enabled bool, now time.Time, obs []xrayapi.OutboundObservation, obsErr error) []logEvent {
+	var events []logEvent
 	switch {
-	case !bs.Observatory:
+	case !enabled:
 		s.Observatory, s.ObservatoryError, s.ObservatoryCheckedAt = nil, "", nil
 	case obsErr != nil:
 		msg := obsErr.Error()

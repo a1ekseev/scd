@@ -378,14 +378,39 @@ func TestTickCallsInParallel(t *testing.T) {
 	})
 }
 
-// A dial error is a selection failure.
+// A dial error is a selection failure; the observatory counts as not
+// checked: no observatory log, its previous data are kept.
 func TestTickDialError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv(true)
-		e.d.Dial = func(string, time.Duration) (xrayapi.Client, error) { return nil, errors.New("dial failed") }
+		e.c.info = single(prefix + "de-1")
+		e.c.obs = []xrayapi.OutboundObservation{{Tag: prefix + "de-1", Alive: true, DelayMs: new(int64(42))}}
 		e.tick(t)
-		if s := e.sel(t); s.State != state.SelectionError || s.LastError != "dial failed" || s.ConsecutiveFailures != 1 {
+		okAt := e.sel(t).ObservatoryCheckedAt
+
+		e.d.Dial = func(string, time.Duration) (xrayapi.Client, error) { return nil, errors.New("dial failed") }
+		time.Sleep(15 * time.Second)
+		e.tick(t)
+		s := e.sel(t)
+		if s.State != state.SelectionError || s.LastError != "dial failed" || s.ConsecutiveFailures != 1 {
 			t.Errorf("state = %+v", s)
+		}
+		if s.ObservatoryError != "" || len(s.Observatory) != 1 || !s.ObservatoryCheckedAt.Equal(*okAt) {
+			t.Errorf("observatory changed on a dial error: %+v", s)
+		}
+		if n := len(e.logs.events(t, "balancer_observatory_unavailable")); n != 0 {
+			t.Errorf("observatory_unavailable logs = %d", n)
+		}
+		if n := len(e.logs.events(t, "balancer_selection_failed")); n != 1 {
+			t.Errorf("selection_failed logs = %d", n)
+		}
+
+		// Before any success: still no observatory error.
+		e2 := newEnv(true)
+		e2.d.Dial = e.d.Dial
+		e2.tick(t)
+		if s := e2.sel(t); s.ObservatoryError != "" || s.Observatory != nil || s.State != state.SelectionError {
+			t.Errorf("first-tick dial error state = %+v", s)
 		}
 	})
 }
