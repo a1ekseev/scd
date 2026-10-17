@@ -1,6 +1,7 @@
 // Package httpserve holds the HTTP server plumbing shared by the services:
 // listener creation, a run loop with graceful shutdown (D7), panic recovery
-// (D23) and URL path cleaning that matches WHATWG pathname semantics.
+// (D23) and URL path cleaning (dot segments and duplicate slashes, see
+// CleanPath).
 package httpserve
 
 import (
@@ -33,8 +34,7 @@ func Listen(addr string) (net.Listener, error) {
 // stop, the serve error if serving failed, or the shutdown error (remaining
 // connections are closed) if the timeout elapsed.
 func Run(ctx context.Context, ln net.Listener, h http.Handler, shutdownTimeout time.Duration) error {
-	// No WriteTimeout: responses (gtl payloads) can be large and slow.
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: 60 * time.Second}
+	srv := newServer(h)
 	serveErr := make(chan error, 1)
 	done := make(chan struct{})
 	go func() {
@@ -62,10 +62,24 @@ func Run(ctx context.Context, ln net.Listener, h http.Handler, shutdownTimeout t
 	return nil
 }
 
+// newServer returns the server for h. Requests have no bodies, so reading a
+// request is bounded as a whole, and idle keep-alive connections (sfc is
+// internet-facing) are closed after two minutes. There is no WriteTimeout:
+// responses (gtl payloads) can be large and slow.
+func newServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 60 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 // Recover turns a panic in h into a 500 response and an error log record
 // (event http_handler_panic); the process keeps running (D23). A panic with
 // http.ErrAbortHandler is re-raised so net/http aborts the connection. If the
-// handler already wrote headers, the 500 cannot replace them.
+// handler already wrote headers, the 500 cannot replace them. The logged path
+// omits the last segment, which can be a capability (an sfc output id).
 func Recover(log *slog.Logger, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -77,7 +91,7 @@ func Recover(log *slog.Logger, h http.Handler) http.Handler {
 				panic(rec)
 			}
 			log.Error("HTTP handler panicked.", "event", "http_handler_panic",
-				"panic", fmt.Sprint(rec), "path", r.URL.Path)
+				"panic", fmt.Sprint(rec), "path", path.Dir(CleanPath(r.URL.EscapedPath())))
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("internal server error\n"))
@@ -86,9 +100,12 @@ func Recover(log *slog.Logger, h http.Handler) http.Handler {
 	})
 }
 
-// CleanPath removes dot segments and duplicate slashes from an escaped URL
-// path without decoding %xx sequences and keeps a trailing slash, like the
-// WHATWG URL pathname (/load/ stays /load/, /a/b/.. becomes /a/, "" becomes /).
+// CleanPath cleans an escaped URL path with path.Clean semantics: it removes
+// "." and ".." segments, collapses duplicate slashes ("/a//b" becomes "/a/b",
+// unlike a WHATWG pathname, which keeps empty segments), never decodes %xx
+// sequences (so "%2e%2e" is an ordinary segment, unlike WHATWG) and keeps a
+// trailing slash ("/load/" stays "/load/", "/a/b/.." becomes "/a/", ""
+// becomes "/").
 func CleanPath(escaped string) string {
 	p := "/" + escaped
 	cleaned := path.Clean(p)
