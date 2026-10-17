@@ -20,7 +20,7 @@
 - env: как в TS — после YAML, только строковые значения, отсутствующая → `""` (`configload.EnvStringsLenient`);
 - `serve`: начальный refresh до старта HTTP, затем cron-цикл **без** немедленного повторного refresh (первый тик cron — по расписанию; см. Task 3.4) — устраняет двойной refresh (04 §12 п.1; README плана O12);
 - shutdown немедленный (D7);
-- путь запроса — `r.URL.EscapedPath()` + удаление dot-сегментов; ключ — `pathRoute + "/" + url.PathEscape(id)`.
+- путь запроса — `r.URL.EscapedPath()` + удаление dot-сегментов; ключ — `pathRoute + "/" + escapeID(id)`, где `escapeID(id) = strings.ReplaceAll(url.QueryEscape(id), "+", "%20")` — Go-эквивалент `encodeURIComponent` из TS (`sfc/src/runtime/output-path.ts`); отличается только на `!'()*` (Go экранирует). `url.PathEscape` **не** подходит: он оставляет `+&=:@$` (для id `x+y` даст `x+y`, а TS и клиенты используют `x%2By`) — проверено ревью. Тот же `escapeID` — для имени файла кэша (3.2).
 
 ---
 
@@ -40,12 +40,12 @@
       Subscriptions []Subscription `json:"subscriptions"`
       Runtime struct{ RefreshSchedule string `json:"refreshSchedule"` } `json:"runtime"`
       Server  struct{ Listen string `json:"listen"` } `json:"server"`
-      Logging struct{ Level, Format string } `json:"logging"`   // json-теги level, format
+      Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`
   }
   type Subscription struct { ID, Input string; Enabled bool; Format string; FetchTimeoutMs int; PathRoute string; Outputs []Output }
       // json: id, input, enabled, format, fetchTimeoutMs, pathRoute, outputs
-  type Output struct { ID string; Enabled bool; Name string `json:",omitempty"`; LabelIncludeRegex string; UserAgent []string `json:",omitempty"`; ProfileTitle string `json:",omitempty"`; ProfileUpdateInterval int `json:",omitempty"` }
-      // json: id, enabled, name?, labelIncludeRegex, userAgent?, profileTitle?, profileUpdateInterval?
+  type Output struct { ID string `json:"id"`; Enabled bool `json:"enabled"`; Name string `json:"name,omitempty"`; LabelIncludeRegex string `json:"labelIncludeRegex"`; UserAgent []string `json:"userAgent,omitempty"`; ProfileTitle string `json:"profileTitle,omitempty"`; ProfileUpdateInterval int `json:"profileUpdateInterval,omitempty"` }
+      // каждое поле — с явным json-именем (тег `json:",omitempty"` без имени дал бы ключ `Name`, и TestPrintConfigDockerExample упал бы)
   type Loaded struct { Path, Dir string; Config Config }
   func Load(path string) (Loaded, error)
   ```
@@ -75,7 +75,7 @@
 
 **Interfaces:**
 - Consumes: `config.Loaded`, `inputsrc.Load`, `subscription.ScanLines`, `vless.Parse`, `regexlit.Compile`.
-- Produces (`cache`): `func Dir(configPath string) string` (`<dir(config)>/.sfc-cache`); `func Path(configPath, subscriptionID string) string` (`<Dir>/<url.PathEscape(id)>.subscription`; `/` в id тоже экранируется: использовать `url.QueryEscape` и заменить `+` на `%20`, итог для `../main/slash id` — `..%2Fmain%2Fslash%20id.subscription`); `func Write(configPath, id, content string) (string, error)` — `MkdirAll`, temp-файл через `os.CreateTemp(dir, base+".*.tmp")`, `Rename`, при ошибке удалить temp; `func Read(configPath, id string) (path, content string, err error)`.
+- Produces (`cache`): `func Dir(configPath string) string` (`<dir(config)>/.sfc-cache`); `func Path(configPath, subscriptionID string) string` (`<Dir>/<escapeID(id)>.subscription`, `escapeID` — из «Контекста этапа» (QueryEscape + `+`→`%20`, как `encodeURIComponent` в TS `source-cache.ts`); итог для `../main/slash id` — `..%2Fmain%2Fslash%20id.subscription`, проверено ревью; совпадение с TS-именами важно, т.к. volume `.sfc-cache` переживает миграцию); `func Write(configPath, id, content string) (string, error)` — `MkdirAll`, temp-файл через `os.CreateTemp(dir, base+".*.tmp")`, `Rename`, при ошибке удалить temp; `func Read(configPath, id string) (path, content string, err error)`.
 - Produces (`refresh`):
   ```go
   type OutputState struct { ID, SubscriptionID, PathRoute, Name, ProfileTitle string; UserAgent []string; ProfileUpdateInterval int
