@@ -1,0 +1,10 @@
+.git
+bin
+docs
+testdata
+**/config.yml
+**/.sfc-cache
+scd
+sfc
+gtl
+tools

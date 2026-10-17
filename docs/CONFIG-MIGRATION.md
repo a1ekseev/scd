@@ -257,6 +257,35 @@ sfc **не проверяет** применимость параметров к
 
 Одна команда `scd …`, один образ, `command:` в docker-compose для sfc/gtl (D10).
 
+### Образ и docker-compose
+
+Ключи конфигов не меняются; меняются бинарь, образ и команда запуска.
+
+| Что | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| команды | три CLI: `node dist/cli.js …` в каждом образе (`scd`, `sfc`, `gtl`) | один бинарь `scd`: `scd sync\|daemon\|generate\|validate-config\|print-config`, `scd sfc serve\|refresh\|validate-config\|print-config`, `scd gtl serve\|validate-config\|print-config` | D10 |
+| образы | `ghcr.io/a1ekseev/scd`, `ghcr.io/a1ekseev/sfc`, `ghcr.io/a1ekseev/gtl` | только `ghcr.io/a1ekseev/scd` (amd64+arm64); образы `sfc`/`gtl` **больше не публикуются** — их последние теги остаются TS-версией | D10 |
+| `CMD` образа | `["node","dist/cli.js","daemon","--config","/app/config/config.yml"]` (`sfc`/`gtl`: `… "serve" …`) | `["scd","daemon","--config","/app/config/config.yml"]` | D10 |
+| `command:` sfc в compose | не задавался (CMD образа `sfc`) | `["scd","sfc","serve","--config","/app/config/config.yml"]` на образе `ghcr.io/a1ekseev/scd` | D10 |
+| `command:` gtl в compose | не задавался (CMD образа `gtl`) | `["scd","gtl","serve","--config","/app/config/config.yml"]` на образе `ghcr.io/a1ekseev/scd` | D10 |
+| свой `command:` вида `node dist/cli.js …` | работал | **не работает** (в образе нет Node) — заменить на `scd …`/`scd sfc …`/`scd gtl …` с теми же аргументами | D10 |
+| база образа | `node:24-alpine` (есть shell) | `gcr.io/distroless/static-debian13` (CA-сертификаты, tzdata; без shell — `docker exec … sh` недоступен), пользователь root | D1, 06 §11 |
+| путь конфига, порт, кэш sfc | `/app/config/config.yml`, `8080`, volume `/app/config/.sfc-cache` | без изменений | — |
+| тестовый Xray в compose | `ghcr.io/xtls/xray-core:26.3.27` | `ghcr.io/xtls/xray-core:26.10.10` (версия в `.xray-version`, сверяется с `go.mod`: `scripts/check-xray-version.sh`) | D4 |
+
+Перевод своего compose: заменить `image:` у `sfc`/`gtl` на `ghcr.io/a1ekseev/scd:<версия>` и добавить им `command:` из таблицы; у `scd` достаточно сменить тег. Volumes и порты не трогать:
+
+```yaml
+  sfc:
+    image: ghcr.io/a1ekseev/scd:latest
+    command: ["scd", "sfc", "serve", "--config", "/app/config/config.yml"]
+    volumes:
+      - ./docker/sfc/config.yml:/app/config/config.yml:ro
+      - ./docker/sfc/.sfc-cache:/app/config/.sfc-cache
+```
+
+Перед переключением: `docker run --rm -v ./docker/sfc/config.yml:/app/config/config.yml:ro ghcr.io/a1ekseev/scd:<версия> scd sfc validate-config --config /app/config/config.yml` (аналогично `scd validate-config` и `scd gtl validate-config`).
+
 ### scd: `scd daemon`
 
 Ключи конфига не менялись (`runtime.mode: daemon` + `runtime.schedule`, расписания `monitor`/`balancerMonitor`/`balancerSelection`/`remoteInstances[]`); отличия — в поведении процесса:
