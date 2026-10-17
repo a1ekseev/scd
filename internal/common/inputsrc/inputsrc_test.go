@@ -252,3 +252,74 @@ func TestDecodeAuto(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRedirectHeaders(t *testing.T) {
+	var gotOther, gotSame string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotOther = r.Header.Get("X-Hwid")
+		_, _ = w.Write([]byte("vless://a"))
+	}))
+	defer other.Close()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/cross", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	})
+	mux.HandleFunc("/same", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/final", http.StatusFound)
+	})
+	mux.HandleFunc("/final", func(w http.ResponseWriter, r *http.Request) {
+		gotSame = r.Header.Get("X-Hwid")
+		_, _ = w.Write([]byte("vless://a"))
+	})
+	first := httptest.NewServer(mux)
+	defer first.Close()
+	h := Headers{"x-hwid": "secret"}
+
+	client := &http.Client{}
+	if _, err := Load(context.Background(), first.URL+"/cross", Options{Headers: h, HTTPClient: client}); err != nil {
+		t.Fatal(err)
+	}
+	if gotOther != "" {
+		t.Fatalf("header leaked to other host: %q", gotOther)
+	}
+	if client.CheckRedirect != nil {
+		t.Fatal("caller client was mutated")
+	}
+	if _, err := Load(context.Background(), first.URL+"/same", Options{Headers: h}); err != nil {
+		t.Fatal(err)
+	}
+	if gotSame != "secret" {
+		t.Fatalf("same-host header = %q", gotSame)
+	}
+}
+
+func TestLoadRedirectChainsCallerCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, r.URL.Path+"x", http.StatusFound)
+	}))
+	defer srv.Close()
+	_, err := Load(context.Background(), srv.URL, Options{}) // default limit
+	if err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("err = %v", err)
+	}
+	called := false
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { called = true; return http.ErrUseLastResponse }}
+	_, _ = Load(context.Background(), srv.URL, Options{HTTPClient: c})
+	if !called {
+		t.Fatal("caller CheckRedirect not chained")
+	}
+}
+
+func TestLoadBodyTooLarge(t *testing.T) {
+	old := maxBody
+	maxBody = 8
+	defer func() { maxBody = old }()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("vless://aaaaaaaa"))
+	}))
+	defer srv.Close()
+	_, err := Load(context.Background(), srv.URL, Options{})
+	if err == nil || !strings.Contains(err.Error(), "input from "+srv.URL+" exceeds") {
+		t.Fatalf("err = %v", err)
+	}
+}

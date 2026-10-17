@@ -156,11 +156,7 @@ func fetch(ctx context.Context, rawURL string, o Options) (string, error) {
 	}
 	req.Header.Set("User-Agent", ua)
 
-	client := o.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := redirectSafeClient(o).Do(req)
 	if err != nil {
 		return fail(err)
 	}
@@ -168,11 +164,45 @@ func fetch(ctx context.Context, rawURL string, o Options) (string, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", fmt.Errorf("unable to download input from %s: %s", rawURL, resp.Status)
 	}
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return fail(err)
 	}
+	if int64(len(b)) > maxBody {
+		return "", fmt.Errorf("input from %s exceeds %d MiB", rawURL, maxBody>>20)
+	}
 	return string(b), nil
+}
+
+// maxBody caps the size of a downloaded subscription (a var for tests).
+var maxBody int64 = 64 << 20
+
+// redirectSafeClient returns a copy of the caller's client (or the default one)
+// that drops fetchHeaders (D33 secrets) from redirects leaving the original
+// host or downgrading https to http. The caller's client is not modified.
+func redirectSafeClient(o Options) *http.Client {
+	base := o.HTTPClient
+	if base == nil {
+		base = http.DefaultClient
+	}
+	c := *base
+	prev := base.CheckRedirect
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		orig := via[0].URL
+		if req.URL.Host != orig.Host || (orig.Scheme == "https" && req.URL.Scheme != "https") {
+			for k := range o.Headers {
+				req.Header.Del(k)
+			}
+		}
+		if prev != nil {
+			return prev(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &c
 }
 
 // DecodeAuto decodes raw as base64 when it looks like a base64-encoded list of
