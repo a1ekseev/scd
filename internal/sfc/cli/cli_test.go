@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 
@@ -206,9 +207,14 @@ server:
 }
 
 // Final review M3: `scd sfc refresh` handles SIGTERM as a cancellation and
-// still prints its report, without refreshing the remaining subscriptions.
+// still prints its report, without refreshing the remaining subscriptions
+// or failing the one cut short.
 func TestRefreshStopsOnSignal(t *testing.T) {
+	var loadedB atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/b" {
+			loadedB.Store(true)
+		}
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		<-r.Context().Done()
 	}))
@@ -244,7 +250,10 @@ server:
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("stdout is not one JSON report: %v\n%s\n%s", err, out, errs)
 	}
-	if len(rep.Outputs) != 1 || rep.Outputs[0].ID != "out-a" {
-		t.Errorf("outputs = %+v, want only out-a", rep.Outputs)
+	if len(rep.Outputs) != 0 || loadedB.Load() {
+		t.Errorf("outputs = %+v, b loaded %v; want none", rep.Outputs, loadedB.Load())
+	}
+	if !strings.Contains(errs, "subscription_refresh_canceled") {
+		t.Errorf("stderr lacks subscription_refresh_canceled:\n%s", errs)
 	}
 }

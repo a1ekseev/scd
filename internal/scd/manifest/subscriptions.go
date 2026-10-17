@@ -32,8 +32,8 @@ type FailedSubscription struct {
 
 // LoadSubscriptions loads the enabled subscriptions one after another,
 // ordered by id and then input (strings.Compare, D23). A failed load does not
-// stop the others; a cancelled ctx does: the remaining subscriptions are
-// neither loaded nor reported. load is inputsrc.Load in production.
+// stop the others; a cancelled ctx does: the remaining subscriptions, and a
+// load that failed because of the cancellation, are not reported. load is inputsrc.Load in production.
 func LoadSubscriptions(
 	ctx context.Context,
 	subs []config.SubscriptionConfig,
@@ -63,6 +63,9 @@ func LoadSubscriptions(
 			Headers:      s.FetchHeaders,
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				break // cut short by the cancellation: not a failure
+			}
 			failed = append(failed, FailedSubscription{Config: s, Error: err.Error()})
 			continue
 		}
