@@ -91,6 +91,10 @@ func TestParseOK(t *testing.T) {
 			address: "h", port: 443, id: uuid, params: []Param{p("cs", "TLS_AES_128_GCM_SHA256"), p("heartbeatperiod", "30")},
 		},
 		{
+			name: "invalid UTF-8 label sanitized", raw: "vless://" + uuid + "@h:443#a%FFb",
+			address: "h", port: 443, id: uuid, label: "a\uFFFDb",
+		},
+		{
 			name: "surrounding white space trimmed", raw: "  vless://" + uuid + "@h:443#ws  ",
 			address: "h", port: 443, id: uuid, label: "ws",
 		},
@@ -139,7 +143,6 @@ func TestParseSkip(t *testing.T) {
 		{"space in host", "vless://u@ho st:443", CodeInvalidURI, badURI, nil},
 		{"not a URL", "foo bar ://", CodeInvalidURI, badURI, nil},
 		{"bare % in label (O11)", "vless://" + uuid + "@h:443#100%", CodeInvalidURI, badLabel, nil},
-		{"invalid UTF-8 label", "vless://" + uuid + "@h:443#a%FFb", CodeInvalidURI, badLabel, nil},
 		{"empty id", "vless://@h:443#l", CodeMissingRequiredField, noID, new("l")},
 		{"no userinfo", "vless://h:443", CodeMissingRequiredField, noID, new("")},
 		{"no port", "vless://u@h", CodeMissingRequiredField, noAddress, new("")},
@@ -310,7 +313,7 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 		23: {`skip missing_required_field label="x"`, "D9: net/url accepts an empty host; Parse reports the missing address"},
 		30: {`ok label="x"`, "D18: the id is any non-empty string, the nil UUID included"},
 		44: {"skip invalid_uri", "O11: bare % in the label is a skip, not a TS exception"},
-		45: {"skip invalid_uri", "O11: %FF decodes to invalid UTF-8, which is not a valid label encoding (TS threw URI malformed)"},
+		45: {"ok label=\"a\uFFFDb\"", "label is cosmetic: invalid UTF-8 from %FF is replaced with U+FFFD, the link is kept (TS threw URI malformed)"},
 		46: {`ok label="nel"`, "D9 / 01 §17.4: strings.TrimSpace strips U+0085"},
 		52: {`ok label="x"`, "D18 + D9: net/url splits userinfo at the last @, id \"a@b\" is non-empty"},
 		55: {`ok label="a\tb"`, "D9: the fragment is cut before url.Parse, no WHATWG tab stripping"},

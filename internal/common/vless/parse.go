@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/a1ekseev/scd/internal/common/subscription"
 )
@@ -52,7 +51,8 @@ type Link struct {
 	Line int
 	// Raw is the untrimmed source line.
 	Raw string
-	// Label is the percent-decoded fragment ("" without one).
+	// Label is the percent-decoded fragment ("" without one); invalid UTF-8
+	// is replaced with U+FFFD.
 	Label string
 	// ID is the user id (any non-empty string, D18).
 	ID string
@@ -111,9 +111,11 @@ func Parse(l subscription.Line) (Link, *Skip) {
 		return skip(CodeUnsupportedScheme, `Unsupported scheme "`+u.Scheme+`:".`, nil)
 	}
 	label, err := url.PathUnescape(frag)
-	if err != nil || !utf8.ValidString(label) {
+	if err != nil {
 		return skip(CodeInvalidURI, "The line label is not valid percent-encoding.", nil)
 	}
+	// The label is cosmetic: invalid UTF-8 (e.g. "%FF") is replaced, not skipped.
+	label = strings.ToValidUTF8(label, "\uFFFD")
 	id := u.User.Username()
 	if id == "" {
 		return skip(CodeMissingRequiredField, "The VLESS URI does not contain a user id.", &label)
