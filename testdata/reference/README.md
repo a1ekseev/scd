@@ -37,6 +37,7 @@ Go is not required to reproduce them. Captured on the Node version recorded in
 | `scd/status/<name>/{index.html,api-status.json,api-instance-status.json,api-instances.json}` | `handleStatusServerRequest` for `/`, `/api/status`, `/api/instance-status`, `/api/instances` per fixture (all 200; JSON re-indented with trailing newline, HTML body + `\n`) | 0.4 |
 | `scd/status/<name>/screenshot-{1280,390}.png` | headless Chromium screenshots of `index.html`, exactly `<w>×2400` (reference only) | 0.4 |
 | `scd/status/runtime-state/cases.json`, `scd/status/runtime-state/<case>.json` | `buildCurrentRuntimeStateSnapshot` with a fake Xray client (03 §10.5 items 1–6); inputs in `cases.json` | 0.4 |
+| `scd/corpus/d26-links.txt`, `scd/corpus/d26-expect.json`, `scd/corpus/d26-keys.md` | D26 matrix corpus: 107 VLESS lines (one per line, no comments) and the expected Go outcome per line; keys from the Xray 26.10.10 binary. **Not** taken from TS (section «Корпус D26») | 0.5 |
 
 ### scd domain (task 0.2)
 
@@ -146,3 +147,33 @@ Cases: `redacted-default` (10.5 item 1), `vision-udp443` (2), `repaired-fallback
 This is a reference of the **shape** (keys, classification, diff, redaction). `runtime.*[].parsed` values for
 ws/fingerprint fields and `rawBase64` are informational (the TS decoder read wrong fields, D2/D6; Go builds
 v26 protobuf). The TS default-config keys in `config.*` follow the TS schema; Go schema changes (D31) apply.
+
+### Корпус D26 (task 0.5)
+
+`scd/corpus/d26-links.txt` + `scd/corpus/d26-expect.json`: one VLESS share link per line and, at the same index, its
+expected result in Go. The expectations come from `docs/go-migration/11-xray-vless-matrix.md` (§3 matrix rows, §4
+parameter mapping and Xray error texts, with the D28/O16 and D33 amendments) and the plan tasks 1.7/4.3–4.7. They are
+**not** TS outputs (TS skips most of these links). Each line was checked against `infra/conf` and a live API-only
+Xray 26.10.10 (`AddOutbound` → `ListOutbounds` → `proto.Equal` + a per-parameter field check); see the task 0.5 report.
+Keys: `d26-keys.md`.
+
+Contract of `d26-expect.json` (array, element `i` describes line `i+1`; read by Go tests 1.7, 4.3–4.7, 5.6):
+
+| Field | Meaning |
+|---|---|
+| `line` | 1-based line number in `d26-links.txt` |
+| `matrixRow` | `3#<n>`: row of 11 §3; `4:<param>`: row of 11 §4 (`4:id` = userinfo id; `4:cs`, `4:heartbeatPeriod` = D33 additions) |
+| `expect` | `entry` or `skip` |
+| `profile` | `entry` only: profile from 11 §3 («Профили и теги») |
+| `warnings` | `entry` only: warning codes in order. `flow_cleared` (D16) or `param_ignored` (only for an **unknown** parameter, D28). Parameters that do not apply to the chosen transport/security are dropped silently and give no warning (O16) |
+| `params` | `entry` only: link parameters (lowercase keys as in `vless.Link`) that must reach Xray, for `paramcheck` (4.6/5.6). Never contains a cleared `flow`, `allowinsecure`, inapplicable or generator-only keys (`support-x25519mlkem768`, `x_padding_bytes`, O13/O16). Sorted in `paramcheck.Covered` order; the union over all entries is exactly the 22 `Covered` parameters |
+| `reasonCode` | `skip` only: `vless.Skip` code |
+| `stage` | `skip` only: `parse` (`vless.Parse`), `scd` (`normalize`), `xray` (`conf.Build` refusal, caught in the manifest as `unsupported_value` «Xray rejected the outbound configuration.») |
+| `expectContains` | `skip` only: substring of `reason` (`parse`/`scd`) or of `details[0]` (`xray`, the wrapped `conf.Build` error) |
+| `note` | free text |
+
+Rules: the corpus is policy-invariant (same result with `Policy{}` and `Policy{AllowInsecure:true}`), so
+`allowInsecure=1|true` only appears together with `pcs`/`vcn`; hosts are `*.example.test` or TEST-NET addresses,
+except `RS1`/`RS2` (lines 83–84, byte-for-byte line 1 of `docker/fixtures/real-shapes/remnawave.txt` and
+`provider2.txt`, hosts `*.example.com`) and the Remnawave stub `0.0.0.0:1` (line 82). Counts: 73 `entry`, 34 `skip`
+(2 `parse`, 16 `scd`, 16 `xray`).
