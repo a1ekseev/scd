@@ -104,10 +104,25 @@ func TestLoadDefaultsAndResolve(t *testing.T) {
 	}
 }
 
-func TestUnknownKeysIgnoredAndTrimmed(t *testing.T) {
-	body := replace(t, "  - id: main\n", "  - id: '  main  '\n    extra: 1\n") + "whatever: true\n"
+func TestIDTrimmed(t *testing.T) {
+	body := replace(t, "  - id: main\n", "  - id: '  main  '\n")
 	if got := mustLoad(t, body).Config.Subscriptions[0].ID; got != "main" {
 		t.Fatalf("id %q", got)
+	}
+}
+
+// Final review M6: every config object rejects unknown keys (like scd and gtl).
+func TestUnknownKeysRejected(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"root", base + "whatever: true\n", `<root>: unknown key "whatever"`},
+		{"subscription", replace(t, "  - id: main\n", "  - id: main\n    extra: 1\n"), `subscriptions.0: unknown key "extra"`},
+		{"output", replace(t, "      - id: out\n", "      - id: out\n        extra: 1\n"), `subscriptions.0.outputs.0: unknown key "extra"`},
+		{"runtime", replace(t, "runtime:\n", "runtime:\n  extra: 1\n"), `runtime: unknown key "extra"`},
+		{"server", replace(t, "server:\n", "server:\n  extra: 1\n"), `server: unknown key "extra"`},
+		{"logging", base + "logging: {level: info, extra: 1}\n", `logging: unknown key "extra"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) { mustFail(t, c.body, c.want) })
 	}
 }
 

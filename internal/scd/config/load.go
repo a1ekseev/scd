@@ -35,6 +35,7 @@ func Load(path string) (Loaded, []string, error) {
 
 	var issues schema.Issues
 	root := schema.Root(doc.Root, &issues)
+	root.Strict("subscriptions", "runtime", "logging", "resources", "statusServer")
 	var cfg AppConfig
 	var subNodes []*schema.Node
 	for _, sn := range root.Array("subscriptions", true, 1) {
@@ -90,8 +91,9 @@ func parseSubscription(n *schema.Node, dir string) SubscriptionConfig {
 	return s
 }
 
-// parseFilters reads the filters object (unknown keys ignored).
+// parseFilters reads the filters object.
 func parseFilters(n *schema.Node) *SubscriptionFiltersConfig {
+	n.Strict("countryAllowlist", "labelIncludeRegex", "labelExcludeRegex")
 	f := &SubscriptionFiltersConfig{Label: labelfilter.Parse(n)}
 	for _, e := range n.StringListElems("countryAllowlist", schema.StrOpt{Trim: true, AllowEmptyList: true}) {
 		code := strings.ToUpper(e.Value)
@@ -137,9 +139,11 @@ func tagList(n *schema.Node, key string) []string {
 }
 
 func parseInboundSocks(n *schema.Node) *InboundSocksConfig {
+	n.Strict("listen", "portRange")
 	s := &InboundSocksConfig{}
 	s.Listen, _ = n.String("listen", required)
 	pr := n.Object("portRange", true)
+	pr.Strict("start", "end")
 	port := intRange(1, 65535, true)
 	s.PortRange.Start = pr.Int("start", port)
 	s.PortRange.End = pr.Int("end", port)
@@ -156,6 +160,7 @@ func parseRetry(n *schema.Node) RetryConfig {
 }
 
 func parseRequest(n *schema.Node) *TargetMonitorRequestConfig {
+	n.Strict("url", "method", "expectedStatus", "timeoutMs")
 	r := &TargetMonitorRequestConfig{}
 	r.URL, _ = n.URL("url", true)
 	r.Method = n.Enum("method", []string{"GET", "HEAD", "POST"}, "GET")
@@ -185,6 +190,7 @@ func parseBalancerMonitor(n *schema.Node) TargetBalancerMonitorConfig {
 	b := TargetBalancerMonitorConfig{Enabled: n.Bool("enabled", false)}
 	b.Schedule, _ = n.String("schedule", optional)
 	if sn := n.Object("socks5", false); sn != nil {
+		sn.Strict("host", "port")
 		b.Socks5 = &BalancerMonitorSocks5Config{}
 		b.Socks5.Host, _ = sn.String("host", required)
 		b.Socks5.Port = sn.Int("port", intRange(1, 65535, true))
@@ -224,12 +230,14 @@ func parseBalancerSelection(n *schema.Node) BalancerSelectionConfig {
 }
 
 func parseRuntime(n *schema.Node) RuntimeConfig {
+	n.Strict("mode", "schedule")
 	r := RuntimeConfig{Mode: n.Enum("mode", []string{"run-once", "daemon"}, "run-once")}
 	r.Schedule, _ = n.String("schedule", optional)
 	return r
 }
 
 func parseLogging(n *schema.Node) LoggingConfig {
+	n.Strict("level", "format")
 	return LoggingConfig{
 		Level:  n.Enum("level", []string{"fatal", "error", "warn", "info", "debug", "trace", "silent"}, "info"),
 		Format: n.Enum("format", []string{"json", "pretty"}, "json"),
@@ -237,8 +245,11 @@ func parseLogging(n *schema.Node) LoggingConfig {
 }
 
 func parseResources(n *schema.Node) ResourceConfig {
+	n.Strict("outbounds", "inbounds", "routing")
 	toggle := func(key string, def bool) ResourceToggle {
-		return ResourceToggle{Enabled: n.Object(key, false).Bool("enabled", def)}
+		tn := n.Object(key, false)
+		tn.Strict("enabled")
+		return ResourceToggle{Enabled: tn.Bool("enabled", def)}
 	}
 	return ResourceConfig{
 		Outbounds: toggle("outbounds", true),
@@ -249,6 +260,7 @@ func parseResources(n *schema.Node) ResourceConfig {
 
 // parseStatusServer reads the statusServer object; nil gives the defaults.
 func parseStatusServer(n *schema.Node) StatusServerConfig {
+	n.Strict("enabled", "listen", "instanceId", "remoteInstances", "runtimeState")
 	defListen := "127.0.0.1:9090"
 	s := StatusServerConfig{Enabled: n.Bool("enabled", true), RemoteInstances: []RemoteStatusInstanceConfig{}}
 	s.Listen, _ = n.String("listen", schema.StrOpt{Trim: true, Default: &defListen})
@@ -268,6 +280,7 @@ func parseStatusServer(n *schema.Node) StatusServerConfig {
 		s.RemoteInstances = append(s.RemoteInstances, r)
 	}
 	rs := n.Object("runtimeState", false)
+	rs.Strict("enabled", "includeRaw", "includeSecrets")
 	s.RuntimeState = RuntimeStateConfig{
 		Enabled:        rs.Bool("enabled", true),
 		IncludeRaw:     rs.Bool("includeRaw", false),
