@@ -109,6 +109,27 @@
 
 Поведение ссылок: политика allowInsecure (D15), неизвестные параметры (D28), новые профили (D26).
 
+### sfc: какие строки попадают в выходы
+
+Ключи конфига не менялись, но **содержимое выходов** `scd sfc` может стать больше (12 §6.2, D27 O7, D28, D18, D32).
+
+| Строка подписки | Было (TS-sfc) | Стало (Go) | Причина |
+|---|---|---|---|
+| параметры вне старого списка `type, path, security, alpn, encryption, fp, sni, flow, host, allowInsecure, headerType, pbk, sid` — xhttp `mode`/`extra`/`fm`, REALITY `spx`/`pqv`/`pcs`, `vcn`, `ech`, `cs`, `support-x25519mlkem768` и т.п. | строка **молча выбрасывалась** | строка попадает в выход без изменений | общий с scd белый список параметров `vless.AllowedParams` (D27 O7) |
+| неизвестный параметр (`foo=1`) | строка выбрасывалась | строка попадает в выход без изменений; лог `debug` `subscription_line_param_ignored` (`subscriptionId`, `line` — номер строки, `params`) | D28 |
+| id пользователя — не UUID v1–5 (`vless://my-user@…`, UUID v6+) | строка выбрасывалась | строка попадает в выход | общий парсер `vless.Parse` (D18) |
+| битая метка (`#100% fast`) | падала вся подписка (`URI malformed`), в т.ч. fallback из кэша | пропускается только эта строка | O11 |
+| не-`vless://` строки, нет адреса/порта, неразбираемый URI | выбрасывались молча | без изменений | — |
+
+sfc **не проверяет** применимость параметров к транспорту/шифрованию (это делает только scd при сборке outbound'ов): ссылки отдаются клиентам как есть. Строки `\r\n` и `\n` равнозначны; крайние пробелы контента обрезаются, как раньше.
+
+Пример — обезличенная фикстура `docker/fixtures/real-shapes/remnawave.txt` (4 xhttp/ML-KEM-ссылки Remnawave с `mode`/`extra`) с конфигом `docker/sfc/config.real-shape.go.yml`: выход `en-server` — **0 строк → 4** (было `Filtered output is empty.`, выход отдавал 502; стало 4 строки). На `provider2` выходы не меняются (50/0/0). Если клиенты владельца не поддерживают xhttp/ML-KEM, такие строки нужно отсечь фильтром меток (`labelExcludeRegex`) — sfc фильтрует только по метке.
+
+Прочее видимое в `scd sfc refresh`/`serve`:
+- `User-Agent` загрузки — `fetchUserAgent` или `scd/<версия>` (было `node`), см. таблицу «scd sfc».
+- Отчёт `refresh`: `outputs` сортируются побайтно по `id` (`strings.Compare`: `Z1` < `_a` < `a`; было ICU `localeCompare`: `_a` < `a` < `Z1`) (D23). Тексты ошибок загрузки — Go (`unable to download input from <url>: …`, `open <путь>: no such file or directory`) (D9).
+- Файлы кэша источника — прежние `<каталог конфига>/.sfc-cache/<encodeURIComponent(id)>.subscription`: volume `.sfc-cache` после миграции подхватывается как есть. Новые файлы создаются с правами `0600` (было `0666 & umask`).
+
 ## Запуск
 
 Одна команда `scd …`, один образ, `command:` в docker-compose для sfc/gtl (D10).
