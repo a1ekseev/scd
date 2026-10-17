@@ -34,7 +34,7 @@ elif ! grep -qE "github\.com/xtls/xray-core v1\.260327\.1-0\.20261010092107-${co
 fi
 
 image="ghcr.io/xtls/xray-core:${version}"
-if ! grep -qE "image:[[:space:]]*[\"']?${image//./\\.}[\"']?[[:space:]]*$" "$compose"; then
+if ! grep -qE "image:[[:space:]]*[\"']?${image//./\\.}[\"']?[[:space:]]*(#.*)?$" "$compose"; then
   found="$(grep -oE 'ghcr\.io/xtls/xray-core:[^[:space:]"'\'']+' "$compose" || true)"
   printf 'check-xray-version: docker-compose.yml must use image %s, found: %s\n' "$image" "${found:-<none>}" >&2
   status=1
