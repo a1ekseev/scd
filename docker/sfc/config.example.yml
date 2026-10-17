@@ -1,0 +1,51 @@
+# ВРЕМЕННЫЙ ТЕСТОВЫЙ КОНФИГ sfc (temporary test config, no real secrets).
+# Будет заменён реальным конфигом владельца. Скопируйте в docker/sfc/config.yml
+# (файл в .gitignore), который монтирует docker-compose.yml в /app/config/config.yml.
+#
+# Источник — локальная фикстура с фейковыми VLESS-ссылками в base64
+# (plain-вариант: ../fixtures/subscription.txt). Путь относительный:
+#   локально:   docker/sfc/../fixtures/subscription.b64
+#   в Docker:   /app/config/../fixtures/subscription.b64 = /app/fixtures/subscription.b64
+# Поэтому docker-compose должен монтировать фикстуры для сервиса sfc:
+#   - ./docker/fixtures:/app/fixtures:ro
+#
+# Выходы (compose публикует 8080 как 127.0.0.1:9091):
+#   http://127.0.0.1:9091/s/test-de    — Германия
+#   http://127.0.0.1:9091/s/test-nl    — Нидерланды
+#   http://127.0.0.1:9091/s/test-all   — все записи
+
+subscriptions:
+  - id: test-fixture
+    input: ../fixtures/subscription.b64
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    pathRoute: /s
+    outputs:
+      - id: test-de
+        enabled: true
+        name: germany
+        labelIncludeRegex: '/Германия/i'
+        userAgent:
+          - Clash
+          - Stash
+        profileTitle: Test Germany
+        profileUpdateInterval: 6
+      - id: test-nl
+        enabled: true
+        name: netherlands
+        labelIncludeRegex: '/Нидерланды/i'
+      - id: test-all
+        enabled: true
+        name: all
+        labelIncludeRegex: '/.*/'
+
+runtime:
+  refreshSchedule: "*/10 * * * *"
+
+server:
+  listen: 0.0.0.0:8080
+
+logging:
+  level: info
+  format: pretty

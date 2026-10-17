@@ -20,6 +20,7 @@ services:
       - "127.0.0.1:9090:8080"
     volumes:
       - ./docker/scd/config.yml:/app/config/config.yml:ro
+      - ./docker/fixtures:/app/fixtures:ro
   sfc:
     build:
       context: ./sfc
@@ -29,6 +30,7 @@ services:
       - "127.0.0.1:9091:8080"
     volumes:
       - ./docker/sfc/config.yml:/app/config/config.yml:ro
+      - ./docker/fixtures:/app/fixtures:ro
       - ./docker/sfc/.sfc-cache:/app/config/.sfc-cache
 
   gtl:
