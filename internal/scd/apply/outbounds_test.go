@@ -417,3 +417,24 @@ func TestReportJSONKeyNames(t *testing.T) {
 		}
 	}
 }
+
+// Deferred 5.3: the rollback runs under context.WithoutCancel, so a
+// cancellation that arrives with the failure still restores Xray (D2).
+func TestOutboundsRollbackSurvivesCancel(t *testing.T) {
+	srv, c := xrayfake.Start(t, xrayfake.WithStaticOutbounds("direct", "foreign"))
+	seed(t, srv, c, entry("a", "198.51.100.1"))
+	original := snapshot(srv)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	entries := []outbound.Outbound{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
+	api := &failOnAdd{OutboundAPI: c, srv: srv, tag: "b", after: cancel}
+	r, err := apply.Outbounds(ctx, api, []string{"direct"}, entries, meta())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Failed != 1 {
+		t.Fatalf("failed = %d", r.Failed)
+	}
+	assertState(t, srv, original)
+}

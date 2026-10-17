@@ -15,10 +15,12 @@ const modulePrefix = "github.com/a1ekseev/scd/internal/"
 var services = []string{"scd", "sfc", "gtl"}
 
 // importsOf returns every import path of every .go file under dir (relative
-// to internal/), keyed by file path.
+// to internal/), keyed by file path. It fails when dir holds no .go file, so
+// a moved or renamed service cannot make the checks pass vacuously.
 func importsOf(t *testing.T, dir string) map[string][]string {
 	t.Helper()
 	result := map[string][]string{}
+	files := 0
 	err := filepath.WalkDir(filepath.Join("..", dir), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -26,6 +28,7 @@ func importsOf(t *testing.T, dir string) map[string][]string {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+		files++
 		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
@@ -41,6 +44,9 @@ func importsOf(t *testing.T, dir string) map[string][]string {
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", dir, err)
+	}
+	if files == 0 {
+		t.Fatalf("no .go files under internal/%s", dir)
 	}
 	return result
 }

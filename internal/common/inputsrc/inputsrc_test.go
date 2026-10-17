@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -321,5 +322,45 @@ func TestLoadBodyTooLarge(t *testing.T) {
 	_, err := Load(context.Background(), srv.URL, Options{})
 	if err == nil || !strings.Contains(err.Error(), "input from "+srv.URL+" exceeds") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// Deferred 1.6: a same-host redirect from https to http drops fetchHeaders
+// (the secret would travel in clear text).
+func TestLoadRedirectDowngradeStripsHeaders(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+r.Host+"/final", http.StatusFound)
+	}))
+	defer srv.Close()
+	client := srv.Client()
+	base := client.Transport
+	var (
+		seen bool
+		got  string
+	)
+	// Plain-http requests are answered here: the TLS server's port cannot
+	// speak http, and the test only needs the headers of that request.
+	client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Scheme != "http" {
+			return base.RoundTrip(r)
+		}
+		seen, got = true, r.Header.Get("X-Hwid")
+		return &http.Response{
+			StatusCode: http.StatusOK, Header: http.Header{}, Request: r,
+			Body: io.NopCloser(strings.NewReader("vless://a")),
+		}, nil
+	})
+	if _, err := Load(context.Background(), srv.URL+"/sub", Options{Headers: Headers{"x-hwid": "secret"}, HTTPClient: client}); err != nil {
+		t.Fatal(err)
+	}
+	if !seen {
+		t.Fatal("the http redirect target was not requested")
+	}
+	if got != "" {
+		t.Fatalf("header sent over the downgraded redirect: %q", got)
 	}
 }
