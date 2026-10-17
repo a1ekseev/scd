@@ -90,7 +90,7 @@ type Loaded struct {
 
 // Load reads and validates the config at path. ${NAME} references in string
 // values are replaced after YAML parsing (an undefined variable becomes "").
-// Unknown keys are ignored. All validation problems are reported together.
+// Unknown keys are rejected. All validation problems are reported together.
 func Load(path string) (Loaded, error) {
 	doc, err := configload.Load(path, configload.EnvStringsLenient, os.LookupEnv)
 	if err != nil {
@@ -100,6 +100,7 @@ func Load(path string) (Loaded, error) {
 	var cfg Config
 	var issues schema.Issues
 	root := schema.Root(doc.Root, &issues)
+	root.Strict("subscriptions", "runtime", "server", "logging")
 	required := schema.StrOpt{Required: true, Trim: true, MinLen: 1}
 
 	ids := ids{subs: map[string]bool{}, outputs: map[string]bool{}}
@@ -112,6 +113,7 @@ func Load(path string) (Loaded, error) {
 	checkEnabled(root, cfg.Subscriptions)
 
 	runtime := root.Object("runtime", true)
+	runtime.Strict("refreshSchedule")
 	if expr, ok := runtime.String("refreshSchedule", schema.StrOpt{Required: true, Trim: true}); ok {
 		if _, err := cron.Parse(expr); err != nil {
 			runtime.Addf("refreshSchedule", "%v", err)
@@ -120,6 +122,7 @@ func Load(path string) (Loaded, error) {
 	}
 
 	server := root.Object("server", true)
+	server.Strict("listen")
 	if listen, ok := server.String("listen", required); ok {
 		if _, _, err := listenaddr.Parse(listen); err != nil {
 			server.Addf("listen", "%v", err)
@@ -129,6 +132,7 @@ func Load(path string) (Loaded, error) {
 
 	cfg.Logging.Level, cfg.Logging.Format = "info", "json"
 	if logging := root.Object("logging", false); logging != nil {
+		logging.Strict("level", "format")
 		cfg.Logging.Level = logging.Enum("level", []string{"fatal", "error", "warn", "info", "debug", "trace", "silent"}, "info")
 		cfg.Logging.Format = logging.Enum("format", []string{"json", "pretty"}, "json")
 	}
@@ -146,6 +150,7 @@ type ids struct {
 }
 
 func parseSubscription(n *schema.Node, dir string, seen *ids) Subscription {
+	n.Strict("id", "input", "enabled", "format", "fetchTimeoutMs", "fetchUserAgent", "fetchHeaders", "pathRoute", "outputs")
 	required := schema.StrOpt{Required: true, Trim: true, MinLen: 1}
 	var s Subscription
 	if id, ok := n.String("id", required); ok {
@@ -194,6 +199,7 @@ func checkPathRoute(n *schema.Node, route string) {
 }
 
 func parseOutput(n *schema.Node, seen *ids) Output {
+	n.Strict("id", "enabled", "name", labelfilter.IncludeKey, labelfilter.ExcludeKey, "userAgent", "profileTitle", "profileUpdateInterval")
 	var o Output
 	if id, ok := n.String("id", schema.StrOpt{Required: true, Trim: true, MinLen: 1}); ok {
 		if seen.outputs[id] {

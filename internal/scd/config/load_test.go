@@ -452,12 +452,33 @@ func TestAllCrossFieldIssuesReported(t *testing.T) {
 		"resources.inbounds.enabled: requires resources.outbounds.enabled")
 }
 
-func TestUnknownKeysPolicy(t *testing.T) {
-	// strip objects: root, filters, runtime, logging, resources, statusServer.
-	mustLoad(t, base+"extra: 1\nstatusServer: {foo: 1, runtimeState: {bar: 2}}\n")
-	mustFail(t, withSub(t, "    foo: 1\n"), `subscriptions.0: unknown key "foo"`)
-	mustFail(t, base+"statusServer: {remoteInstances: [{id: a, apiUrl: 'http://a.example.com', schedule: '@hourly', x: 1}]}\n",
-		`statusServer.remoteInstances.0: unknown key "x"`)
+// Final review M6: every config object rejects unknown keys (like gtl).
+func TestUnknownKeysRejectedEverywhere(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"root", base + "extra: 1\n", `<root>: unknown key "extra"`},
+		{"subscription", withSub(t, "    foo: 1\n"), `subscriptions.0: unknown key "foo"`},
+		{"filters", withSub(t, "    filters: {countryAllowlist: [DE], bogus: 1}\n"), `subscriptions.0.filters: unknown key "bogus"`},
+		{"target", withTarget(t, "      bogus: 1\n"), `subscriptions.0.target: unknown key "bogus"`},
+		{"inboundSocks", withTarget(t, "      inboundSocks: {listen: 0.0.0.0, portRange: {start: 1, end: 2}, bogus: 1}\n"), `subscriptions.0.target.inboundSocks: unknown key "bogus"`},
+		{"portRange", withTarget(t, "      inboundSocks: {listen: 0.0.0.0, portRange: {start: 1, end: 2, bogus: 1}}\n"), `subscriptions.0.target.inboundSocks.portRange: unknown key "bogus"`},
+		{"monitor", withTarget(t, "      monitor: {bogus: 1}\n"), `subscriptions.0.target.monitor: unknown key "bogus"`},
+		{"monitor.retry", withTarget(t, "      monitor: {retry: {bogus: 1}}\n"), `subscriptions.0.target.monitor.retry: unknown key "bogus"`},
+		{"monitor.request", withTarget(t, "      monitor: {request: {url: 'https://a.example.com', expectedStatus: 204, bogus: 1}}\n"), `subscriptions.0.target.monitor.request: unknown key "bogus"`},
+		{"balancerMonitor.socks5", withTarget(t, "      balancerMonitor: {socks5: {host: h, port: 1, bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.socks5: unknown key "bogus"`},
+		{"balancerMonitor.request", withTarget(t, "      balancerMonitor: {request: {url: 'https://a.example.com', expectedStatus: 204, bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.request: unknown key "bogus"`},
+		{"remotePing", withTarget(t, "      balancerMonitor: {remotePing: {bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.remotePing: unknown key "bogus"`},
+		{"balancerSelection", withTarget(t, "      balancerSelection: {bogus: 1}\n"), `subscriptions.0.target.balancerSelection: unknown key "bogus"`},
+		{"runtime", replace(t, "runtime: {}", "runtime: {bogus: 1}"), `runtime: unknown key "bogus"`},
+		{"logging", replace(t, "logging: {}", "logging: {bogus: 1}"), `logging: unknown key "bogus"`},
+		{"resources", replace(t, "resources: {}", "resources: {bogus: 1}"), `resources: unknown key "bogus"`},
+		{"resources.outbounds", replace(t, "resources: {}", "resources: {outbounds: {enabled: true, bogus: 1}}"), `resources.outbounds: unknown key "bogus"`},
+		{"statusServer", base + "statusServer: {enable: true}\n", `statusServer: unknown key "enable"`},
+		{"runtimeState", base + "statusServer: {runtimeState: {bogus: 1}}\n", `statusServer.runtimeState: unknown key "bogus"`},
+		{"remoteInstances", base + "statusServer: {remoteInstances: [{id: a, apiUrl: 'http://a.example.com', schedule: '@hourly', x: 1}]}\n", `statusServer.remoteInstances.0: unknown key "x"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) { mustFail(t, c.body, c.want) })
+	}
 }
 
 func TestIntTypes(t *testing.T) {

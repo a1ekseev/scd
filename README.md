@@ -193,8 +193,8 @@ statusServer:
 
 Values can reference environment variables with `${NAME}`. Only values are
 expanded, not keys or comments, and an undefined variable is an error. Unknown
-keys in a subscription, `target`, `monitor`, `balancerMonitor`,
-`balancerSelection`, `retry`, `remotePing` and `remoteInstances[]` are errors.
+keys are errors in every object, so a typo such as `statusServer: {enable: true}`
+is reported instead of silently ignored.
 Validation errors list every problem with its field path, for example:
 `subscriptions.0.target.inboundSocks.listen: must be an IP address or "localhost" (Xray cannot listen on a domain)`.
 
@@ -467,7 +467,8 @@ logging: {level: info, format: json}
 - `pathRoute` is required. It starts with `/`, is not `/`, and does not end
   with `/`. Output `id`s are unique across all subscriptions. Each output
   needs `labelIncludeRegex` or `labelExcludeRegex`. At least one enabled
-  subscription with an enabled output is required. Unknown keys are ignored.
+  subscription with an enabled output is required. Unknown keys are rejected
+  in every object, as in scd and gtl.
 - Lines are parsed with the same VLESS parser and parameter list as scd. Lines
   are kept in original order and raw form, with no applicability checks. Only
   the label filters select lines.
