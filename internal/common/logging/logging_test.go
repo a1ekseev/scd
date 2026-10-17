@@ -143,6 +143,7 @@ func TestPrettyRendersCompositeValuesAsJSON(t *testing.T) {
 		"at", time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC),
 		"took", 1500*time.Millisecond,
 		"raw", []byte("hi"),
+		"html", []string{"<redacted>", "a&b"},
 	)
 	s := buf.String()
 	for _, want := range []string{
@@ -155,6 +156,7 @@ func TestPrettyRendersCompositeValuesAsJSON(t *testing.T) {
 		`at=2026-10-17T12:00:00.000Z`,
 		`took=1.5s`,
 		`raw="hi"`,
+		`html="[\"<redacted>\",\"a&b\"]"`, // final review M5: no HTML escaping
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("pretty output lacks %s:\n%s", want, s)
