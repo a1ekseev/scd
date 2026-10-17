@@ -19,8 +19,8 @@
 | 0. Эталоны с TS (до удаления TS) + корпус матрицы D26 + корпус меток D29 | [`stage-0-references.md`](stage-0-references.md) | 6 | — |
 | 1. Каркас и `internal/common` | [`stage-1-skeleton.md`](stage-1-skeleton.md) | 7 | 0 (1.3 — корпус меток 0.6; 1.4 читает cron-эталоны 0.2; 1.7 — `ts-parse.json` 0.2 и корпус D26 0.5) |
 | 2. gtl | [`stage-2-gtl.md`](stage-2-gtl.md) | 3 | 1 |
-| 3. sfc | [`stage-3-sfc.md`](stage-3-sfc.md) | 4 | 1, 0.3 (`real-shapes.json`), 0.6 |
-| 4. scd: домен (конфиг, разбор, нормализация, билдер, манифест, топология) | [`stage-4-scd-domain.md`](stage-4-scd-domain.md) | 8 | 1, 0.2 (`real-shapes-*`), 0.5, 0.6 |
+| 3. sfc | [`stage-3-sfc.md`](stage-3-sfc.md) | 4 | 1, 0.3 (`real-shapes.json`) |
+| 4. scd: домен (конфиг, разбор, нормализация, билдер, манифест, топология) | [`stage-4-scd-domain.md`](stage-4-scd-domain.md) | 8 | 1, 0.2 (`real-shapes-*`), 0.5 |
 | 5. scd: Xray API (клиент, fake, apply, live-тесты) | [`stage-5-scd-xray-api.md`](stage-5-scd-xray-api.md) | 7 | 4 |
 | 6. scd: runtime (sync, мониторинг, status server, дашборд, balancer selection, daemon) | [`stage-6-scd-runtime.md`](stage-6-scd-runtime.md) | 7 | 5 |
 | 7. Переключение: Docker, compose, CI, README/AGENTS.md, удаление TS | [`stage-7-cutover.md`](stage-7-cutover.md) | 3 | 2, 3, 6 |
@@ -31,7 +31,7 @@
 
 ```
 Stage 0 (0.1 → 0.2, 0.3, 0.4, 0.5, 0.6)
-   │     (0.6 нужен до 1.3/3.1/4.1; 0.2/0.3 real-shapes — до 3.2/4.7)
+   │     (0.6 нужен до 1.3; 0.2/0.3 real-shapes — до 3.2/4.7)
 Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
    │
    ├──► Stage 2 gtl: 2.1 → 2.2 → 2.3 ─────────────────────────────┐
@@ -105,6 +105,7 @@ internal/scd/
   xrayapi/ (+ xrayapi/xrayfake/) resources/ apply/
   state/ syncer/ socks/ monitor/ balancer/ status/ daemon/ cli/ livetest/
 testdata/reference/             эталоны этапа 0 (Go-тесты читают их по относительному пути)
+testdata/golden/                Go-эталоны (6.6: карточка balancer selection; генерируются тестом с `-update`)
 tools/golden/                   Node-скрипты этапа 0 (удаляются в задаче 7.3)
 ```
 
@@ -151,7 +152,7 @@ EOF
 
 | Этап | Готово, когда |
 |---|---|
-| 0 | `testdata/reference/` содержит все артефакты из stage-0 (индекс `testdata/reference/README.md`), TS-тесты всех трёх сервисов зелёные на момент снятия, скрипты в `tools/golden/` воспроизводят эталоны одной командой; корпус D26 (`d26-links.txt` + `d26-expect.json`) покрывает каждую строку матрицы 11 §3, каждый параметр 11 §4 + `cs`/`heartbeatPeriod` (D33) и строки `RS1`/`RS2` из фикстур real-shapes; эталоны real-shapes TS (0.2, 0.3) и корпус меток с 54 реальными метками (0.6) сняты |
+| 0 | `testdata/reference/` содержит все артефакты из stage-0 (индекс `testdata/reference/README.md`), TS-тесты всех трёх сервисов зелёные на момент снятия, скрипты в `tools/golden/` воспроизводят эталоны двумя командами (контейнер: `run-all.mjs`, включая `label-filter.mjs`; хост: `screenshots.mjs`); корпус D26 (`d26-links.txt` + `d26-expect.json`) покрывает каждую строку матрицы 11 §3, каждый параметр 11 §4 + `cs`/`heartbeatPeriod` (D33) и строки `RS1`/`RS2` из фикстур real-shapes; эталоны real-shapes TS (0.2, 0.3) и корпус меток с 54 реальными метками (0.6) сняты |
 | 1 | `bin/scd --help`, `bin/scd sfc --help`, `bin/scd gtl --help` работают; все `internal/common/*` покрыты тестами; CI-джоба `go` (параллельно Node-джобам) зелёная: vet, golangci-lint, govulncheck, `go test -race` |
 | 2 | `bin/scd gtl validate-config --config docker/gtl/config.example.yml` ок; golden SHA-256 из 05 §4.5 совпадают; тесты 05 §10 перенесены |
 | 3 | `bin/scd sfc validate-config/print-config/refresh --config docker/sfc/config.example.yml` ок; выход refresh совпадает с эталоном 0.3; тесты 04 §11 перенесены |
@@ -228,7 +229,7 @@ EOF
 | D27 | O7 общий белый список scd/sfc; O9 `fetchUserAgent` (default `scd/<version>`); O10 stderr + `json|pretty`, `--version` только у `scd`; прочие O — по умолчанию | 1.1 (`buildinfo`), 1.5, 1.6, 1.7, 2.3, 3.1, 3.2, 4.1, 4.7, 7.3 |
 | D28 | Неизвестные параметры → `param_ignored` (`debug`), неприменимые — молча (O16); cron — `robfig/cron/v3` как есть; O15/O17 приняты | 0.2 (`cron-rejected.json`), 0.5, 1.4, 1.7 (`Link.Ignored`), 3.1, 3.2, 4.1, 4.3 (п.9, п.11), 6.1 (уровни логов), 7.3; поправка 11 §4 |
 | D29 | Фильтры меток include/exclude-списками (RE2, без lookahead) | 0.6, 1.3 (`labelfilter`), 3.1, 4.1, 4.7 |
-| D30 | Боевые конфиги `config.real-shape.yml` — эталон формы | 2.1 (gtl), 3.1, 4.1, 6.3, 7.1, 7.3 |
+| D30 | Боевые конфиги `config.real-shape.yml` — эталон формы | 2.1 (gtl), 3.1, 4.1, 6.3, 7.3 |
 | D31 | Обратная совместимость конфигов не требуется | 2.x, 3.1, 4.1, 7.3 |
 | D32 | `docs/CONFIG-MIGRATION.md` дописывается в коммите каждой задачи, меняющей схему/поведение | 1.1 (скелет), 1.2 (listen, regex), 1.4 (Cron), 1.5 (Логи), 2.1 (gtl + `config.real-shape.go.yml`), 3.1, 3.2, 4.1, 4.3 (Подписки), 5.2, 6.6, 7.1 (Запуск), 7.3 (`TestConfigMigrationDocCoversKeys`; TS-ключи — `config-keys.json` из 0.2/0.3) |
 | D33 | Итоги реальных подписок: теги без изменений; xhttp `path` (и прочие path, xhttp `host`) скрываются при `includeSecrets: false`; `fetchHeaders` в scd/sfc (значения — секрет); `cs`, ws `heartbeatPeriod`; метки не интерпретируются; 14 правок 12 §9 | `fetchHeaders`: 1.3 (`StringMap`), 1.6 (`inputsrc.Headers`), 3.1, 3.2, 4.1, 4.7, 6.1, 6.4, 7.3; редактирование: 5.2, 6.4; `cs`/`heartbeatPeriod`: 0.5, 1.7, 4.4, 4.5, 4.6 (`Covered` 22), 5.6; real-shapes: 0.2, 0.3, 0.5, 0.6, 1.7, 3.2, 4.2–4.7, 5.6 (таблица «Поправки D33» ниже) |
@@ -239,12 +240,13 @@ EOF
 
 | Инвентарь | ID | Задача |
 |---|---|---|
-| 01 §17.1 parser | P1, P2, P7, P8, P9, P10, P19, P20 | 4.7 |
+| 01 §17.1 parser | P1, P2, P7, P8, P9, P19, P20 | 4.7 |
+| | P10 | 4.7, изм. (D28: `foo=bar` ⇒ entry с одним warning `param_ignored`, `summary.unsupportedParam==0`) |
 | | P3, P5 | 4.7 (фильтры) |
 | | P4 | 4.7, изм. (lookahead в RE2 недоступен; пример переписан на `/,\s*Extra\s*$/i`, D8) |
 | | P6 | 4.2 |
 | | P11, P12 (изм.: без проверки «нет заголовков», D9), P13–P18 | 1.6 |
-| | P21, P22 | 4.6, изм. (проверка proto через `GetInstance`, а не подстрок raw-байт) |
+| | P21, P22 | 4.6, изм. (порт: `TestBuildJSONWsTLS`/`Reality` + `proto_golden_test`; проверка proto через `GetInstance`, а не подстрок raw-байт) |
 | | P23, P24 | 5.3 |
 | | P25 | 4.7 (generate) |
 | 01 §17.2 topology | T1, T2, T3 | 4.8 |
@@ -306,7 +308,7 @@ EOF
 
 1. **SIGTERM посреди apply.** Ожидание: текущая последовательность RPC apply/repair/rejoin доводится до конца (контекст мутаций — `context.WithoutCancel` + собственный таймаут), новые тики не стартуют, процесс выходит. Тест — задача 6.7 (`TestDaemonShutdownWaitsForInFlightApply`).
 2. **Xray недоступен при старте daemon.** Ожидание: sync-отчёт с failed по каждому kind, status server отвечает, следующий тик повторяет apply. Тест — 6.7 (`TestDaemonStartsWhenXrayDown`).
-3. **Подписка с CRLF/BOM/пустыми строками/хвостовыми пробелами.** Ожидание: те же entries и теги, что у чистого текста (кроме строк, у которых меняется `raw`). Тест — 1.6 (`TestLoadFileWithBOM`), 4.6 (`TestBuildManifestCRLFEqualsLF`).
+3. **Подписка с CRLF/BOM/пустыми строками/хвостовыми пробелами.** Ожидание: те же entries и теги, что у чистого текста (кроме строк, у которых меняется `raw`). Тест — 1.6 (`TestLoadFileWithBOM`), 4.7 (`TestBuildManifestCRLFEqualsLF`).
 4. **Переполнение `portRange` у одного target.** Ожидание (D23): только этот target failed с понятным текстом, остальные применены. Тест — 6.1 (`TestSyncPortRangeOverflowFailsOnlyThatTarget`).
 5. **Враждебные строки в remote snapshot / label** (`<script>`, кавычки, очень длинный label). Ожидание: дашборд экранирует (html/template), JSON passthrough без изменений, ничего не падает (panic → 500, D23). Тест — 6.5 (`TestDashboardEscapesHostileStrings`), 6.4 (`TestRemoteSnapshotPassthroughKeepsUnknownFields`).
 6. **Ссылка, которую `infra/conf` принимает, а живой Xray отвергает на `AddOutbound`** (добавлено ревью: ML-KEM-ключ правильной длины, но не валидный ключ — `conf.Build()` OK, `AddOutbound` → `proxy/vless/outbound: failed to use encryption > mlkem: invalid polynomial encoding`, проверено на 26.10.10). Ожидание: строка пропускается на этапе нормализации (`unsupported_value` «Invalid VLESS encryption key.», D25), а не валит outbound-apply всего target'а с rollback. Тест — 4.3 (`TestMLKEMInvalidKeySkipped`), 5.6 (`TestLiveEveryParamReachesXray` — все принятые entries добавляются без ошибок; `TestLiveRejectsInvalidMLKEMKeyLikeNormalize`).
@@ -318,7 +320,7 @@ EOF
 ## Поправки D29/D30 (2026-10-17)
 - Новая задача 0.6 (корпус меток); поправки в 1.3 (если есть regexlit), 3.1, 4.1, 4.7, 6.3 — блоки «Поправка D29/D30» в начале задач.
 - Боевые конфиги `docker/{scd,sfc}/config.real-shape.yml` (TS-форма) и создаваемые в 3.1/4.1 `config.real-shape.go.yml` (Go-форма) — обязательные фикстуры.
-- Трассировка: D29 → 0.6, 3.1, 4.1, 4.7; D30 → 3.1, 4.1, 6.3, 7.1 (smoke compose с Go-формой).
+- Трассировка: D29 → 0.6, 3.1, 4.1, 4.7; D30 → 3.1, 4.1, 6.3, 7.3 (`validate-config` на Go-формах).
 - D31: обратная совместимость с конфигами TS не требуется — схемы можно менять идиоматично; задачи 3.1/4.1/2.x (конфиги) и 7.3 (README: раздел «Миграция конфигов» со списком изменений схемы). Тесты «старая форма → подсказка» не нужны.
 
 ## Поправка D32: инструкция по переводу конфигов
@@ -333,7 +335,7 @@ EOF
 | п.1 | корпус D26: `RS1` (remnawave), `RS2` (provider2), проверка `grep -c` фикстур 4/50 | 0.5 |
 | п.2 | эталоны TS `real-shapes-provider2.{manifest,log}.json`, `real-shapes-remnawave.error.txt` | 0.2 |
 | п.3 | эталон TS-sfc `testdata/reference/sfc/real-shapes.json` (B 50/0/0, A 0/0/0) | 0.3 |
-| п.4 | корпус меток: 54 реальные + граничные, `Extra\nWhiteList` → `allowedDiffs` | 0.6, 4.1 (`TestLabelFilterRealShapeEquivalence`) |
+| п.4 | корпус меток: 54 реальные + граничные, `Extra\nWhiteList` → `allowedDiffs` | 0.6, 1.3 (`TestLabelFilterRealShapeEquivalence`) |
 | п.5 | `TestParseRealShapes` | 1.7 |
 | п.6 | `TestBuildTagRealShapes` | 4.2 |
 | п.7 | `TestNormalizeRealShapes`, `TestMLKEMNative0RTTRealShapeKey` | 4.5, 4.3 |

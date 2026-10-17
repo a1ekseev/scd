@@ -30,7 +30,7 @@
 **Interfaces:**
 - Consumes: `configload.Load(path, configload.EnvNone, nil)`, `schema.*`, `listenaddr.Parse`.
 - Produces: `type Config struct{ Server struct{ Listen string `json:"listen"` } `json:"server"`; Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`; Load struct{ Path string `json:"path"`; MaxSizeKb int64 `json:"maxSizeKb"` } `json:"load"` }` (порядок JSON: server, logging, load); `func Load(path string) (Config, error)`.
-- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`, `format` ∈ `json|pretty` (D27 O10), логгер — `logging.New(os.Stderr, …)`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..math.MaxInt64/1024` (граница Go-native: `sizeKb*1024` помещается в `int64`; TS-граница `floor(Number.MAX_SAFE_INTEGER/1024)` — JS-нюанс, не переносится, D9; ревью-2 F21).
+- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`, `format` ∈ `json|pretty` (D27 O10), логгер — `logging.New(w, …)`, где `w` — stderr процесса, передаётся извне (`RunServe` принимает `stderr io.Writer`, 2.3; D27 O10 не нарушается); `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..math.MaxInt64/1024` (граница Go-native: `sizeKb*1024` помещается в `int64`; TS-граница `floor(Number.MAX_SAFE_INTEGER/1024)` — JS-нюанс, не переносится, D9; ревью-2 F21).
 - CLI: `validate-config --config <path>` → stdout `Config is valid\n`; `print-config --config <path>` → `jsonout.Write(cfg)`; `--config` обязателен (`MarkFlagRequired`).
 
 - [ ] **Step 1: Failing tests** (`config_test.go`, переносы `05` §10 п.1–10):
@@ -82,7 +82,7 @@
 - Modify: `internal/gtl/cli/cli.go` (подключить `serve`)
 
 **Interfaces:**
-- Consumes: `config.Load`, `server.New`, `logging.New(os.Stderr, …)`, `httpserve.Listen/Run/Recover`.
+- Consumes: `config.Load`, `server.New`, `logging.New(stderr, …)` (команда передаёт `cmd.ErrOrStderr()`), `httpserve.Listen/Run/Recover`.
 - Produces: `func RunServe(ctx context.Context, cfgPath string, stderr io.Writer) error` (используется командой и тестом). Поведение: загрузить конфиг → логгер → `Listen` (ошибка bind → вернуть ошибку, лог не писать) → лог `gtl_server_started` (`listen`) → `httpserve.Run` до `ctx.Done()` → лог `gtl_server_stopping` (`signal` — имя сигнала, если известно, иначе `context canceled`) → после Shutdown лог `gtl_server_stopped`. Команда `serve` создаёт `ctx` через `signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)`.
 
 - [ ] **Step 1: Failing tests:**

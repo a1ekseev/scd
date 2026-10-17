@@ -81,6 +81,7 @@
 
 **Files:**
 - Create: `internal/scd/resources/inbound.go`, `routing.go`, `describe.go`, `resources_test.go`
+- Modify: `docs/CONFIG-MIGRATION.md` (runtime-state: `parsed.path`/xhttp `host` → `<redacted>`, см. Step 5)
 
 **Interfaces:**
 - Consumes: `topology.Tunnel`.
