@@ -41,6 +41,13 @@
 
 Команды `scd validate-config --config <файл>` (stdout `{"configPath": "<абсолютный путь>", "valid": true}` с отступом 2; **новое** — предупреждения пишутся в stderr строками `warning: <путь>: <текст>`, код выхода 0; сейчас единственное — `warning: subscriptions.N.target.balancerSelection: balancerSelection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector`) и `scd print-config --config <файл>` (нормализованный JSON; порядок ключей подписки `id, input, enabled, format, fetchTimeoutMs, allowInsecure, fetchUserAgent?, fetchHeaders?, filters?, target`; у `filters` — `countryAllowlist?, labelIncludeRegex?, labelExcludeRegex?`; у target — `address, timeoutMs, fixedOutbounds, fixedInbounds, fixedRouting, visionUdp443Override, inboundSocks?, monitor, balancerMonitor, balancerSelection, observatorySubjectSelectorPrefix?`) работают как раньше; `--config` обязателен.
 
+`scd sync --config <файл>` (JSON-отчёт в stdout, логи в stderr, код 1 при `failed > 0`) — тот же отчёт и те же события, с отличиями (D23, D28, D33):
+- `skipped` в отчёте и в `targets[]` — пропущенные строки манифеста **один раз** (было: повторялись по числу включённых `resources.*`);
+- нехватка портов в `inboundSocks.portRange` (`target "<адрес>" inboundSocks.portRange can allocate only N ports, but M tunnels were generated: …`) — failed-отчёт по каждому kind **только этого target**, остальные подписки применяются (было: падал весь sync с `sync_failed`, отчёт не печатался);
+- URL подписки в логах (`subscription_fetched.source`, `subscription_fetch_failed.source`/`error`) и в тексте ошибки загрузки в отчёте — `<scheme>://<host>/<redacted>` (было: полный URL с токеном);
+- `manifest_built.managedCount` — число управляемых ресурсов своего kind (было: `0` для inbound/routing);
+- новое событие `manifest_entry_warning` (`subscriptionId, targetAddress, tag, code, message`): `flow_cleared`, `allow_insecure_ignored` — `warn`, `param_ignored` — `debug`.
+
 ## scd sfc
 
 Таблица «было → стало»: ключ, причина, значение по умолчанию.
