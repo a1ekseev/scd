@@ -543,12 +543,6 @@ func TestNormalizedFields(t *testing.T) {
 	}
 }
 
-// d26Owner lists the corpus rows that stage scd skips in later tasks
-// (applyTransport 4.5); until then they are entries.
-var d26Owner = map[int]string{
-	63: "4.5 heartbeatPeriod", 90: "4.5 extra", 91: "4.5 extra", 92: "4.5 fm",
-}
-
 func TestD26Corpus(t *testing.T) {
 	data, err := os.ReadFile(corpusDir + "d26-expect.json")
 	if err != nil {
@@ -585,7 +579,6 @@ func TestD26Corpus(t *testing.T) {
 			continue
 		}
 		n, w, skip := Normalize(l, Policy{})
-		owner, deferred := d26Owner[r.Line]
 		switch {
 		case r.Expect == "entry" || r.Stage == "xray":
 			// xray-stage rows are rejected later by conf.Build/live Xray.
@@ -598,10 +591,6 @@ func TestD26Corpus(t *testing.T) {
 			}
 			if r.Expect == "entry" && !slices.Equal(warningCodes(w), r.Warnings) {
 				t.Errorf("line %d: warnings %v, want %v", r.Line, w, r.Warnings)
-			}
-		case deferred:
-			if skip != nil {
-				t.Errorf("line %d: stale deferral to %s, normalize already skips: %+v", r.Line, owner, *skip)
 			}
 		default:
 			if skip == nil {
