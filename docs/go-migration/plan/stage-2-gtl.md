@@ -8,7 +8,7 @@
 
 **Tech Stack:** stdlib, `internal/common/{configload,schema,listenaddr,logging,httpserve,jsonout}`.
 
-**Spec:** `05-gtl.md` (весь), `07` D7, D9, D10; README плана O10.
+**Spec:** `05-gtl.md` (весь), `07` D7, D9, D10, D27 (O10); README плана O10.
 
 ## Контекст этапа
 
@@ -28,7 +28,7 @@
 **Interfaces:**
 - Consumes: `configload.Load(path, configload.EnvNone, nil)`, `schema.*`, `listenaddr.Parse`.
 - Produces: `type Config struct{ Server struct{ Listen string `json:"listen"` } `json:"server"`; Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`; Load struct{ Path string `json:"path"`; MaxSizeKb int64 `json:"maxSizeKb"` } `json:"load"` }` (порядок JSON: server, logging, load); `func Load(path string) (Config, error)`.
-- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..8796093022207`.
+- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`, `format` ∈ `json|pretty` (D27 O10), логгер — `logging.New(os.Stderr, …)`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..8796093022207`.
 - CLI: `validate-config --config <path>` → stdout `Config is valid\n`; `print-config --config <path>` → `jsonout.Write(cfg)`; `--config` обязателен (`MarkFlagRequired`).
 
 - [ ] **Step 1: Failing tests** (`config_test.go`, переносы `05` §10 п.1–10):

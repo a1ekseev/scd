@@ -8,12 +8,15 @@
 
 **Tech Stack:** stdlib, `internal/common/*`.
 
-**Spec:** `04-sfc.md` (весь), `07` D7, D8, D9, D10, D23; README плана O7, O9, O11.
+**Spec:** `04-sfc.md` (весь), `07` D7, D8, D9, D10, D23, D24, D26, D27 (O7, O9, O10); README плана O11, O12, O13.
 
 ## Контекст этапа
 
 Принятые отличия от TS (зафиксировать тестами, перечислить в README в 7.3):
-- regex — RE2 (D8); пустой `refreshSchedule` и cron с `L/W/#/H` — ошибка конфига (D23);
+- regex — RE2 (D8); `refreshSchedule` — классический Linux cron (D24, `common/cron`): пустой, `L/W/#/H/?`, dow `7`, `@every`, никогда не срабатывающие — ошибка конфига;
+- строки подписки отбираются тем же `common/vless.Parse` с **общим** белым списком параметров (D27 O7, задача 1.7): ссылки с `spx`, `pqv`, `pcs`, `vcn`, `ech`, `fm`, `extra`, `support-x25519mlkem768` и т.п., которые TS-sfc выбрасывал как `unsupported_param`, теперь попадают в выход; неизвестные параметры — по-прежнему отбрасываются. sfc применяет только `Parse` (как TS: «тот же парсер, что в scd», 04 §1 п.2) — проверка scope транспорта/шифрования (`normalize`, `internal/scd`) в sfc не выполняется: sfc раздаёт ссылки клиентам, а не в Xray;
+- User-Agent загрузки — `subscriptions[].fetchUserAgent`, по умолчанию `scd/<version>` (D27 O9; в TS — `node`);
+- логи — stderr, `logging.format` `json|pretty` (D27 O10);
 - base64 — stdlib (невалидный base64 в формате `base64` → ошибка загрузки → fallback на кэш);
 - `#100%` в label → строка пропускается, подписка не падает (O11);
 - сортировка отчёта — `strings.Compare` по `id` (D23);
@@ -42,14 +45,14 @@
       Server  struct{ Listen string `json:"listen"` } `json:"server"`
       Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`
   }
-  type Subscription struct { ID, Input string; Enabled bool; Format string; FetchTimeoutMs int; PathRoute string; Outputs []Output }
-      // json: id, input, enabled, format, fetchTimeoutMs, pathRoute, outputs
+  type Subscription struct { ID, Input string; Enabled bool; Format string; FetchTimeoutMs int; FetchUserAgent string; PathRoute string; Outputs []Output }
+      // json: id, input, enabled, format, fetchTimeoutMs, fetchUserAgent (omitempty), pathRoute, outputs
   type Output struct { ID string `json:"id"`; Enabled bool `json:"enabled"`; Name string `json:"name,omitempty"`; LabelIncludeRegex string `json:"labelIncludeRegex"`; UserAgent []string `json:"userAgent,omitempty"`; ProfileTitle string `json:"profileTitle,omitempty"`; ProfileUpdateInterval int `json:"profileUpdateInterval,omitempty"` }
       // каждое поле — с явным json-именем (тег `json:",omitempty"` без имени дал бы ключ `Name`, и TestPrintConfigDockerExample упал бы)
   type Loaded struct { Path, Dir string; Config Config }
   func Load(path string) (Loaded, error)
   ```
-- Правила (04 §3.2): неизвестные ключи игнорируются (не strict); trim строк; `enabled` default true; `format` auto; `fetchTimeoutMs` 5000 (>0); `pathRoute` начинается с `/`, ≠ `/`, не оканчивается `/`; `outputs` ≥1; `labelIncludeRegex` обязателен и компилируется `regexlit`; `userAgent` элементы непустые, массив ≥1; `profileUpdateInterval` 1..24; app-level: хотя бы одна enabled подписка; хотя бы один enabled output в enabled подписках; уникальность subscription id и output id (глобально, включая disabled); `refreshSchedule` — `cron.Parse`; `server.listen` — `listenaddr.Parse`; `logging` default `{info, json}`. `input` резолвится от каталога конфига.
+- Правила (04 §3.2): неизвестные ключи игнорируются (не strict); trim строк; `enabled` default true; `format` auto; `fetchTimeoutMs` 5000 (>0); `fetchUserAgent` — необязательная непустая строка (trim); `pathRoute` начинается с `/`, ≠ `/`, не оканчивается `/`; `outputs` ≥1; `labelIncludeRegex` обязателен и компилируется `regexlit`; `userAgent` элементы непустые, массив ≥1; `profileUpdateInterval` 1..24; app-level: хотя бы одна enabled подписка; хотя бы один enabled output в enabled подписках; уникальность subscription id и output id (глобально, включая disabled); `refreshSchedule` — `cron.Parse`; `server.listen` — `listenaddr.Parse`; `logging` default `{info, json}`, `format` ∈ `json|pretty`. `input` резолвится от каталога конфига.
 - CLI: `validate-config` → `jsonout.Write({"configPath": abs, "valid": true})`; `print-config` → `jsonout.Write(cfg)`.
 
 - [ ] **Step 1: Failing tests** (`04` §11 п.13–16 + новые):
@@ -57,7 +60,8 @@
   - `TestPathRouteRules` (п.14: `/profiles` ок; отсутствие → `subscriptions.0.pathRoute: required`; `profiles/` → путь содержит `pathRoute`)
   - `TestUserAgentAndIntervalBounds` (п.15), `TestProfileFieldsPreserved` (п.16)
   - `TestEnvMissingBecomesEmpty`, `TestEnvInNumberFieldIsTypeError` (`fetchTimeoutMs: ${TM}` → `expected integer`)
-  - `TestRejectsLookaheadRegex` (D8), `TestRejectsEmptyRefreshSchedule` (D23)
+  - `TestRejectsLookaheadRegex` (D8), `TestRejectsEmptyRefreshSchedule` (D23), `TestRejectsNonLinuxCron` (`0 0 ? * *` → путь `runtime.refreshSchedule`, D24)
+  - `TestFetchUserAgentOptional` (отсутствует → нет ключа в print-config; `"  "` → issue `subscriptions.0.fetchUserAgent`), `TestLoggingFormatEnum` (`pretty` ок, `text` → issue)
   - `TestEmptyNameDropped` (`name: "  "` → отсутствует в print-config)
   - `cli_test.go`: `TestPrintConfigDockerExample` — семантически равно эталону (поле `input` сравнивать после замены абсолютного префикса репозитория).
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Verify** `go test -race ./internal/sfc/... && go build -o bin/scd ./cmd/scd && ./bin/scd sfc validate-config --config docker/sfc/config.example.yml`.
@@ -93,6 +97,8 @@
 - [ ] **Step 1: Failing tests (`cache`):** `TestPathEscapesID` (п.22), `TestWriteReadRoundTrip`, `TestWriteRenameFailureRemovesTemp` (п.23: на месте файла каталог → ошибка, в каталоге нет `*.tmp`).
 - [ ] **Step 2: Failing tests (`refresh`)** — `Input` подменяется функцией-фейком, `Now` — фиксированным временем:
   - `TestRefreshPlainRemote` (п.17), `TestRefreshBase64Auto` (п.18), `TestRefreshWritesCacheAndFallsBack` (п.19), `TestRefreshNoCacheFails` (п.20; лог `subscription_source_cache_missed` с `cachePath`, `cacheError` ~ `no such file`), `TestRefreshEmptyFilterKeepsLastGood` (п.21), `TestRefreshReplacesStateAtomically` (п.24), `TestRefreshMalformedLabelSkipsLineOnly` (O11).
+  - `TestRefreshUsesSharedParamWhitelist` (D27 O7): источник из трёх строк — REALITY-ссылка 3x-ui с `spx&pqv&support-x25519mlkem768=true`, xhttp-ссылка с `extra&fm`, ссылка с `foo=1` → в выходе ровно первые две.
+  - `TestRefreshPassesUserAgent`: фейковый `Input` видит `o.UserAgent` из `fetchUserAgent` (и `""` без ключа).
   - `TestRefreshDockerExampleMatchesReference`: конфиг `docker/sfc/config.example.yml` (реальный файл фикстуры) → `Report` (кроме `refreshedAt`) и `LastGoodBase64` каждого output равны `testdata/reference/sfc/*`.
   - `TestReportSortedByID` (`["Z1","_a","a","b"]` → порядок `strings.Compare`).
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `go test -race ./internal/sfc/...` → PASS.
