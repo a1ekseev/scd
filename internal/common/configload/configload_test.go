@@ -34,28 +34,65 @@ func rootMap(t *testing.T, d Doc) map[string]any {
 	return m
 }
 
-func TestLoadRawStrictInterpolatesBeforeYAML(t *testing.T) {
-	p := writeConfig(t, "a: ${X}\nb: x-${lower_1}-y\n")
+func TestLoadRawStrictInterpolatesValues(t *testing.T) {
+	p := writeConfig(t, "a: ${X}\nb: x-${lower_1}-y\nc: \"${X}\"\nl:\n  - ${X}\nf: [\"${X}\"]\n")
 	d, err := Load(p, EnvRawStrict, env(map[string]string{"X": "true", "lower_1": "v"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := rootMap(t, d)
 	if m["a"] != true {
-		t.Fatalf("a = %#v, want bool true", m["a"])
+		t.Fatalf("a = %#v, want bool true (plain scalar re-resolved)", m["a"])
 	}
 	if m["b"] != "x-v-y" {
 		t.Fatalf("b = %#v", m["b"])
+	}
+	if m["c"] != "true" {
+		t.Fatalf("c = %#v, want string (quoted scalar)", m["c"])
+	}
+	if l, ok := m["l"].([]any); !ok || len(l) != 1 || l[0] != true {
+		t.Fatalf("l = %#v", m["l"])
+	}
+	// In flow collections ${...} must be quoted (YAML: "{" is an indicator).
+	if f, ok := m["f"].([]any); !ok || len(f) != 1 || f[0] != "true" {
+		t.Fatalf("f = %#v", m["f"])
 	}
 	if d.Path != p || d.Dir != filepath.Dir(p) {
 		t.Fatalf("Path/Dir = %q/%q", d.Path, d.Dir)
 	}
 
-	t.Run("comment", func(t *testing.T) {
-		p := writeConfig(t, "a: 1 # ${NOPE}\nb: ${ALSO_MISSING}\n")
+	t.Run("comments are not expanded", func(t *testing.T) {
+		p := writeConfig(t, "a: 1 # ${NOPE}\n# ${NOPE2}\n")
+		if _, err := Load(p, EnvRawStrict, env(nil)); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("missing value variable", func(t *testing.T) {
+		p := writeConfig(t, "a: 1 # ${NOPE}\nb: ${ALSO_MISSING}\nc: ${THIRD}\n")
 		_, err := Load(p, EnvRawStrict, env(nil))
-		if err == nil || err.Error() != `missing environment variable "NOPE" required by config` {
+		if err == nil || err.Error() != `missing environment variable "ALSO_MISSING" required by config` {
 			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("keys are not expanded", func(t *testing.T) {
+		p := writeConfig(t, "${K}: 1\n")
+		d, err := Load(p, EnvRawStrict, env(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rootMap(t, d)["${K}"]; got != 1 {
+			t.Fatalf("root = %#v", d.Root)
+		}
+	})
+	t.Run("value cannot change structure", func(t *testing.T) {
+		p := writeConfig(t, "a: ${V}\nb: 2\n")
+		d, err := Load(p, EnvRawStrict, env(map[string]string{"V": "x: y\nb: 3\n"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := rootMap(t, d)
+		if m["a"] != "x: y\nb: 3\n" || m["b"] != 2 || len(m) != 2 {
+			t.Fatalf("root = %#v", m)
 		}
 	})
 	t.Run("empty value allowed", func(t *testing.T) {

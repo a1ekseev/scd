@@ -23,7 +23,7 @@ var (
 )
 
 // Load reads and validates the scd config at path. ${NAME} references are
-// expanded in the raw text before YAML parsing (comments included); an
+// expanded in values (not in keys or comments) before they are typed; an
 // undefined variable is an error. Relative inputs are resolved against the
 // config directory. All validation problems are reported together; warnings
 // are problems that do not make the config invalid.

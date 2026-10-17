@@ -15,12 +15,13 @@ const noPrefixWarning = "balancerSelection is enabled without observatorySubject
 func checkRules(root *schema.Node, cfg *AppConfig, subNodes []*schema.Node) []string {
 	checkSubscriptions(root, cfg.Subscriptions)
 
-	if cfg.Runtime.Mode == "daemon" {
-		if cfg.Runtime.Schedule == "" {
-			root.Addf("runtime.schedule", `required when runtime.mode is "daemon"`)
-		} else {
-			checkCron(root, "runtime.schedule", cfg.Runtime.Schedule)
-		}
+	// A configured schedule is validated even when unused, so a typo is
+	// caught before the feature is turned on.
+	switch {
+	case cfg.Runtime.Schedule != "":
+		checkCron(root, "runtime.schedule", cfg.Runtime.Schedule)
+	case cfg.Runtime.Mode == "daemon":
+		root.Addf("runtime.schedule", `required when runtime.mode is "daemon"`)
 	}
 
 	res := cfg.Resources
@@ -80,8 +81,9 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 		n.Addf("target.inboundSocks.portRange.end", "must be greater than or equal to start")
 	}
 
-	if m := t.Monitor; m.Enabled {
-		requireSchedule(n, "target.monitor", m.Schedule)
+	m := t.Monitor
+	checkSchedule(n, "target.monitor", m.Schedule, m.Enabled)
+	if m.Enabled {
 		if m.Request == nil {
 			n.Addf("target.monitor.request", "required when monitor.enabled is true")
 		}
@@ -95,8 +97,8 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 	}
 
 	bm := t.BalancerMonitor
+	checkSchedule(n, "target.balancerMonitor", bm.Schedule, bm.Enabled)
 	if bm.Enabled {
-		requireSchedule(n, "target.balancerMonitor", bm.Schedule)
 		if bm.Socks5 == nil {
 			n.Addf("target.balancerMonitor.socks5", "required when balancerMonitor.enabled is true")
 		}
@@ -109,11 +111,12 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 	}
 
 	var warnings []string
-	if bs := t.BalancerSelection; bs.Enabled {
+	bs := t.BalancerSelection
+	checkSchedule(n, "target.balancerSelection", bs.Schedule, bs.Enabled)
+	if bs.Enabled {
 		if bs.BalancerTag == "" {
 			n.Addf("target.balancerSelection.balancerTag", "required when balancerSelection.enabled is true")
 		}
-		requireSchedule(n, "target.balancerSelection", bs.Schedule)
 		if t.ObservatorySubjectSelectorPrefix == "" {
 			warnings = append(warnings, n.Path()+".target.balancerSelection: "+noPrefixWarning)
 		}
@@ -121,14 +124,15 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 	return warnings
 }
 
-// requireSchedule reports a missing or invalid <obj>.schedule of an enabled
-// object (obj is the key path relative to n, e.g. "target.monitor").
-func requireSchedule(n *schema.Node, obj, expr string) {
-	if expr == "" {
+// checkSchedule validates <obj>.schedule (obj is the key path relative to n,
+// e.g. "target.monitor"): a configured expression must parse whether or not
+// the object is enabled; an enabled object requires one.
+func checkSchedule(n *schema.Node, obj, expr string, enabled bool) {
+	if expr != "" {
+		checkCron(n, obj+".schedule", expr)
+	} else if enabled {
 		n.Addf(obj+".schedule", "required when %s.enabled is true", obj[len("target."):])
-		return
 	}
-	checkCron(n, obj+".schedule", expr)
 }
 
 func checkCron(n *schema.Node, key, expr string) {
