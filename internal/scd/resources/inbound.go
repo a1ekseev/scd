@@ -41,7 +41,7 @@ func Inbound(t topology.Tunnel) (*core.InboundHandlerConfig, error) {
 		Settings: socksSettings{Auth: "noauth", UDP: true},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("xray rejected inbound %s: %w", t.InboundTag, err)
+		return nil, fmt.Errorf("inbound %s: %w", t.InboundTag, err)
 	}
 	var dc conf.InboundDetourConfig
 	if err := json.Unmarshal(raw, &dc); err != nil {

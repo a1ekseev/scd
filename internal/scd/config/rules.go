@@ -1,6 +1,8 @@
 package config
 
 import (
+	"net"
+
 	"github.com/a1ekseev/scd/internal/common/cron"
 	"github.com/a1ekseev/scd/internal/common/listenaddr"
 	"github.com/a1ekseev/scd/internal/common/schema"
@@ -79,6 +81,11 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 	}
 	if s := t.InboundSocks; s != nil && s.PortRange.Start > 0 && s.PortRange.End > 0 && s.PortRange.End < s.PortRange.Start {
 		n.Addf("target.inboundSocks.portRange.end", "must be greater than or equal to start")
+	}
+	if s := t.InboundSocks; s != nil && s.Listen != "" && s.Listen != "localhost" && net.ParseIP(s.Listen) == nil {
+		// Xray listens on an IP or "localhost" only; any other domain fails
+		// on AddInbound (02 §1.5).
+		n.Addf("target.inboundSocks.listen", `must be an IP address or "localhost" (Xray cannot listen on a domain)`)
 	}
 
 	m := t.Monitor

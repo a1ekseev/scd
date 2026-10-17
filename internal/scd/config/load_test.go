@@ -294,6 +294,16 @@ func TestInboundSocksPortRange(t *testing.T) {
 		"subscriptions.0.target.inboundSocks.portRange.end: must be at most 65535")
 }
 
+func TestInboundSocksListen(t *testing.T) {
+	for _, listen := range []string{"127.0.0.1", "0.0.0.0", "'::'", "'::1'", "localhost"} {
+		mustLoad(t, withTarget(t, "      inboundSocks: {listen: "+listen+", portRange: {start: 20000, end: 20099}}\n"))
+	}
+	for _, listen := range []string{"socks.example.test", "LOCALHOST", "'[::1]'", "127.0.0.1:1080"} {
+		mustFail(t, withTarget(t, "      inboundSocks: {listen: "+listen+", portRange: {start: 20000, end: 20099}}\n"),
+			`subscriptions.0.target.inboundSocks.listen: must be an IP address or "localhost" (Xray cannot listen on a domain)`)
+	}
+}
+
 func TestStatusServerRules(t *testing.T) {
 	mustFail(t, base+"statusServer: {listen: ''}\n", "statusServer.listen: required when statusServer.enabled is true")
 	mustFail(t, base+"statusServer: {listen: 'localhost'}\n", "statusServer.listen: ")
