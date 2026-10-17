@@ -1,0 +1,22 @@
+# TS baseline: build + test in node:24-alpine (npm ci, npm run build, npm test)
+# captured 2026-10-17
+node --version: v24.22.0
+
+== scd
+ℹ tests 115
+ℹ pass 115
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+== sfc
+ℹ tests 24
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+== gtl
+ℹ tests 20
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
