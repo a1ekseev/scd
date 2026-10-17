@@ -138,6 +138,7 @@ statusServer:
 `scd print-config --config <файл> [--include-secrets]` — нормализованный JSON. **Новое (D33):** по умолчанию секреты скрыты — http(s)-`input` подписки и `target.monitor.request.url`, `target.balancerMonitor.request.url`, `target.balancerMonitor.remotePing.url` печатаются как `<scheme>://<host>/<redacted>`, значения `fetchHeaders` — `<redacted>` (было: `input` и URL — полностью, с токенами). `--include-secrets` печатает всё как есть. Порядок ключей подписки `id, input, enabled, format, fetchTimeoutMs, allowInsecure, fetchUserAgent?, fetchHeaders?, filters?, target`; у `filters` — `countryAllowlist?, labelIncludeRegex?, labelExcludeRegex?`; у `target` — `address, timeoutMs, fixedOutbounds, fixedInbounds, fixedRouting, visionUdp443Override, inboundSocks?, monitor, balancerMonitor, balancerSelection, observatorySubjectSelectorPrefix?`.
 
 `scd sync --config <файл>` (JSON-отчёт в stdout, логи в stderr, код 1 при `failed > 0`) — тот же отчёт и те же события, с отличиями (D23, D28, D33):
+- **новое (D7):** SIGINT/SIGTERM не убивают процесс: начатый apply target'а доводится до конца, следующие подписки/target'ы не трогаются, в stderr — warn `sync_canceled` (`phase`, `signal`), в stdout — частичный отчёт (без пропущенных target'ов), код выхода **130** (SIGINT) / **143** (SIGTERM) — как у процесса, убитого сигналом (было: процесс убивался сигналом, отчёт не печатался); код важнее `failed > 0`;
 - `skipped` в отчёте и в `targets[]` — пропущенные строки манифеста **один раз** (было: повторялись по числу включённых `resources.*`);
 - нехватка портов в `inboundSocks.portRange` (`target "<адрес>" inboundSocks.portRange can allocate only N ports, but M tunnels were generated: …`) — failed по каждому kind **только этого target**, остальные применяются (было: падал весь sync с `sync_failed`, отчёт не печатался);
 - URL подписки в логах (`subscription_fetched.source`, `subscription_fetch_failed.source`/`error`) и в тексте ошибки загрузки в отчёте — `<scheme>://<host>/<redacted>` (было: полный URL с токеном);
@@ -186,7 +187,7 @@ statusServer:
 
 ### scd sfc: команды
 
-`scd sfc validate-config --config <файл>` (`{"configPath": "<абсолютный путь>", "valid": true}`), `scd sfc print-config [--include-secrets]` (JSON после `${NAME}`, умолчаний и резолва `input`; http(s)-`input` — `<scheme>://<host>/<redacted>` и значения `fetchHeaders` — `<redacted>`, если нет `--include-secrets` (было: `input` полностью); порядок `subscriptions`, `runtime`, `server`, `logging`; у подписки `id, input, enabled, format, fetchTimeoutMs, fetchUserAgent?, fetchHeaders?, pathRoute, outputs`; у выхода `id, enabled, name?, labelIncludeRegex?, labelExcludeRegex?, userAgent?, profileTitle?, profileUpdateInterval?`), `scd sfc refresh`, `scd sfc serve`. Отличия `refresh`/`serve` — «[sfc: какие строки попадают в выходы](#sfc-какие-строки-попадают-в-выходы)».
+`scd sfc validate-config --config <файл>` (`{"configPath": "<абсолютный путь>", "valid": true}`), `scd sfc print-config [--include-secrets]` (JSON после `${NAME}`, умолчаний и резолва `input`; http(s)-`input` — `<scheme>://<host>/<redacted>` и значения `fetchHeaders` — `<redacted>`, если нет `--include-secrets` (было: `input` полностью); порядок `subscriptions`, `runtime`, `server`, `logging`; у подписки `id, input, enabled, format, fetchTimeoutMs, fetchUserAgent?, fetchHeaders?, pathRoute, outputs`; у выхода `id, enabled, name?, labelIncludeRegex?, labelExcludeRegex?, userAgent?, profileTitle?, profileUpdateInterval?`), `scd sfc refresh` (**новое:** SIGINT/SIGTERM — частичный отчёт, warn `subscription_refresh_canceled` с `phase` и `signal`, код **130**/**143**; прерванная загрузка подписки не считается ошибкой и не меняет её выходы), `scd sfc serve`. Отличия `refresh`/`serve` — «[sfc: какие строки попадают в выходы](#sfc-какие-строки-попадают-в-выходы)».
 
 URL подписки в логах `refresh`/`serve` (`subscription_refreshed.source`, `error` у `subscription_source_cache_used`/`subscription_source_cache_missed`/`subscription_refresh_failed`) и в `outputs[].error` отчёта `refresh` — `<scheme>://<host>/<redacted>` (было: полный URL с токеном), как у scd (D33).
 
@@ -470,8 +471,9 @@ sfc **не проверяет** применимость параметров к
 | `balancer_selection_tick_failed` | `error` | scd daemon | «Balancer selection tick failed.» |
 | `daemon_stopping` | `info` | scd daemon | «Daemon stopping.», `signal`: `SIGINT`/`SIGTERM` |
 | `http_handler_panic` | `error` | scd, sfc, gtl | паника в HTTP-обработчике (ответ 500) |
-| `sync_canceled` | `debug` | scd sync, daemon | sync прерван сигналом: оставшиеся target'ы не применяются, `remainingTargets` |
-| `subscription_refresh_canceled` | `info` | sfc | загрузка подписки прервана сигналом; состояние выходов не меняется: `subscriptionId` |
+| `sync_canceled` | `warn` | `scd sync` | один раз за запуск, прерванный SIGINT/SIGTERM: `phase` — `load` (во время загрузки подписок, ни один target не синхронизирован) или `targets` (между target'ами, оставшиеся пропущены; начатый apply доведён до конца), `signal`. В `scd daemon` не логируется (остановка — `daemon_stopping`) |
+| `subscription_refresh_canceled` | `warn` | `scd sfc refresh` | один раз за запуск, прерванный SIGINT/SIGTERM: `phase` — `load` (прервана загрузка подписки, её выходы не меняются) или `subscriptions` (перед следующей подпиской), `signal` |
+| `refresh_tick_canceled` | `debug` | `scd sfc serve` | тик обновления прерван остановкой сервиса: `phase` |
 | `subscription_line_param_ignored` | `debug` | sfc | неизвестные параметры строки: `subscriptionId`, `line` (номер), `params` |
 
 У событий `balancer_selection_*` и `balancer_observatory_unavailable` — `subscriptionId`, `targetAddress`, `balancerTag`.

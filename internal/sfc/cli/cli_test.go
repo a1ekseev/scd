@@ -241,7 +241,7 @@ server:
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, out, errs := run("refresh", "--config", p)
+	code, out, errs := run("refresh", "--config", p)
 	var rep struct {
 		Outputs []struct {
 			ID string `json:"id"`
@@ -253,7 +253,18 @@ server:
 	if len(rep.Outputs) != 0 || loadedB.Load() {
 		t.Errorf("outputs = %+v, b loaded %v; want none", rep.Outputs, loadedB.Load())
 	}
-	if !strings.Contains(errs, "subscription_refresh_canceled") {
-		t.Errorf("stderr lacks subscription_refresh_canceled:\n%s", errs)
+	// Re-review R1: an interrupted run exits 143 with one warn event.
+	if code != 143 {
+		t.Errorf("exit code = %d, want 143", code)
+	}
+	var events []map[string]any
+	for line := range strings.Lines(errs) {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["event"] == "subscription_refresh_canceled" {
+			events = append(events, m)
+		}
+	}
+	if len(events) != 1 || events[0]["level"] != "WARN" || events[0]["phase"] != "load" || events[0]["signal"] != "SIGTERM" {
+		t.Errorf("subscription_refresh_canceled events = %v\n%s", events, errs)
 	}
 }
