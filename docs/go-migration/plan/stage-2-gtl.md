@@ -24,11 +24,13 @@
 **Files:**
 - Create: `internal/gtl/config/config.go`, `config_test.go`
 - Modify: `internal/gtl/cli/cli.go` (+ `cli_test.go`)
+- Create: `docker/gtl/config.real-shape.go.yml` (Go-форма `docker/gtl/config.real-shape.yml`, D30/D32; ключи gtl не меняются — файл совпадает по содержанию, меняется только комментарий-шапка)
+- Modify: `docs/CONFIG-MIGRATION.md` — раздел `scd gtl` (D32; ревью-2 F05): таблица «было → стало» (ключи без изменений; `server.listen`: `:8080` теперь допустим, IPv6 — только в скобках (1.2); логи теперь в **stderr** (TS-gtl писал pino в stdout), `logging.format: pretty` — `slog.TextHandler`; у `scd gtl` нет `--version` (TS: `gtl --version` → `1.0.2`), D27 O10; запуск `scd gtl serve` вместо `node dist/cli.js serve`), «разобранный пример» `config.real-shape.yml` → `config.real-shape.go.yml`
 
 **Interfaces:**
 - Consumes: `configload.Load(path, configload.EnvNone, nil)`, `schema.*`, `listenaddr.Parse`.
 - Produces: `type Config struct{ Server struct{ Listen string `json:"listen"` } `json:"server"`; Logging struct{ Level string `json:"level"`; Format string `json:"format"` } `json:"logging"`; Load struct{ Path string `json:"path"`; MaxSizeKb int64 `json:"maxSizeKb"` } `json:"load"` }` (порядок JSON: server, logging, load); `func Load(path string) (Config, error)`.
-- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`, `format` ∈ `json|pretty` (D27 O10), логгер — `logging.New(os.Stderr, …)`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..8796093022207`.
+- Правила: все объекты strict; `server.listen` обязателен, `listenaddr.Parse`; `logging` по умолчанию `{info, json}`, `format` ∈ `json|pretty` (D27 O10), логгер — `logging.New(os.Stderr, …)`; `load.path` обязателен, проверки накапливаются: `must start with /`, `must not equal /`, `must not end with /`, `must not contain query or hash`; `load.maxSizeKb` default 10240, `1..math.MaxInt64/1024` (граница Go-native: `sizeKb*1024` помещается в `int64`; TS-граница `floor(Number.MAX_SAFE_INTEGER/1024)` — JS-нюанс, не переносится, D9; ревью-2 F21).
 - CLI: `validate-config --config <path>` → stdout `Config is valid\n`; `print-config --config <path>` → `jsonout.Write(cfg)`; `--config` обязателен (`MarkFlagRequired`).
 
 - [ ] **Step 1: Failing tests** (`config_test.go`, переносы `05` §10 п.1–10):
@@ -39,11 +41,12 @@
   - `TestLoadPathRules` (таблица `/`, `load`, `/load/`, `/load?x=1`, `/load#x` → путь `load.path`; `lo?ad/` → 3 сообщения)
   - `TestLoadUnknownKey` (`server.foo` → `unknown key "foo"`)
   - `TestLoadNoEnvInterpolation` (`path: /${X}` остаётся буквально)
+  - `TestGTLRealShapeGoFormValid` (D30): `Load("docker/gtl/config.real-shape.go.yml")` без ошибок (`listen` на частном IP без подстановок).
   - `cli_test.go`: `TestPrintConfigMatchesReference` — вывод для `docker/gtl/config.example.yml` семантически равен `testdata/reference/gtl/print-config-docker-example.json`; `TestValidateConfigOutput` → `Config is valid\n`; `TestMissingConfigFlag` → код 1.
 - [ ] **Step 2: Run** `go test ./internal/gtl/...` → FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Verify** `go test -race ./internal/gtl/... && go build -o bin/scd ./cmd/scd && ./bin/scd gtl validate-config --config docker/gtl/config.example.yml && ./bin/scd gtl print-config --config docker/gtl/config.example.yml`.
-- [ ] **Step 5: Commit** `feat(gtl): port gtl config and validate/print commands` (body: D9, D10).
+- [ ] **Step 4: Verify** `go test -race ./internal/gtl/... && go build -o bin/scd ./cmd/scd && ./bin/scd gtl validate-config --config docker/gtl/config.example.yml && ./bin/scd gtl print-config --config docker/gtl/config.example.yml && ./bin/scd gtl validate-config --config docker/gtl/config.real-shape.go.yml`.
+- [ ] **Step 5: Commit** `feat(gtl): port gtl config and validate/print commands` (body: D9, D10, D30, D32) — вместе с разделом `scd gtl` в `docs/CONFIG-MIGRATION.md` и `docker/gtl/config.real-shape.go.yml` (D32: в том же коммите).
 
 ---
 
@@ -57,14 +60,14 @@
 
 **Interfaces:**
 - Produces (`payload`): `const ChunkSize = 65536`; `func Fill(b []byte, offset uint64)` — алгоритм `05` §4.5 дословно (seed `uint32(0x9e3779b9) ^ uint32(offset)`, шаги 13/17/5, байт после шага); `func Write(w io.Writer, total uint64) error` — один буфер `min(ChunkSize, max(total,1))`, `Fill(buf[:n], off)` для каждого чанка, при ошибке `Write` — вернуть её (без зависаний).
-- Produces (`server`): `func New(cfg config.Config) http.Handler`. Путь: из `r.URL.EscapedPath()` с удалением dot-сегментов (`path.Clean`, сохранив отсутствие декодирования `%xx`); порядок: метод ≠ GET → 405 `method not allowed\n`; `/healthz` → 200 `ok`; нет префикса `load.path+"/"` → 404 `not found\n`; хвост не `^[0-9]+$` → 400 `invalid load route, expected <load.path>/:sizeKb\n`; число > maxSizeKb (длинные — по длине после срезания ведущих нулей > 16) → 400 `sizeKb must be an integer from 0 to <max>\n`; иначе 200 с заголовками `content-type: application/octet-stream`, `content-length`, `x-gtl-status-code: 200`, `x-gtl-requested-size-kb: <нормализованное число>`, `x-gtl-requested-size-bytes`, `x-gtl-actual-size-bytes`. Текстовые ответы — `text/plain; charset=utf-8` + `content-length`.
+- Produces (`server`): `func New(cfg config.Config) http.Handler`. Путь: `httpserve.CleanPath(r.URL.EscapedPath())` (1.5: удаление dot-сегментов без декодирования `%xx` **с сохранением хвостового `/`**; голый `path.Clean` нельзя — он превращает `/load/` в `/load` (TS: 400 → Go: 404) и `/load/1/` в `/load/1` (TS: 400 → Go: 200), оба кейса есть в `routes.json`; проверено ревью-2, F01); порядок: метод ≠ GET → 405 `method not allowed\n`; `/healthz` → 200 `ok`; нет префикса `load.path+"/"` → 404 `not found\n`; хвост не `^[0-9]+$` → 400 `invalid load route, expected <load.path>/:sizeKb\n`; `strconv.ParseUint(tail, 10, 64)` с ошибкой диапазона или результат > maxSizeKb → 400 `sizeKb must be an integer from 0 to <max>\n` (без JS-эвристик длины/`MAX_SAFE_INTEGER`, D9; ревью-2 F21); иначе 200 с заголовками `content-type: application/octet-stream`, `content-length`, `x-gtl-status-code: 200`, `x-gtl-requested-size-kb: <нормализованное число>`, `x-gtl-requested-size-bytes`, `x-gtl-actual-size-bytes`. Текстовые ответы — `text/plain; charset=utf-8` + `content-length`.
 
 - [ ] **Step 1: Failing tests (`payload`):**
   - `TestFillVectors`: `fill8` из `payload-vectors.json` (offset 0 → `193e3ab51f37d0bf`, 65536 → `190f1a4032fb31ec`, 2^32 → как 0, 2^32+65536 → как 65536).
   - `TestWriteSHA256Vectors`: для каждого `sizeBytes` из эталона sha256 и first16hex совпадают (включая 10485760).
   - `TestWriteDiffersByOffset` (`05` §10 п.20), `TestWriteNotASCIIa` (п.19: 98311 байт, первые 8 ≠ `aaaaaaaa`, >128 различных среди первых 256).
   - `TestWriteStopsOnWriterError` (writer, падающий на втором чанке → ошибка, без паники).
-- [ ] **Step 2: Failing tests (`server`, `httptest`):** каждая запись `routes.json` → тот же статус, тело (для 200 — длина и sha256), заголовки `x-gtl-*`/`content-type`/`content-length`; плюс `05` §10 п.11–18: `/download/32` при `load.path: /download` → 200; `/load/32` при `/download` → 404; `/a/../load/1` → 200; `/load/%33` → 400; HEAD `/healthz` → 405.
+- [ ] **Step 2: Failing tests (`server`, `httptest`):** каждая запись `routes.json` → тот же статус, тело (для 200 — длина и sha256), заголовки `x-gtl-*`/`content-type`/`content-length`; плюс `05` §10 п.11–18: `/download/32` при `load.path: /download` → 200; `/load/32` при `/download` → 404; `/a/../load/1` → 200; `/load/%33` → 400; `/load/` → 400 и `/load/1/` → 400 (хвостовой `/`, F01); HEAD `/healthz` → 405.
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `go test -race ./internal/gtl/...` → PASS.
 - [ ] **Step 6: Commit** `feat(gtl): port deterministic payload generator and HTTP handler`.
 

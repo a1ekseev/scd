@@ -74,7 +74,7 @@ Stage 1: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6 → 1.7
 - Сборка бинаря **всегда** `go build -o bin/scd ./cmd/scd` (пока в корне есть каталог `scd/`, `go build ./cmd/scd` без `-o` падает: `go: build output "scd" already exists and is a directory` — проверено). `/bin/` добавляется в `.gitignore` в задаче 1.1. Каталоги `scd/`, `sfc/`, `gtl/` (включая `node_modules`) Go-инструментам не мешают: `go list ./...`, `go vet ./...`, `go test ./...`, `golangci-lint run` их игнорируют (нет `.go`-файлов) — проверено.
 - Локальный Go 1.24.7: toolchain 1.27.2 скачивается автоматически (`GOTOOLCHAIN=auto`, через прокси). **Любой `go run|go install <tool>@<ver>` локально запускать с `GOTOOLCHAIN=go1.27.2`**: иначе `auto` берёт toolchain по `go`-строке самого инструмента (govulncheck → go1.26) и анализ падает на `package requires newer Go version go1.27 (application built with go1.26)` (проверено). golangci-lint: `GOTOOLCHAIN=go1.27.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0` (или релизный бинарь v2.15.0 — он собран go1.27.0 и работает с этим модулем; проверено). govulncheck локально недоступен (прокси песочницы отдаёт 403 на `vuln.go.dev`) — только в CI.
 - Docker **доступен** (`docker info`, buildx v0.37, compose v5.6; Docker Hub и `gcr.io/distroless/*` тянутся). **Блокируется** скачивание слоёв `ghcr.io` (манифесты читаются, блобы — нет), поэтому `ghcr.io/xtls/xray-core:26.10.10` локально подменяется образом из релизного архива (команды — «Локальный образ Xray» ниже). Docker-шаги этапа 7 (сборка образа, compose-smoke) можно и нужно прогонять локально; CI их повторяет.
-- `**/config.yml` игнорируется git; трекаются только `docker/{scd,sfc,gtl}/config.example.yml`, `docker/fixtures/*`, `docker/README.md`. Локальные `docker/*/config.yml` скрипты плана **не перезаписывают** (там будут реальные конфиги владельца, D12).
+- `**/config.yml` игнорируется git; в `docker/` трекаются `docker/{scd,sfc,gtl}/config.example.yml`, `docker/{scd,sfc,gtl}/config.real-shape.yml` (+ создаваемые `config.real-shape.go.yml`, D30/D32), `docker/fixtures/**` (вкл. `real-shapes/`), `docker/xray/config/*.json`, `docker/README.md` (`git ls-files docker`). Локальные `docker/*/config.yml` скрипты плана **не перезаписывают** (там будут реальные конфиги владельца, D12).
 
 **Локальный образ Xray 26.10.10** (вместо недоступного ghcr; релизный ассет проверен: `Xray 26.10.10 … 701af60 (go1.27.2 linux/amd64)`, sha256 совпадает с `.dgst`):
 ```bash
@@ -96,7 +96,7 @@ cmd/scd/main.go                  точка входа: os.Exit(internal/cli.Exe
 internal/cli/                    корневая cobra-команда, версия, монтирование scd/sfc/gtl
 internal/archtest/               тест запрета импортов между сервисами
 internal/common/
-  buildinfo/ jsonout/ listenaddr/ regexlit/ configload/ schema/ cron/ cronloop/ logging/
+  buildinfo/ cliutil/ jsonout/ listenaddr/ regexlit/ configload/ schema/ labelfilter/ cron/ cronloop/ logging/
   inputsrc/ subscription/ vless/ httpserve/
 internal/gtl/      config/ payload/ server/ cli/
 internal/sfc/      config/ refresh/ cache/ server/ cli/
@@ -228,9 +228,9 @@ EOF
 | D27 | O7 общий белый список scd/sfc; O9 `fetchUserAgent` (default `scd/<version>`); O10 stderr + `json|pretty`, `--version` только у `scd`; прочие O — по умолчанию | 1.1 (`buildinfo`), 1.5, 1.6, 1.7, 2.3, 3.1, 3.2, 4.1, 4.7, 7.3 |
 | D28 | Неизвестные параметры → `param_ignored` (`debug`), неприменимые — молча (O16); cron — `robfig/cron/v3` как есть; O15/O17 приняты | 0.2 (`cron-rejected.json`), 0.5, 1.4, 1.7 (`Link.Ignored`), 3.1, 3.2, 4.1, 4.3 (п.9, п.11), 6.1 (уровни логов), 7.3; поправка 11 §4 |
 | D29 | Фильтры меток include/exclude-списками (RE2, без lookahead) | 0.6, 1.3 (`labelfilter`), 3.1, 4.1, 4.7 |
-| D30 | Боевые конфиги `config.real-shape.yml` — эталон формы | 3.1, 4.1, 6.3, 7.1 |
+| D30 | Боевые конфиги `config.real-shape.yml` — эталон формы | 2.1 (gtl), 3.1, 4.1, 6.3, 7.1, 7.3 |
 | D31 | Обратная совместимость конфигов не требуется | 2.x, 3.1, 4.1, 7.3 |
-| D32 | `docs/CONFIG-MIGRATION.md` дописывается в коммите каждой задачи, меняющей схему/поведение | 1.1 (скелет), 3.1, 3.2, 4.1, 5.2, 6.6, 7.1, 7.3 (`TestConfigMigrationDocCoversKeys`) |
+| D32 | `docs/CONFIG-MIGRATION.md` дописывается в коммите каждой задачи, меняющей схему/поведение | 1.1 (скелет), 1.2 (listen, regex), 1.4 (Cron), 1.5 (Логи), 2.1 (gtl + `config.real-shape.go.yml`), 3.1, 3.2, 4.1, 4.3 (Подписки), 5.2, 6.6, 7.1 (Запуск), 7.3 (`TestConfigMigrationDocCoversKeys`; TS-ключи — `config-keys.json` из 0.2/0.3) |
 | D33 | Итоги реальных подписок: теги без изменений; xhttp `path` (и прочие path, xhttp `host`) скрываются при `includeSecrets: false`; `fetchHeaders` в scd/sfc (значения — секрет); `cs`, ws `heartbeatPeriod`; метки не интерпретируются; 14 правок 12 §9 | `fetchHeaders`: 1.3 (`StringMap`), 1.6 (`inputsrc.Headers`), 3.1, 3.2, 4.1, 4.7, 6.1, 6.4, 7.3; редактирование: 5.2, 6.4; `cs`/`heartbeatPeriod`: 0.5, 1.7, 4.4, 4.5, 4.6 (`Covered` 22), 5.6; real-shapes: 0.2, 0.3, 0.5, 0.6, 1.7, 3.2, 4.2–4.7, 5.6 (таблица «Поправки D33» ниже) |
 
 ## Трассировка инвентарей тестов
@@ -323,8 +323,8 @@ EOF
 
 ## Поправка D32: инструкция по переводу конфигов
 - Создать `docs/CONFIG-MIGRATION.md` (скелет — в задаче 1.1, разделы по D32).
-- **Правило для всех задач:** если задача меняет ключи конфига, значения по умолчанию или видимое через конфиг поведение (2.x gtl, 3.1 sfc, 4.1/4.3/4.7 scd, 1.4 cron, 1.5 logging, 6.6 balancerSelection, 7.1 запуск), она в том же коммите дописывает пункт в `docs/CONFIG-MIGRATION.md` (было → стало, причина, пример). Ревью задачи проверяет это.
-- 3.1 и 4.1 (и 2.x для gtl) создают `docker/<svc>/config.real-shape.go.yml` и раздел «разобранный пример» с пошаговым diff от `config.real-shape.yml`.
+- **Правило для всех задач:** если задача меняет ключи конфига, значения по умолчанию или видимое через конфиг поведение (1.2 listen/regex, 1.4 cron, 1.5 logging, 2.1 gtl, 3.1/3.2 sfc, 4.1/4.3 scd, 5.2 runtime-state, 6.6 balancerSelection, 7.1 запуск), она в том же коммите дописывает пункт в `docs/CONFIG-MIGRATION.md` (было → стало, причина, пример). Ревью задачи проверяет это. Ревью-2 (F05) вписало это требование в шаги каждой из перечисленных задач — раньше в stage-файлах 1.2/1.4/1.5/2.1/4.3/6.6/7.1 его не было.
+- 3.1, 4.1 и 2.1 (gtl) создают `docker/<svc>/config.real-shape.go.yml` и раздел «разобранный пример» с пошаговым diff от `config.real-shape.yml`.
 - 7.3: финальная вычитка, тест `TestConfigMigrationDocCoversKeys` (ключи Go-схем vs TS-схем из `testdata/reference` ⇒ все отличия упомянуты), проверка `validate-config` на всех Go-формах; ссылка на документ из README.
 
 ## Поправки D33: реальные подписки (`12-real-subscriptions.md` §9, приняты владельцем)
