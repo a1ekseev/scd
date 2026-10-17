@@ -1,0 +1,85 @@
+# Every key of the TS scd config schema (scd/src/types.ts, scd/src/config/load-config.ts).
+# Fake hosts only. Used to capture config-keys.json and as input of TestConfigMigrationDocCoversKeys.
+subscriptions:
+  - id: full
+    input: ./sub.txt
+    enabled: true
+    format: plain
+    fetchTimeoutMs: 7000
+    filters:
+      countryAllowlist: [DE, NL]
+      labelIncludeRegex: /Extra/i
+    target:
+      address: xray.example.test:8080
+      timeoutMs: 6000
+      fixedOutbounds: [direct, blocked]
+      fixedInbounds: [api, socks-proxy]
+      fixedRouting: [direct, x-balancer]
+      visionUdp443Override: true
+      inboundSocks:
+        listen: 0.0.0.0
+        portRange:
+          start: 20000
+          end: 20099
+      monitor:
+        enabled: true
+        schedule: "*/5 * * * *"
+        maxParallel: 4
+        retry:
+          attempts: 2
+          delayMs: 300
+        request:
+          url: https://probe.example.test/generate_204
+          method: HEAD
+          expectedStatus: 204
+          timeoutMs: 4000
+      balancerMonitor:
+        enabled: true
+        schedule: "*/10 * * * *"
+        socks5:
+          host: 127.0.0.1
+          port: 1080
+        request:
+          url: https://probe.example.test/health
+          method: GET
+          expectedStatus: 200
+          timeoutMs: 3000
+        retry:
+          attempts: 3
+          delayMs: 500
+        remotePing:
+          enabled: true
+          url: https://ping.example.test/ping
+          timeoutMs: 2500
+          viaSocks: true
+      observatorySubjectSelectorPrefix: x-observe-
+
+runtime:
+  mode: daemon
+  schedule: "*/15 * * * *"
+
+logging:
+  level: debug
+  format: pretty
+
+resources:
+  outbounds:
+    enabled: true
+  inbounds:
+    enabled: true
+  routing:
+    enabled: true
+
+statusServer:
+  enabled: true
+  listen: 127.0.0.1:9191
+  instanceId: full-test
+  remoteInstances:
+    - id: remote-1
+      apiUrl: https://remote.example.test/api/instance-status
+      schedule: "*/2 * * * *"
+      timeoutMs: 1500
+  runtimeState:
+    enabled: true
+    includeRaw: true
+    includeSecrets: false

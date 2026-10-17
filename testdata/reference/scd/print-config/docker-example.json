@@ -1,0 +1,88 @@
+{
+  "subscriptions": [
+    {
+      "id": "test-fixture",
+      "input": "docker/fixtures/subscription.txt",
+      "enabled": true,
+      "format": "auto",
+      "fetchTimeoutMs": 5000,
+      "target": {
+        "address": "xray:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [
+          "direct",
+          "blocked",
+          "api"
+        ],
+        "fixedInbounds": [
+          "socks-proxy",
+          "wg-proxy",
+          "api"
+        ],
+        "fixedRouting": [
+          "direct",
+          "x-balancer"
+        ],
+        "visionUdp443Override": false,
+        "inboundSocks": {
+          "listen": "0.0.0.0",
+          "portRange": {
+            "start": 20000,
+            "end": 20099
+          }
+        },
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancerMonitor": {
+          "enabled": false,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          },
+          "remotePing": {
+            "enabled": false,
+            "timeoutMs": 5000,
+            "viaSocks": false
+          }
+        },
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    }
+  ],
+  "runtime": {
+    "mode": "daemon",
+    "schedule": "*/5 * * * *"
+  },
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  },
+  "resources": {
+    "outbounds": {
+      "enabled": true
+    },
+    "inbounds": {
+      "enabled": true
+    },
+    "routing": {
+      "enabled": true
+    }
+  },
+  "statusServer": {
+    "enabled": true,
+    "listen": "0.0.0.0:8080",
+    "instanceId": "scd-test",
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  }
+}

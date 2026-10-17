@@ -1,0 +1,64 @@
+[
+  {
+    "expr": "* * * * * * *",
+    "tsParse": "error: Invalid cron expression, too many fields",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "0 0 L * *",
+    "tsParse": "ok",
+    "tsNext": "2026-08-31T00:00:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "0 0 * * 1#2",
+    "tsParse": "ok",
+    "tsNext": "2026-09-14T00:00:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "0 0 1W * *",
+    "tsParse": "error: Invalid characters, got value: 1W",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "H * * * *",
+    "tsParse": "ok",
+    "tsNext": "2026-08-15T10:48:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "* * * * 7",
+    "tsParse": "ok",
+    "tsNext": "2026-08-16T00:00:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "@minutely",
+    "tsParse": "ok",
+    "tsNext": "2026-08-15T10:01:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "@weekdays",
+    "tsParse": "ok",
+    "tsNext": "2026-08-17T00:00:00.000Z",
+    "why": "rejected by robfig/cron/v3 itself"
+  },
+  {
+    "expr": "",
+    "tsParse": "ok",
+    "tsNext": "2026-08-15T10:01:00.000Z",
+    "why": "scd guard: empty or never-firing expression"
+  },
+  {
+    "expr": "0 0 31 2 *",
+    "tsParse": "error: Invalid explicit day of month definition",
+    "why": "scd guard: empty or never-firing expression"
+  },
+  {
+    "expr": "0 0 30 2 *",
+    "tsParse": "error: Invalid explicit day of month definition",
+    "why": "scd guard: empty or never-firing expression"
+  }
+]

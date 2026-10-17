@@ -1,0 +1,3661 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-15T10:00:00.000Z",
+  "sourceFile": "<input>",
+  "entries": [
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-netherlands-tcp-tls-1c85d1b2",
+      "label": "🇳🇱 Netherlands, Amsterdam",
+      "profile": "tcp-tls",
+      "line": 1,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Netherlands",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-nl-netherlands-tcp-tls-1c85d1b2",
+        "line": 1,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@xdr8.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B3%F0%9F%87%B1%20Netherlands%2C%20Amsterdam",
+        "label": "🇳🇱 Netherlands, Amsterdam",
+        "address": "xdr8.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Netherlands",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-netherlands-tcp-tls-1c85d1b2",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "xdr8.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-gr-greece-tcp-tls-4e5ea51f",
+      "label": "🇬🇷 Greece, Athens",
+      "profile": "tcp-tls",
+      "line": 2,
+      "country": {
+        "emoji": "🇬🇷",
+        "iso2": "GR",
+        "nameEn": "Greece",
+        "nameRu": "Греция"
+      },
+      "city": "Greece",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-gr-greece-tcp-tls-4e5ea51f",
+        "line": 2,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@sst-tk-92.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AC%F0%9F%87%B7%20Greece%2C%20Athens",
+        "label": "🇬🇷 Greece, Athens",
+        "address": "sst-tk-92.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇬🇷",
+          "iso2": "GR",
+          "nameEn": "Greece",
+          "nameRu": "Греция"
+        },
+        "city": "Greece",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-gr-greece-tcp-tls-4e5ea51f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "sst-tk-92.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-co-colombia-tcp-tls-87d7b1f3",
+      "label": "🇨🇴 Colombia, Bogotá",
+      "profile": "tcp-tls",
+      "line": 3,
+      "country": {
+        "emoji": "🇨🇴",
+        "iso2": "CO",
+        "nameEn": "Colombia",
+        "nameRu": "Колумбия"
+      },
+      "city": "Colombia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-co-colombia-tcp-tls-87d7b1f3",
+        "line": 3,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@rsn-tu-12.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A8%F0%9F%87%B4%20Colombia%2C%20Bogot%C3%A1",
+        "label": "🇨🇴 Colombia, Bogotá",
+        "address": "rsn-tu-12.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇨🇴",
+          "iso2": "CO",
+          "nameEn": "Colombia",
+          "nameRu": "Колумбия"
+        },
+        "city": "Colombia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-co-colombia-tcp-tls-87d7b1f3",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "rsn-tu-12.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-be-belgium-tcp-tls-369f0e76",
+      "label": "🇧🇪 Belgium, Brussels",
+      "profile": "tcp-tls",
+      "line": 4,
+      "country": {
+        "emoji": "🇧🇪",
+        "iso2": "BE",
+        "nameEn": "Belgium",
+        "nameRu": "Бельгия"
+      },
+      "city": "Belgium",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-be-belgium-tcp-tls-369f0e76",
+        "line": 4,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@yff-ik-79.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A7%F0%9F%87%AA%20Belgium%2C%20Brussels",
+        "label": "🇧🇪 Belgium, Brussels",
+        "address": "yff-ik-79.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇧🇪",
+          "iso2": "BE",
+          "nameEn": "Belgium",
+          "nameRu": "Бельгия"
+        },
+        "city": "Belgium",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-be-belgium-tcp-tls-369f0e76",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "yff-ik-79.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ro-romania-tcp-tls-09337a55",
+      "label": "🇷🇴 Romania, Bucharest",
+      "profile": "tcp-tls",
+      "line": 5,
+      "country": {
+        "emoji": "🇷🇴",
+        "iso2": "RO",
+        "nameEn": "Romania",
+        "nameRu": "Румыния"
+      },
+      "city": "Romania",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ro-romania-tcp-tls-09337a55",
+        "line": 5,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@eya-kf-08.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B7%F0%9F%87%B4%20Romania%2C%20Bucharest",
+        "label": "🇷🇴 Romania, Bucharest",
+        "address": "eya-kf-08.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇷🇴",
+          "iso2": "RO",
+          "nameEn": "Romania",
+          "nameRu": "Румыния"
+        },
+        "city": "Romania",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ro-romania-tcp-tls-09337a55",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "eya-kf-08.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-fr-france-tcp-tls-b61ca74f",
+      "label": "🇫🇷 France, Paris",
+      "profile": "tcp-tls",
+      "line": 6,
+      "country": {
+        "emoji": "🇫🇷",
+        "iso2": "FR",
+        "nameEn": "France",
+        "nameRu": "Франция"
+      },
+      "city": "France",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-fr-france-tcp-tls-b61ca74f",
+        "line": 6,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@cmk-6.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AB%F0%9F%87%B7%20France%2C%20Paris",
+        "label": "🇫🇷 France, Paris",
+        "address": "cmk-6.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇫🇷",
+          "iso2": "FR",
+          "nameEn": "France",
+          "nameRu": "Франция"
+        },
+        "city": "France",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-fr-france-tcp-tls-b61ca74f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "cmk-6.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-cz-czech-republic-tcp-tls-88c1f882",
+      "label": "🇨🇿 Czech Republic, Prague",
+      "profile": "tcp-tls",
+      "line": 7,
+      "country": {
+        "emoji": "🇨🇿",
+        "iso2": "CZ",
+        "nameEn": "Czechia",
+        "nameRu": "Чехия"
+      },
+      "city": "Czech Republic",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-cz-czech-republic-tcp-tls-88c1f882",
+        "line": 7,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@sk7.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A8%F0%9F%87%BF%20Czech%20Republic%2C%20Prague",
+        "label": "🇨🇿 Czech Republic, Prague",
+        "address": "sk7.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇨🇿",
+          "iso2": "CZ",
+          "nameEn": "Czechia",
+          "nameRu": "Чехия"
+        },
+        "city": "Czech Republic",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-cz-czech-republic-tcp-tls-88c1f882",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "sk7.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-germany-tcp-tls-65130fbf",
+      "label": "🇩🇪 Germany, Frankfurt",
+      "profile": "tcp-tls",
+      "line": 8,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Germany",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-de-germany-tcp-tls-65130fbf",
+        "line": 8,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@nf3.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2C%20Frankfurt",
+        "label": "🇩🇪 Germany, Frankfurt",
+        "address": "nf3.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Germany",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-germany-tcp-tls-65130fbf",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "nf3.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ar-argentina-tcp-tls-57c97880",
+      "label": "🇦🇷 Argentina, Buenos Aires",
+      "profile": "tcp-tls",
+      "line": 9,
+      "country": {
+        "emoji": "🇦🇷",
+        "iso2": "AR",
+        "nameEn": "Argentina",
+        "nameRu": "Аргентина"
+      },
+      "city": "Argentina",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ar-argentina-tcp-tls-57c97880",
+        "line": 9,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@jkm-6.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A6%F0%9F%87%B7%20Argentina%2C%20Buenos%20Aires",
+        "label": "🇦🇷 Argentina, Buenos Aires",
+        "address": "jkm-6.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇦🇷",
+          "iso2": "AR",
+          "nameEn": "Argentina",
+          "nameRu": "Аргентина"
+        },
+        "city": "Argentina",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ar-argentina-tcp-tls-57c97880",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "jkm-6.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-fi-finland-tcp-tls-9a48e8b9",
+      "label": "🇫🇮 Finland, Oulu",
+      "profile": "tcp-tls",
+      "line": 10,
+      "country": {
+        "emoji": "🇫🇮",
+        "iso2": "FI",
+        "nameEn": "Finland",
+        "nameRu": "Финляндия"
+      },
+      "city": "Finland",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-fi-finland-tcp-tls-9a48e8b9",
+        "line": 10,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@kpj5.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AB%F0%9F%87%AE%20Finland%2C%20Oulu",
+        "label": "🇫🇮 Finland, Oulu",
+        "address": "kpj5.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇫🇮",
+          "iso2": "FI",
+          "nameEn": "Finland",
+          "nameRu": "Финляндия"
+        },
+        "city": "Finland",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-fi-finland-tcp-tls-9a48e8b9",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "kpj5.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-hk-hong-kong-tcp-tls-94dbe297",
+      "label": "🇭🇰 Hong Kong, Hong Kong",
+      "profile": "tcp-tls",
+      "line": 11,
+      "country": {
+        "emoji": "🇭🇰",
+        "iso2": "HK",
+        "nameEn": "Hong Kong SAR China",
+        "nameRu": "Гонконг"
+      },
+      "city": "Hong Kong",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-hk-hong-kong-tcp-tls-94dbe297",
+        "line": 11,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@ceu2.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AD%F0%9F%87%B0%20Hong%20Kong%2C%20Hong%20Kong",
+        "label": "🇭🇰 Hong Kong, Hong Kong",
+        "address": "ceu2.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇭🇰",
+          "iso2": "HK",
+          "nameEn": "Hong Kong SAR China",
+          "nameRu": "Гонконг"
+        },
+        "city": "Hong Kong",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-hk-hong-kong-tcp-tls-94dbe297",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "ceu2.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-hu-hungary-tcp-tls-b49358d1",
+      "label": "🇭🇺 Hungary, Budapest",
+      "profile": "tcp-tls",
+      "line": 12,
+      "country": {
+        "emoji": "🇭🇺",
+        "iso2": "HU",
+        "nameEn": "Hungary",
+        "nameRu": "Венгрия"
+      },
+      "city": "Hungary",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-hu-hungary-tcp-tls-b49358d1",
+        "line": 12,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@uzm-pnb-44.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AD%F0%9F%87%BA%20Hungary%2C%20Budapest",
+        "label": "🇭🇺 Hungary, Budapest",
+        "address": "uzm-pnb-44.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇭🇺",
+          "iso2": "HU",
+          "nameEn": "Hungary",
+          "nameRu": "Венгрия"
+        },
+        "city": "Hungary",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-hu-hungary-tcp-tls-b49358d1",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "uzm-pnb-44.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-tr-turkey-tcp-tls-a459bb74",
+      "label": "🇹🇷 Turkey, Istanbul",
+      "profile": "tcp-tls",
+      "line": 13,
+      "country": {
+        "emoji": "🇹🇷",
+        "iso2": "TR",
+        "nameEn": "Türkiye",
+        "nameRu": "Турция"
+      },
+      "city": "Turkey",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-tr-turkey-tcp-tls-a459bb74",
+        "line": 13,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@jfj6.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B9%F0%9F%87%B7%20Turkey%2C%20Istanbul",
+        "label": "🇹🇷 Turkey, Istanbul",
+        "address": "jfj6.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇹🇷",
+          "iso2": "TR",
+          "nameEn": "Türkiye",
+          "nameRu": "Турция"
+        },
+        "city": "Turkey",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-tr-turkey-tcp-tls-a459bb74",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "jfj6.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-za-south-africa-tcp-tls-b438ba7b",
+      "label": "🇿🇦 South Africa, Johannesburg",
+      "profile": "tcp-tls",
+      "line": 14,
+      "country": {
+        "emoji": "🇿🇦",
+        "iso2": "ZA",
+        "nameEn": "South Africa",
+        "nameRu": "ЮАР"
+      },
+      "city": "South Africa",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-za-south-africa-tcp-tls-b438ba7b",
+        "line": 14,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@xqc-ey.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BF%F0%9F%87%A6%20South%20Africa%2C%20Johannesburg",
+        "label": "🇿🇦 South Africa, Johannesburg",
+        "address": "xqc-ey.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇿🇦",
+          "iso2": "ZA",
+          "nameEn": "South Africa",
+          "nameRu": "ЮАР"
+        },
+        "city": "South Africa",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-za-south-africa-tcp-tls-b438ba7b",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "xqc-ey.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-jp-japan-tcp-tls-2c7f6998",
+      "label": "🇯🇵 Japan, Tokyo",
+      "profile": "tcp-tls",
+      "line": 15,
+      "country": {
+        "emoji": "🇯🇵",
+        "iso2": "JP",
+        "nameEn": "Japan",
+        "nameRu": "Япония"
+      },
+      "city": "Japan",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-jp-japan-tcp-tls-2c7f6998",
+        "line": 15,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@pa4.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AF%F0%9F%87%B5%20Japan%2C%20Tokyo",
+        "label": "🇯🇵 Japan, Tokyo",
+        "address": "pa4.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇯🇵",
+          "iso2": "JP",
+          "nameEn": "Japan",
+          "nameRu": "Япония"
+        },
+        "city": "Japan",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-jp-japan-tcp-tls-2c7f6998",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "pa4.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-kr-south-korea-tcp-tls-0b962b22",
+      "label": "🇰🇷 South Korea, Seoul",
+      "profile": "tcp-tls",
+      "line": 16,
+      "country": {
+        "emoji": "🇰🇷",
+        "iso2": "KR",
+        "nameEn": "South Korea",
+        "nameRu": "Южная Корея"
+      },
+      "city": "South Korea",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-kr-south-korea-tcp-tls-0b962b22",
+        "line": 16,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@rr-mec.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B0%F0%9F%87%B7%20South%20Korea%2C%20Seoul",
+        "label": "🇰🇷 South Korea, Seoul",
+        "address": "rr-mec.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇰🇷",
+          "iso2": "KR",
+          "nameEn": "South Korea",
+          "nameRu": "Южная Корея"
+        },
+        "city": "South Korea",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-kr-south-korea-tcp-tls-0b962b22",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "rr-mec.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-kz-kazakhstan-tcp-tls-e53a1164",
+      "label": "🇰🇿 Kazakhstan, Almaty",
+      "profile": "tcp-tls",
+      "line": 17,
+      "country": {
+        "emoji": "🇰🇿",
+        "iso2": "KZ",
+        "nameEn": "Kazakhstan",
+        "nameRu": "Казахстан"
+      },
+      "city": "Kazakhstan",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-kz-kazakhstan-tcp-tls-e53a1164",
+        "line": 17,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@dn-2.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B0%F0%9F%87%BF%20Kazakhstan%2C%20Almaty",
+        "label": "🇰🇿 Kazakhstan, Almaty",
+        "address": "dn-2.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇰🇿",
+          "iso2": "KZ",
+          "nameEn": "Kazakhstan",
+          "nameRu": "Казахстан"
+        },
+        "city": "Kazakhstan",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-kz-kazakhstan-tcp-tls-e53a1164",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "dn-2.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-pe-peru-tcp-tls-ce5695bd",
+      "label": "🇵🇪 Peru, Lima",
+      "profile": "tcp-tls",
+      "line": 18,
+      "country": {
+        "emoji": "🇵🇪",
+        "iso2": "PE",
+        "nameEn": "Peru",
+        "nameRu": "Перу"
+      },
+      "city": "Peru",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-pe-peru-tcp-tls-ce5695bd",
+        "line": 18,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@kcw-re-03.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B5%F0%9F%87%AA%20Peru%2C%20Lima",
+        "label": "🇵🇪 Peru, Lima",
+        "address": "kcw-re-03.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇵🇪",
+          "iso2": "PE",
+          "nameEn": "Peru",
+          "nameRu": "Перу"
+        },
+        "city": "Peru",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-pe-peru-tcp-tls-ce5695bd",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "kcw-re-03.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-lt-lithuania-tcp-tls-51ac87c3",
+      "label": "🇱🇹 Lithuania, Vilnius",
+      "profile": "tcp-tls",
+      "line": 19,
+      "country": {
+        "emoji": "🇱🇹",
+        "iso2": "LT",
+        "nameEn": "Lithuania",
+        "nameRu": "Литва"
+      },
+      "city": "Lithuania",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-lt-lithuania-tcp-tls-51ac87c3",
+        "line": 19,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@vr2.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B1%F0%9F%87%B9%20Lithuania%2C%20Vilnius",
+        "label": "🇱🇹 Lithuania, Vilnius",
+        "address": "vr2.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇱🇹",
+          "iso2": "LT",
+          "nameEn": "Lithuania",
+          "nameRu": "Литва"
+        },
+        "city": "Lithuania",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-lt-lithuania-tcp-tls-51ac87c3",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "vr2.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-es-spain-tcp-tls-793584e7",
+      "label": "🇪🇸 Spain, Madrid",
+      "profile": "tcp-tls",
+      "line": 20,
+      "country": {
+        "emoji": "🇪🇸",
+        "iso2": "ES",
+        "nameEn": "Spain",
+        "nameRu": "Испания"
+      },
+      "city": "Spain",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-es-spain-tcp-tls-793584e7",
+        "line": 20,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@bnc-tc.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AA%F0%9F%87%B8%20Spain%2C%20Madrid",
+        "label": "🇪🇸 Spain, Madrid",
+        "address": "bnc-tc.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇪🇸",
+          "iso2": "ES",
+          "nameEn": "Spain",
+          "nameRu": "Испания"
+        },
+        "city": "Spain",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-es-spain-tcp-tls-793584e7",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "bnc-tc.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-it-italy-tcp-tls-f9815e36",
+      "label": "🇮🇹 Italy, Milan",
+      "profile": "tcp-tls",
+      "line": 21,
+      "country": {
+        "emoji": "🇮🇹",
+        "iso2": "IT",
+        "nameEn": "Italy",
+        "nameRu": "Италия"
+      },
+      "city": "Italy",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-it-italy-tcp-tls-f9815e36",
+        "line": 21,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@fqy-ns.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AE%F0%9F%87%B9%20Italy%2C%20Milan",
+        "label": "🇮🇹 Italy, Milan",
+        "address": "fqy-ns.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇮🇹",
+          "iso2": "IT",
+          "nameEn": "Italy",
+          "nameRu": "Италия"
+        },
+        "city": "Italy",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-it-italy-tcp-tls-f9815e36",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fqy-ns.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-united-states-tcp-tls-e2f7b6c4",
+      "label": "🇺🇸 United States, New York",
+      "profile": "tcp-tls",
+      "line": 22,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "United States",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-united-states-tcp-tls-e2f7b6c4",
+        "line": 22,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@cd3.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%B8%20United%20States%2C%20New%20York",
+        "label": "🇺🇸 United States, New York",
+        "address": "cd3.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "United States",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-united-states-tcp-tls-e2f7b6c4",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "cd3.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-no-norway-tcp-tls-6de30f21",
+      "label": "🇳🇴 Norway, Oslo",
+      "profile": "tcp-tls",
+      "line": 23,
+      "country": {
+        "emoji": "🇳🇴",
+        "iso2": "NO",
+        "nameEn": "Norway",
+        "nameRu": "Норвегия"
+      },
+      "city": "Norway",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-no-norway-tcp-tls-6de30f21",
+        "line": 23,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@vjs-ta-01.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B3%F0%9F%87%B4%20Norway%2C%20Oslo",
+        "label": "🇳🇴 Norway, Oslo",
+        "address": "vjs-ta-01.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇳🇴",
+          "iso2": "NO",
+          "nameEn": "Norway",
+          "nameRu": "Норвегия"
+        },
+        "city": "Norway",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-no-norway-tcp-tls-6de30f21",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "vjs-ta-01.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-pl-poland-tcp-tls-628207af",
+      "label": "🇵🇱 Poland, Warsaw",
+      "profile": "tcp-tls",
+      "line": 24,
+      "country": {
+        "emoji": "🇵🇱",
+        "iso2": "PL",
+        "nameEn": "Poland",
+        "nameRu": "Польша"
+      },
+      "city": "Poland",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-pl-poland-tcp-tls-628207af",
+        "line": 24,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@gd0.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B5%F0%9F%87%B1%20Poland%2C%20Warsaw",
+        "label": "🇵🇱 Poland, Warsaw",
+        "address": "gd0.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇵🇱",
+          "iso2": "PL",
+          "nameEn": "Poland",
+          "nameRu": "Польша"
+        },
+        "city": "Poland",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-pl-poland-tcp-tls-628207af",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "gd0.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-mx-mexico-tcp-tls-57984aa3",
+      "label": "🇲🇽 Mexico, Queretaro",
+      "profile": "tcp-tls",
+      "line": 25,
+      "country": {
+        "emoji": "🇲🇽",
+        "iso2": "MX",
+        "nameEn": "Mexico",
+        "nameRu": "Мексика"
+      },
+      "city": "Mexico",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-mx-mexico-tcp-tls-57984aa3",
+        "line": 25,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@uds-qq-43.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B2%F0%9F%87%BD%20Mexico%2C%20Queretaro",
+        "label": "🇲🇽 Mexico, Queretaro",
+        "address": "uds-qq-43.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇲🇽",
+          "iso2": "MX",
+          "nameEn": "Mexico",
+          "nameRu": "Мексика"
+        },
+        "city": "Mexico",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-mx-mexico-tcp-tls-57984aa3",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "uds-qq-43.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-br-brazil-tcp-tls-5e580f38",
+      "label": "🇧🇷 Brazil, Sao Paulo",
+      "profile": "tcp-tls",
+      "line": 26,
+      "country": {
+        "emoji": "🇧🇷",
+        "iso2": "BR",
+        "nameEn": "Brazil",
+        "nameRu": "Бразилия"
+      },
+      "city": "Brazil",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-br-brazil-tcp-tls-5e580f38",
+        "line": 26,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@smr-mn.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A7%F0%9F%87%B7%20Brazil%2C%20Sao%20Paulo",
+        "label": "🇧🇷 Brazil, Sao Paulo",
+        "address": "smr-mn.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇧🇷",
+          "iso2": "BR",
+          "nameEn": "Brazil",
+          "nameRu": "Бразилия"
+        },
+        "city": "Brazil",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-br-brazil-tcp-tls-5e580f38",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "smr-mn.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-se-sweden-tcp-tls-0bbe827c",
+      "label": "🇸🇪 Sweden, Stockholm",
+      "profile": "tcp-tls",
+      "line": 27,
+      "country": {
+        "emoji": "🇸🇪",
+        "iso2": "SE",
+        "nameEn": "Sweden",
+        "nameRu": "Швеция"
+      },
+      "city": "Sweden",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-se-sweden-tcp-tls-0bbe827c",
+        "line": 27,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@aq7.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B8%F0%9F%87%AA%20Sweden%2C%20Stockholm",
+        "label": "🇸🇪 Sweden, Stockholm",
+        "address": "aq7.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇸🇪",
+          "iso2": "SE",
+          "nameEn": "Sweden",
+          "nameRu": "Швеция"
+        },
+        "city": "Sweden",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-se-sweden-tcp-tls-0bbe827c",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "aq7.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-sg-singapore-tcp-tls-9ad8bc74",
+      "label": "🇸🇬 Singapore, Singapore",
+      "profile": "tcp-tls",
+      "line": 28,
+      "country": {
+        "emoji": "🇸🇬",
+        "iso2": "SG",
+        "nameEn": "Singapore",
+        "nameRu": "Сингапур"
+      },
+      "city": "Singapore",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-sg-singapore-tcp-tls-9ad8bc74",
+        "line": 28,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@mpu-jx-10.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B8%F0%9F%87%AC%20Singapore%2C%20Singapore",
+        "label": "🇸🇬 Singapore, Singapore",
+        "address": "mpu-jx-10.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇸🇬",
+          "iso2": "SG",
+          "nameEn": "Singapore",
+          "nameRu": "Сингапур"
+        },
+        "city": "Singapore",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-sg-singapore-tcp-tls-9ad8bc74",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "mpu-jx-10.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ru-russia-tcp-tls-d78a15fb",
+      "label": "🇷🇺 Russia, Moscow",
+      "profile": "tcp-tls",
+      "line": 29,
+      "country": {
+        "emoji": "🇷🇺",
+        "iso2": "RU",
+        "nameEn": "Russia",
+        "nameRu": "Россия"
+      },
+      "city": "Russia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ru-russia-tcp-tls-d78a15fb",
+        "line": 29,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@try3e.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B7%F0%9F%87%BA%20Russia%2C%20Moscow",
+        "label": "🇷🇺 Russia, Moscow",
+        "address": "try3e.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇷🇺",
+          "iso2": "RU",
+          "nameEn": "Russia",
+          "nameRu": "Россия"
+        },
+        "city": "Russia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ru-russia-tcp-tls-d78a15fb",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "try3e.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-au-australia-tcp-tls-3399529c",
+      "label": "🇦🇺 Australia, Sydney",
+      "profile": "tcp-tls",
+      "line": 30,
+      "country": {
+        "emoji": "🇦🇺",
+        "iso2": "AU",
+        "nameEn": "Australia",
+        "nameRu": "Австралия"
+      },
+      "city": "Australia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-au-australia-tcp-tls-3399529c",
+        "line": 30,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@eut-gq-40.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A6%F0%9F%87%BA%20Australia%2C%20Sydney",
+        "label": "🇦🇺 Australia, Sydney",
+        "address": "eut-gq-40.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇦🇺",
+          "iso2": "AU",
+          "nameEn": "Australia",
+          "nameRu": "Австралия"
+        },
+        "city": "Australia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-au-australia-tcp-tls-3399529c",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "eut-gq-40.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-il-israel-tcp-tls-21d36831",
+      "label": "🇮🇱 Israel, Tel Aviv",
+      "profile": "tcp-tls",
+      "line": 31,
+      "country": {
+        "emoji": "🇮🇱",
+        "iso2": "IL",
+        "nameEn": "Israel",
+        "nameRu": "Израиль"
+      },
+      "city": "Israel",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-il-israel-tcp-tls-21d36831",
+        "line": 31,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@ubb-yv.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AE%F0%9F%87%B1%20Israel%2C%20Tel%20Aviv",
+        "label": "🇮🇱 Israel, Tel Aviv",
+        "address": "ubb-yv.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇮🇱",
+          "iso2": "IL",
+          "nameEn": "Israel",
+          "nameRu": "Израиль"
+        },
+        "city": "Israel",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-il-israel-tcp-tls-21d36831",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "ubb-yv.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ua-ukraine-tcp-tls-d6be206e",
+      "label": "🇺🇦 Ukraine, Kyiv",
+      "profile": "tcp-tls",
+      "line": 32,
+      "country": {
+        "emoji": "🇺🇦",
+        "iso2": "UA",
+        "nameEn": "Ukraine",
+        "nameRu": "Украина"
+      },
+      "city": "Ukraine",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ua-ukraine-tcp-tls-d6be206e",
+        "line": 32,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@tz7.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%A6%20Ukraine%2C%20Kyiv",
+        "label": "🇺🇦 Ukraine, Kyiv",
+        "address": "tz7.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇦",
+          "iso2": "UA",
+          "nameEn": "Ukraine",
+          "nameRu": "Украина"
+        },
+        "city": "Ukraine",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ua-ukraine-tcp-tls-d6be206e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "tz7.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-gb-united-kingdom-tcp-tls-26dab42e",
+      "label": "🇬🇧 United Kingdom, London",
+      "profile": "tcp-tls",
+      "line": 33,
+      "country": {
+        "emoji": "🇬🇧",
+        "iso2": "GB",
+        "nameEn": "United Kingdom",
+        "nameRu": "Великобритания"
+      },
+      "city": "United Kingdom",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-gb-united-kingdom-tcp-tls-26dab42e",
+        "line": 33,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@aj7.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AC%F0%9F%87%A7%20United%20Kingdom%2C%20London",
+        "label": "🇬🇧 United Kingdom, London",
+        "address": "aj7.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇬🇧",
+          "iso2": "GB",
+          "nameEn": "United Kingdom",
+          "nameRu": "Великобритания"
+        },
+        "city": "United Kingdom",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-gb-united-kingdom-tcp-tls-26dab42e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "aj7.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-united-states-tcp-tls-85e366b0",
+      "label": "🇺🇸 United States, Los Angeles",
+      "profile": "tcp-tls",
+      "line": 34,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "United States",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-united-states-tcp-tls-85e366b0",
+        "line": 34,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@na2.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%B8%20United%20States%2C%20Los%20Angeles",
+        "label": "🇺🇸 United States, Los Angeles",
+        "address": "na2.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "United States",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-united-states-tcp-tls-85e366b0",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "na2.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ca-canada-tcp-tls-0e9a7f67",
+      "label": "🇨🇦 Canada, Toronto",
+      "profile": "tcp-tls",
+      "line": 35,
+      "country": {
+        "emoji": "🇨🇦",
+        "iso2": "CA",
+        "nameEn": "Canada",
+        "nameRu": "Канада"
+      },
+      "city": "Canada",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ca-canada-tcp-tls-0e9a7f67",
+        "line": 35,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@bnw-tm-73.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A8%F0%9F%87%A6%20Canada%2C%20Toronto",
+        "label": "🇨🇦 Canada, Toronto",
+        "address": "bnw-tm-73.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇨🇦",
+          "iso2": "CA",
+          "nameEn": "Canada",
+          "nameRu": "Канада"
+        },
+        "city": "Canada",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ca-canada-tcp-tls-0e9a7f67",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "bnw-tm-73.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ch-switzerland-tcp-tls-701a7189",
+      "label": "🇨🇭 Switzerland, Zurich",
+      "profile": "tcp-tls",
+      "line": 36,
+      "country": {
+        "emoji": "🇨🇭",
+        "iso2": "CH",
+        "nameEn": "Switzerland",
+        "nameRu": "Швейцария"
+      },
+      "city": "Switzerland",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ch-switzerland-tcp-tls-701a7189",
+        "line": 36,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@ugr-8.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A8%F0%9F%87%AD%20Switzerland%2C%20Zurich",
+        "label": "🇨🇭 Switzerland, Zurich",
+        "address": "ugr-8.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇨🇭",
+          "iso2": "CH",
+          "nameEn": "Switzerland",
+          "nameRu": "Швейцария"
+        },
+        "city": "Switzerland",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ch-switzerland-tcp-tls-701a7189",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "ugr-8.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ae-uae-tcp-tls-270d6002",
+      "label": "🇦🇪 UAE, Fujairah",
+      "profile": "tcp-tls",
+      "line": 37,
+      "country": {
+        "emoji": "🇦🇪",
+        "iso2": "AE",
+        "nameEn": "United Arab Emirates",
+        "nameRu": "ОАЭ"
+      },
+      "city": "UAE",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ae-uae-tcp-tls-270d6002",
+        "line": 37,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@dms-mpq.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A6%F0%9F%87%AA%20UAE%2C%20Fujairah",
+        "label": "🇦🇪 UAE, Fujairah",
+        "address": "dms-mpq.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇦🇪",
+          "iso2": "AE",
+          "nameEn": "United Arab Emirates",
+          "nameRu": "ОАЭ"
+        },
+        "city": "UAE",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ae-uae-tcp-tls-270d6002",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "dms-mpq.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-at-austria-tcp-tls-a90fb6c3",
+      "label": "🇦🇹 Austria, Vienna",
+      "profile": "tcp-tls",
+      "line": 38,
+      "country": {
+        "emoji": "🇦🇹",
+        "iso2": "AT",
+        "nameEn": "Austria",
+        "nameRu": "Австрия"
+      },
+      "city": "Austria",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-at-austria-tcp-tls-a90fb6c3",
+        "line": 38,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@upm-rrv.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A6%F0%9F%87%B9%20Austria%2C%20Vienna",
+        "label": "🇦🇹 Austria, Vienna",
+        "address": "upm-rrv.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇦🇹",
+          "iso2": "AT",
+          "nameEn": "Austria",
+          "nameRu": "Австрия"
+        },
+        "city": "Austria",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-at-austria-tcp-tls-a90fb6c3",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "upm-rrv.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-bg-bulgaria-tcp-tls-85b35d0e",
+      "label": "🇧🇬 Bulgaria, Sofia",
+      "profile": "tcp-tls",
+      "line": 39,
+      "country": {
+        "emoji": "🇧🇬",
+        "iso2": "BG",
+        "nameEn": "Bulgaria",
+        "nameRu": "Болгария"
+      },
+      "city": "Bulgaria",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-bg-bulgaria-tcp-tls-85b35d0e",
+        "line": 39,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@rrv-esm.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A7%F0%9F%87%AC%20Bulgaria%2C%20Sofia",
+        "label": "🇧🇬 Bulgaria, Sofia",
+        "address": "rrv-esm.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇧🇬",
+          "iso2": "BG",
+          "nameEn": "Bulgaria",
+          "nameRu": "Болгария"
+        },
+        "city": "Bulgaria",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-bg-bulgaria-tcp-tls-85b35d0e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "rrv-esm.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ie-ireland-tcp-tls-6938aaa4",
+      "label": "🇮🇪 Ireland, Dublin",
+      "profile": "tcp-tls",
+      "line": 40,
+      "country": {
+        "emoji": "🇮🇪",
+        "iso2": "IE",
+        "nameEn": "Ireland",
+        "nameRu": "Ирландия"
+      },
+      "city": "Ireland",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ie-ireland-tcp-tls-6938aaa4",
+        "line": 40,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@stq-saq.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AE%F0%9F%87%AA%20Ireland%2C%20Dublin",
+        "label": "🇮🇪 Ireland, Dublin",
+        "address": "stq-saq.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇮🇪",
+          "iso2": "IE",
+          "nameEn": "Ireland",
+          "nameRu": "Ирландия"
+        },
+        "city": "Ireland",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ie-ireland-tcp-tls-6938aaa4",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "stq-saq.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-united-states-tcp-tls-76d39e06",
+      "label": "🇺🇸 United States, Miami",
+      "profile": "tcp-tls",
+      "line": 41,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "United States",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-united-states-tcp-tls-76d39e06",
+        "line": 41,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@sjw-cau.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%B8%20United%20States%2C%20Miami",
+        "label": "🇺🇸 United States, Miami",
+        "address": "sjw-cau.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "United States",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-united-states-tcp-tls-76d39e06",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "sjw-cau.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-my-malaysia-tcp-tls-b58be2fb",
+      "label": "🇲🇾 Malaysia, Kuala Lumpur",
+      "profile": "tcp-tls",
+      "line": 42,
+      "country": {
+        "emoji": "🇲🇾",
+        "iso2": "MY",
+        "nameEn": "Malaysia",
+        "nameRu": "Малайзия"
+      },
+      "city": "Malaysia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-my-malaysia-tcp-tls-b58be2fb",
+        "line": 42,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@srm-jmz.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B2%F0%9F%87%BE%20Malaysia%2C%20Kuala%20Lumpur",
+        "label": "🇲🇾 Malaysia, Kuala Lumpur",
+        "address": "srm-jmz.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇲🇾",
+          "iso2": "MY",
+          "nameEn": "Malaysia",
+          "nameRu": "Малайзия"
+        },
+        "city": "Malaysia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-my-malaysia-tcp-tls-b58be2fb",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "srm-jmz.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-united-states-tcp-tls-6ad0af65",
+      "label": "🇺🇸 United States, Houston",
+      "profile": "tcp-tls",
+      "line": 43,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "United States",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-united-states-tcp-tls-6ad0af65",
+        "line": 43,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@mqs-nun.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%B8%20United%20States%2C%20Houston",
+        "label": "🇺🇸 United States, Houston",
+        "address": "mqs-nun.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "United States",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-united-states-tcp-tls-6ad0af65",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "mqs-nun.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-united-states-tcp-tls-0e3bdb47",
+      "label": "🇺🇸 United States, San-Jose",
+      "profile": "tcp-tls",
+      "line": 44,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "United States",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-united-states-tcp-tls-0e3bdb47",
+        "line": 44,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@zrm-deg.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%BA%F0%9F%87%B8%20United%20States%2C%20San-Jose",
+        "label": "🇺🇸 United States, San-Jose",
+        "address": "zrm-deg.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "United States",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-united-states-tcp-tls-0e3bdb47",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "zrm-deg.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-germany-tcp-tls-b75648b4",
+      "label": "🇩🇪 Germany, Berlin",
+      "profile": "tcp-tls",
+      "line": 45,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Germany",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-de-germany-tcp-tls-b75648b4",
+        "line": 45,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@jsd-dsp.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2C%20Berlin",
+        "label": "🇩🇪 Germany, Berlin",
+        "address": "jsd-dsp.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Germany",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-germany-tcp-tls-b75648b4",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "jsd-dsp.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-sk-slovakia-tcp-tls-e591c01e",
+      "label": "🇸🇰 Slovakia, Bratislava",
+      "profile": "tcp-tls",
+      "line": 46,
+      "country": {
+        "emoji": "🇸🇰",
+        "iso2": "SK",
+        "nameEn": "Slovakia",
+        "nameRu": "Словакия"
+      },
+      "city": "Slovakia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-sk-slovakia-tcp-tls-e591c01e",
+        "line": 46,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@pkg-qic.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B8%F0%9F%87%B0%20Slovakia%2C%20Bratislava",
+        "label": "🇸🇰 Slovakia, Bratislava",
+        "address": "pkg-qic.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇸🇰",
+          "iso2": "SK",
+          "nameEn": "Slovakia",
+          "nameRu": "Словакия"
+        },
+        "city": "Slovakia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-sk-slovakia-tcp-tls-e591c01e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "pkg-qic.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-hr-croatia-tcp-tls-0941853e",
+      "label": "🇭🇷 Croatia, Zagreb",
+      "profile": "tcp-tls",
+      "line": 47,
+      "country": {
+        "emoji": "🇭🇷",
+        "iso2": "HR",
+        "nameEn": "Croatia",
+        "nameRu": "Хорватия"
+      },
+      "city": "Croatia",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-hr-croatia-tcp-tls-0941853e",
+        "line": 47,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@qut-utq.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%AD%F0%9F%87%B7%20Croatia%2C%20Zagreb",
+        "label": "🇭🇷 Croatia, Zagreb",
+        "address": "qut-utq.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇭🇷",
+          "iso2": "HR",
+          "nameEn": "Croatia",
+          "nameRu": "Хорватия"
+        },
+        "city": "Croatia",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-hr-croatia-tcp-tls-0941853e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "qut-utq.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-pt-portugal-tcp-tls-ee98526a",
+      "label": "🇵🇹 Portugal, Lisbon",
+      "profile": "tcp-tls",
+      "line": 48,
+      "country": {
+        "emoji": "🇵🇹",
+        "iso2": "PT",
+        "nameEn": "Portugal",
+        "nameRu": "Португалия"
+      },
+      "city": "Portugal",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-pt-portugal-tcp-tls-ee98526a",
+        "line": 48,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@zyp-nnv.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B5%F0%9F%87%B9%20Portugal%2C%20Lisbon",
+        "label": "🇵🇹 Portugal, Lisbon",
+        "address": "zyp-nnv.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇵🇹",
+          "iso2": "PT",
+          "nameEn": "Portugal",
+          "nameRu": "Португалия"
+        },
+        "city": "Portugal",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-pt-portugal-tcp-tls-ee98526a",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "zyp-nnv.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-dk-denmark-tcp-tls-db364f5d",
+      "label": "🇩🇰 Denmark, Copenhagen",
+      "profile": "tcp-tls",
+      "line": 49,
+      "country": {
+        "emoji": "🇩🇰",
+        "iso2": "DK",
+        "nameEn": "Denmark",
+        "nameRu": "Дания"
+      },
+      "city": "Denmark",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-dk-denmark-tcp-tls-db364f5d",
+        "line": 49,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@rip-fph.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%A9%F0%9F%87%B0%20Denmark%2C%20Copenhagen",
+        "label": "🇩🇰 Denmark, Copenhagen",
+        "address": "rip-fph.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇩🇰",
+          "iso2": "DK",
+          "nameEn": "Denmark",
+          "nameRu": "Дания"
+        },
+        "city": "Denmark",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-dk-denmark-tcp-tls-db364f5d",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "rip-fph.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+      "label": "🇳🇬 Nigeria, Lagos",
+      "profile": "tcp-tls",
+      "line": 50,
+      "city": "Nigeria",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+        "line": 50,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@dkh-vtq.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B3%F0%9F%87%AC%20Nigeria%2C%20Lagos",
+        "label": "🇳🇬 Nigeria, Lagos",
+        "address": "dkh-vtq.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "city": "Nigeria",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "dkh-vtq.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "skipped": [],
+  "summary": {
+    "totalLines": 50,
+    "parsed": 50,
+    "skipped": 0,
+    "filtered": 0,
+    "filteredByCountry": 0,
+    "filteredByLabelRegex": 0,
+    "unsupportedScheme": 0,
+    "unsupportedParam": 0,
+    "unsupportedValue": 0,
+    "unsupportedCombo": 0,
+    "invalidUri": 0,
+    "missingRequiredField": 0,
+    "duplicateTag": 0
+  }
+}
