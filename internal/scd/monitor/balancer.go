@@ -13,7 +13,8 @@ import (
 // lock), with retries; it records the result in the balancer monitor state
 // and schedules a remote push (up/OK/<latency> or down/<error>). The check
 // result itself is not logged. It is a no-op without socks5 and request or
-// before the first sync created the target. The error is reserved for a
+// before a sync reached the target (SyncSeen; the balancer selection tick
+// may have created it earlier). The error is reserved for a
 // cancelled ctx, in which case nothing is recorded or pushed.
 func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	t := sub.Target
@@ -22,7 +23,9 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 		return nil
 	}
 	key := state.Key(sub.ID, t.Address)
-	if !d.Memory.View(key, func(*state.Target) {}) {
+	var synced bool
+	d.Memory.View(key, func(tg *state.Target) { synced = tg.SyncSeen })
+	if !synced {
 		return nil
 	}
 

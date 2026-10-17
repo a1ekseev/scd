@@ -13,6 +13,7 @@ import (
 
 	"github.com/xtls/xray-core/app/observatory"
 
+	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
@@ -461,4 +462,40 @@ func TestRuntimeStateBalancerSelection(t *testing.T) {
 	if strings.Contains(string(field(t, json.RawMessage(raw), "serviceState")), "balancerSelection") {
 		t.Errorf("feature off runtime-state has a selection: %s", raw)
 	}
+}
+
+// Review 6.6: a target created only by the selection tick (no sync yet)
+// has no balancerMonitor in runtime-state and the TS idle balancer monitor
+// in /api/instance-status.
+func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
+	l := loadFixture(t, "empty")
+	l.cfg.Config.Subscriptions = []config.SubscriptionConfig{{
+		ID: "sub-1", Input: "/fixture/sub.txt", Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+		Target: config.SubscriptionTargetConfig{
+			Address: "127.0.0.1:8080", TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: "x-observe-",
+			FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
+			BalancerSelection: config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Observatory: true},
+		},
+	}}
+	key := state.Key("sub-1", "127.0.0.1:8080")
+	l.mem.Ensure(key)
+	l.mem.Update(key, func(tg *state.Target) {
+		tg.BalancerSelection = state.SelectionState{State: state.SelectionOK, BalancerTag: "x-balancer", Mode: state.ModeNone, PrincipleTargets: []string{}}
+	})
+
+	fake, _ := xrayfake.Start(t)
+	d := l.deps()
+	d.Dial = fake.Dialer()
+	body, code, err := BuildRuntimeState(t.Context(), d, "sub-1", "127.0.0.1:8080")
+	if err != nil || code != http.StatusOK {
+		t.Fatalf("%d %v", code, err)
+	}
+	raw, _ := json.Marshal(body)
+	if got := objectKeys(t, field(t, json.RawMessage(raw), "serviceState")); !slices.Equal(got, []string{"balancerSelection"}) {
+		t.Errorf("serviceState keys %v, want only balancerSelection", got)
+	}
+
+	inst := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
+	target := index(t, field(t, index(t, field(t, inst, "subscriptions"), 0), "targets"), 0)
+	jsonEqual(t, decode(t, field(t, target, "balancerMonitor")), map[string]any{"state": "idle"})
 }
