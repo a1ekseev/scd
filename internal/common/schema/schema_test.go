@@ -331,3 +331,26 @@ func TestNilNodeIsSafe(t *testing.T) {
 	}
 	n.Addf("a", "x")
 }
+
+func TestStringListAllowEmpty(t *testing.T) {
+	var is Issues
+	r := Root(parse(t, "a: []\nb: [x, '']\n"), &is)
+	if got := r.StringList("a", StrOpt{AllowEmptyList: true}); got == nil || len(got) != 0 {
+		t.Fatalf("a = %#v, want empty non-nil", got)
+	}
+	if got := r.StringList("b", StrOpt{AllowEmptyList: true, MinLen: 1}); len(got) != 1 || got[0] != "x" {
+		t.Fatalf("b = %#v", got)
+	}
+	wantIssues(t, is, Issue{"b.1", "must not be empty"})
+}
+
+func TestStringListElems(t *testing.T) {
+	var is Issues
+	r := Root(parse(t, "a: [x, 1, ' y ']\n"), &is)
+	got := r.StringListElems("a", StrOpt{Trim: true})
+	want := []StringElem{{"a.0", "x"}, {"a.2", "y"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %#v", got)
+	}
+	wantIssues(t, is, Issue{"a.1", "expected string, got int"})
+}

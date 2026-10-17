@@ -1,0 +1,85 @@
+# Go-форма боевого конфига владельца: docker/scd/config.real-shape.yml после перевода
+# на новую схему (docs/CONFIG-MIGRATION.md, раздел «Разобранные примеры»).
+# URL заменены на example.com — секретов нет. Изменены только фильтры меток (D29):
+# lookahead-регулярка заменена на labelExcludeRegex; остальные ключи не менялись,
+# новые ключи (allowInsecure, fetchUserAgent, fetchHeaders, balancerSelection) — по умолчанию.
+subscriptions:
+  - id: blanc-en
+    input: https://sub.example.com/api/sub/REDACTED
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    filters:
+      countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
+      labelExcludeRegex: '/Extra|WhiteList/i'
+    target:
+      address: blanc-xray-en:8080
+      timeoutMs: 5000
+      fixedOutbounds: [direct, blocked]
+      fixedInbounds: [socks-proxy, wg-proxy]
+      fixedRouting: [direct, x-balancer, socks-fallback]
+      visionUdp443Override: false
+      observatorySubjectSelectorPrefix: x-observe-
+      inboundSocks:
+        listen: 0.0.0.0
+        portRange: { start: 20000, end: 21000 }
+      monitor:
+        enabled: true
+        schedule: "*/1 * * * *"
+        maxParallel: 50
+        retry: { attempts: 2, delayMs: 250 }
+        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+      balancerMonitor:
+        enabled: true
+        schedule: "*/1 * * * *"
+        retry: { attempts: 3, delayMs: 500 }
+        socks5: { host: blanc-xray-en, port: 1080 }
+        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+        remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
+  - id: blanc-ru
+    input: https://sub.example.com/api/sub/REDACTED
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 5000
+    filters:
+      countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
+      labelExcludeRegex: '/Extra|WhiteList/i'
+    target:
+      address: blanc-xray-ru:8080
+      timeoutMs: 5000
+      fixedOutbounds: [direct, blocked]
+      fixedInbounds: [socks-proxy, wg-proxy, ru-zone]
+      fixedRouting: [direct, x-balancer, socks-fallback, ru-zone-route]
+      visionUdp443Override: false
+      observatorySubjectSelectorPrefix: x-observe-
+      inboundSocks:
+        listen: 0.0.0.0
+        portRange: { start: 20000, end: 21000 }
+      monitor:
+        enabled: true
+        schedule: "*/1 * * * *"
+        maxParallel: 50
+        retry: { attempts: 2, delayMs: 250 }
+        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+      balancerMonitor:
+        enabled: true
+        schedule: "*/1 * * * *"
+        retry: { attempts: 3, delayMs: 500 }
+        socks5: { host: blanc-xray-ru, port: 1080 }
+        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+        remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
+runtime:
+  mode: daemon
+  schedule: "*/5 * * * *"
+logging:
+  level: info
+  format: json
+resources:
+  outbounds: { enabled: true }
+  inbounds: { enabled: true }
+  routing: { enabled: true }
+statusServer:
+  instanceId: paper
+  enabled: true
+  listen: 172.31.0.8:8080
+  runtimeState: { enabled: true, includeRaw: false, includeSecrets: false }

@@ -22,6 +22,23 @@
 | Ключ | Было (TS) | Стало (Go) | Причина |
 |---|---|---|---|
 | `statusServer.listen` | `:80` невалиден (host обязателен) | `:8080` допустим — все интерфейсы; IPv6 только в скобках (`[::]:8080`) | `net.SplitHostPort`, идиоматичный Go |
+| `subscriptions[].filters.labelIncludeRegex` | строка, JS-регулярка (`/pattern/flags`, lookahead допускался); пустая строка = ключа нет | строка **или список** RE2-выражений (AND); lookahead/lookbehind/backreferences — ошибка (см. «Фильтры меток»); пустая строка/пустой список — ошибка `must not be empty`; в `print-config` — всегда список | D8, D29 |
+| `subscriptions[].filters.labelExcludeRegex` | — | **новый**, необязательный: строка или список RE2-выражений (OR — метка отбрасывается при совпадении с любым) | D29 |
+| `subscriptions[].filters.countryAllowlist` | trim + верхний регистр, длина 2, один из 45 кодов; ошибка на весь список | без изменений по смыслу; ошибка — по пути элемента: `subscriptions.N.filters.countryAllowlist.M: must be a 2-letter ISO2 country code` / `unsupported ISO2 country code "ZZ"`. `[]` по-прежнему допустим (фильтр по стране не применяется), но в `print-config` не печатается (было `[]`) | D9 |
+| `subscriptions[].allowInsecure` | — (ссылки с `allowInsecure=1` принимались, TLS без проверки) | **новый**: `deny` (по умолчанию) — ссылка с `allowInsecure=1` без `pcs`/`vcn` пропускается с причиной; `allow` — outbound создаётся (в Xray v26.10.10 поля нет — сертификат всё равно проверяется), warning в лог. Ссылки с `pcs`/`vcn` — штатно. Иные значения — `must be one of deny\|allow` | D15, O6 |
+| `subscriptions[].fetchUserAgent` | — (заголовок `User-Agent: node`) | **новый**, необязательный: непустая строка (trim) — `User-Agent` загрузки подписки по http(s); по умолчанию `scd/<версия>`; пустая строка — `must not be empty`; без ключа в `print-config` его нет | D27 O9, D9 |
+| `subscriptions[].fetchHeaders` | — | **новый**, необязательный: объект `имя: значение` — доп. заголовки HTTP-запроса подписки (напр. `x-hwid: "${SCD_HWID}"`), только для `http(s)`-input; правила и ошибки — как у `scd sfc` (`use fetchUserAgent instead`, `header is not allowed`, `invalid header name`, `expected string, got …`, путь `subscriptions.N.fetchHeaders.<имя>`). **Значения — секрет**: в `print-config` и логах — `<redacted>` (исключение из правила «`print-config` печатает подставленные секреты как есть»). `${NAME}` подставляется по сырому тексту, как везде в scd: переменная обязана существовать — **даже в закомментированной строке** | D33 |
+| `subscriptions[].target.balancerSelection` | — | **новый** объект (strict), по умолчанию `{enabled: false, observatory: true}`: `enabled`, `balancerTag` (= `routing.balancers[].tag` в Xray, не ruleTag), `schedule` (cron, обычно 6 полей: `"*/15 * * * * *"`), `observatory` (опрашивать `ObservatoryService`), `strategy` (необязательная подсказка для UI: `leastPing\|leastLoad\|random\|roundRobin`). При `enabled: true` обязательны `balancerTag` и `schedule` (`required when balancerSelection.enabled is true`); без `observatorySubjectSelectorPrefix` — не ошибка, а предупреждение `validate-config` (см. ниже) | D22, `10` §6.5 |
+| `logging.format` | `json\|pretty` (pino), по умолчанию `json` | значения и умолчание прежние; смысл — см. «Логи» (slog, stderr) | D27 O10 |
+| `target.inboundSocks.portRange.start/end` | целые `> 0`, верхняя граница не проверялась | целые `1..65535` (`must be at most 65535`); `end < start` — `subscriptions.N.target.inboundSocks.portRange.end: must be greater than or equal to start` | D9 |
+| URL-поля: `target.monitor.request.url`, `target.balancerMonitor.request.url`, `target.balancerMonitor.remotePing.url`, `statusServer.remoteInstances[].apiUrl` | любой URL, разбираемый WHATWG (`mailto:a@b`, `ftp://x` проходили) | `net/url` + непустые схема и хост (`mailto:a@b` — `invalid URL`); значение не нормализуется | D9 |
+| `runtime.schedule`, `target.monitor.schedule`, `target.balancerMonitor.schedule`, `statusServer.remoteInstances[].schedule` | cron-parser; `""` в `print-config` печаталось как `""` | `internal/common/cron` (см. «Cron»); пустая строка/пробелы у необязательных расписаний = ключа нет (не печатается); где расписание обязательно — ошибка `required when …` (у `remoteInstances[].schedule` — `required` / `must not be empty`) | D24, D28 |
+| `fixedOutbounds`, `fixedInbounds`, `fixedRouting` | список непустых строк, по умолчанию `[]` | без изменений (`[]` допустим, пустой элемент — `subscriptions.N.target.fixedOutbounds.M: must not be empty`) | — |
+| Неизвестные ключи | strict (ошибка): подписка, `target`, `monitor`, `retry`, `balancerMonitor`, `remotePing`, `remoteInstances[]`; остальные объекты — молча игнорируются | без изменений + strict `balancerSelection`; текст `subscriptions.N.target: unknown key "speedtest"` (было `Unrecognized key: "speedtest"`). Старые `targets:`, `target.speedtest`, `balancerMonitor.successGet`, `monitor.remotePing` — по-прежнему ошибка | D9, D31 |
+| Кросс-полевые правила | тексты с путём `subscriptions` и точкой в конце; при `daemon` без `schedule` остальные правила (4–9) не проверялись | выполняются **все** правила сразу; путь — конкретное поле. Сообщения: `subscriptions: at least one subscription must be enabled`, `subscriptions: duplicate target address "<адрес>"`, `runtime.schedule: required when runtime.mode is "daemon"`, `resources.inbounds.enabled: requires resources.outbounds.enabled`, `resources.routing.enabled: requires resources.outbounds.enabled and resources.inbounds.enabled`, `subscriptions.N.target.inboundSocks: required when resources.inbounds.enabled or resources.routing.enabled is true` / `required when monitor.enabled is true`, `subscriptions.N.target.monitor.{schedule,request}: required when monitor.enabled is true`, `subscriptions.N.target.monitor.enabled: requires resources.outbounds.enabled, resources.inbounds.enabled and resources.routing.enabled`, `subscriptions.N.target.balancerMonitor.{schedule,socks5,request}: required when balancerMonitor.enabled is true`, `subscriptions.N.target.balancerMonitor.remotePing.url: required when remotePing.enabled is true`, `subscriptions.N.target.balancerMonitor.remotePing.enabled: requires balancerMonitor.enabled`, `statusServer.listen: required when statusServer.enabled is true`, `statusServer.remoteInstances.N.id: duplicate remote instance id "<id>"`; ошибка cron — текст парсера по пути расписания | D9 |
+| Ошибки валидации | `Invalid config at <путь>: a: …; b: …` (zod) | единый формат `invalid config <файл>:` + `  - <путь>: <сообщение>` (см. «Общее»); ошибка чтения — `failed to read config <файл>: …` (было `ENOENT: …` без префикса) | D9 |
+
+Команды `scd validate-config --config <файл>` (stdout `{"configPath": "<абсолютный путь>", "valid": true}` с отступом 2; **новое** — предупреждения пишутся в stderr строками `warning: <путь>: <текст>`, код выхода 0; сейчас единственное — `warning: subscriptions.N.target.balancerSelection: balancerSelection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector`) и `scd print-config --config <файл>` (нормализованный JSON; порядок ключей подписки `id, input, enabled, format, fetchTimeoutMs, allowInsecure, fetchUserAgent?, fetchHeaders?, filters?, target`; у `filters` — `countryAllowlist?, labelIncludeRegex?, labelExcludeRegex?`; у target — `address, timeoutMs, fixedOutbounds, fixedInbounds, fixedRouting, visionUdp443Override, inboundSocks?, monitor, balancerMonitor, balancerSelection, observatorySubjectSelectorPrefix?`) работают как раньше; `--config` обязателен.
 
 ## scd sfc
 
@@ -83,7 +100,7 @@
 
 ## Cron
 
-Что изменилось относительно cron-parser (D24, D28). Касается всех расписаний: scd `runtime.schedule`, `subscriptions[].monitor.schedule`, `subscriptions[].balancerMonitor.schedule`, `statusServer.remoteInstances[].schedule`; sfc — расписание обновления. Один парсер (`internal/common/cron`, библиотека `github.com/robfig/cron/v3` как есть) и для `validate-config`, и для планировщика; неподдерживаемое выражение — ошибка `validate-config` с текстом библиотеки.
+Что изменилось относительно cron-parser (D24, D28). Касается всех расписаний: scd `runtime.schedule`, `subscriptions[].monitor.schedule`, `subscriptions[].balancerMonitor.schedule`, `subscriptions[].target.balancerSelection.schedule`, `statusServer.remoteInstances[].schedule`; sfc — расписание обновления. Один парсер (`internal/common/cron`, библиотека `github.com/robfig/cron/v3` как есть) и для `validate-config`, и для планировщика; неподдерживаемое выражение — ошибка `validate-config` с текстом библиотеки.
 
 Синтаксис — классический Linux crontab: 5 полей `мин час день месяц день_недели` или 6 с ведущими секундами (`*/15 * * * * *` — каждые 15 с); `*`, списки `,`, диапазоны `-`, шаги `/`, имена месяцев/дней без учёта регистра (`JAN`, `mon-fri`); если ограничены и день месяца, и день недели — срабатывает по любому из них (OR), как раньше. Часовой пояс — локальный процесса (`TZ`; в образе — UTC), как раньше.
 
@@ -108,6 +125,10 @@
 ## Подписки
 
 Поведение ссылок: политика allowInsecure (D15), неизвестные параметры (D28), новые профили (D26).
+
+### scd: политика `allowInsecure`
+
+Новый ключ `subscriptions[].allowInsecure` (D15), по умолчанию `deny`: ссылка с `allowInsecure=1` и без `pcs`/`vcn` пропускается (в отчёте — причина), т.к. в Xray v26.10.10 отключить проверку сертификата нельзя и такой outbound всё равно не подключился бы к серверу с невалидным сертификатом. `allow` — ссылка принимается, параметр игнорируется с warning `allow_insecure_ignored`. Ссылки с `pcs` (`pinnedPeerCertSha256`) или `vcn` (`verifyPeerCertByName`) обрабатываются штатно при любом значении.
 
 ### sfc: какие строки попадают в выходы
 
@@ -151,6 +172,34 @@ sfc **не проверяет** применимость параметров к
 ## Разобранные примеры
 
 Боевые конфиги `docker/{scd,sfc,gtl}/config.real-shape.yml` → Go-формы `config.real-shape.go.yml` (diff по шагам).
+
+### scd: `docker/scd/config.real-shape.yml` → `docker/scd/config.real-shape.go.yml`
+
+TS-форма не проходит `scd validate-config`: фильтр меток обеих подписок построен на lookahead —
+
+```
+invalid config docker/scd/config.real-shape.yml:
+  - subscriptions.0.filters.labelIncludeRegex: lookahead, lookbehind and backreferences are not supported (RE2 syntax): error parsing regexp: invalid or unsupported Perl syntax: `(?!`
+  - subscriptions.1.filters.labelIncludeRegex: lookahead, … `(?!`
+```
+
+Шаг 1 — `blanc-en` и `blanc-ru` (всё, кроме Extra и WhiteList): «нет ни Extra, ни WhiteList» = исключение по любому из них (строка D29 №1). `countryAllowlist` не меняется.
+
+```diff
+     filters:
+       countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
+-      labelIncludeRegex: '/^(?!.*Extra)(?!.*WhiteList).*$/i'
++      labelExcludeRegex: '/Extra|WhiteList/i'
+```
+
+Шаг 2 — остальное без изменений. Все прочие ключи (`target.*` с `inboundSocks`, `monitor`, `balancerMonitor.socks5`, `remotePing.viaSocks: true`, `observatorySubjectSelectorPrefix`, `visionUdp443Override`; `runtime: daemon` с `"*/5 * * * *"`; `statusServer` с `instanceId`, `listen: 172.31.0.8:8080`, `runtimeState`) валидны в Go-схеме как есть. Расписания `*/1 * * * *` и `*/5 * * * *` — обычный crontab.
+
+Шаг 3 (необязательно) — новые ключи, все со значениями по умолчанию, которые сохраняют прежнее поведение, кроме двух мест, где оно меняется само:
+- `allowInsecure` — по умолчанию `deny`: ссылки с `allowInsecure=1` без `pcs`/`vcn` теперь пропускаются (см. «Подписки»). Если провайдер отдаёт такие ссылки и они нужны — `allowInsecure: allow`.
+- `fetchUserAgent` — без ключа панель увидит `User-Agent: scd/<версия>` вместо `node`; если панель выдаёт разный контент по User-Agent, задайте его явно.
+- `fetchHeaders` (например, `x-hwid: "${SCD_HWID}"` — переменная должна быть задана), `balancerSelection` (для панели выбора балансера на дашборде, напр. `{enabled: true, balancerTag: x-balancer, schedule: "*/15 * * * * *"}`; префикс `x-observe-` уже задан, поэтому предупреждения не будет).
+
+Проверка: `scd validate-config --config docker/scd/config.real-shape.go.yml` → `"valid": true`, stderr пуст (тест `TestSCDRealShapeGoFormValid`).
 
 ### sfc: `docker/sfc/config.real-shape.yml` → `docker/sfc/config.real-shape.go.yml`
 

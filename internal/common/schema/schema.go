@@ -63,6 +63,9 @@ type StrOpt struct {
 	// EmptyToAbsent (String only) treats an empty string (after Trim) as an
 	// absent key.
 	EmptyToAbsent bool
+	// AllowEmptyList (StringList, StringListElems) accepts an empty array and
+	// returns an empty non-nil slice.
+	AllowEmptyList bool
 }
 
 // IntOpt configures Int.
@@ -167,8 +170,15 @@ func (n *Node) String(key string, o StrOpt) (string, bool) {
 }
 
 // StringList returns the valid elements of the string array at key. An
-// empty array is reported; an absent key gives nil.
+// empty array is reported (unless AllowEmptyList); an absent key gives nil.
 func (n *Node) StringList(key string, o StrOpt) []string {
+	return values(n.StringListElems(key, o))
+}
+
+// StringListElems is StringList that also returns the key of each valid
+// element ("<key>.<i>", ready for Addf). With AllowEmptyList an empty array
+// gives an empty non-nil slice.
+func (n *Node) StringListElems(key string, o StrOpt) []StringElem {
 	v, ok := n.value(key, o.Required)
 	if !ok {
 		return nil
@@ -179,7 +189,10 @@ func (n *Node) StringList(key string, o StrOpt) []string {
 		n.add(p, mismatch("array", v))
 		return nil
 	}
-	return values(n.strList(p, key, list, o))
+	if o.AllowEmptyList && len(list) == 0 {
+		return []StringElem{}
+	}
+	return n.strList(p, key, list, o)
 }
 
 // StringOrList accepts either a single string or an array of strings at key

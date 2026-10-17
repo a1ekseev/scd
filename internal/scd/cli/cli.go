@@ -5,5 +5,5 @@ import "github.com/spf13/cobra"
 
 // Commands returns the scd top-level commands.
 func Commands() []*cobra.Command {
-	return nil
+	return []*cobra.Command{validateConfigCommand(), printConfigCommand()}
 }
