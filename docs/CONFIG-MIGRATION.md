@@ -94,7 +94,15 @@
 
 ## Логи
 
-Формат и поля логов (D27).
+Формат и поля логов (D27, D9, D32).
+
+- **Куда пишем.** Все три сервиса (`scd`, `sfc`, `gtl`) пишут логи только в **stderr** процесса; stdout занят JSON-выводом команд. Было: pino в stdout (scd/sfc/gtl по-разному). Причина: единое поведение, `docker logs` и пайпы JSON-вывода не смешиваются.
+- **Формат** — `logging.format`: `json` или `pretty`; любое другое значение — ошибка `unsupported log format "<f>" (expected json or pretty)`.
+  - `json` = `slog` JSON: `time` в RFC3339 (было: pino `time` в миллисекундах), `level` строкой `INFO`/`WARN`/`ERROR`/`DEBUG`/`TRACE`/`FATAL` (было: числовой pino `level`), `msg`, далее `event` и остальные поля. Имена событий (`event`) и поля сохранены.
+  - `pretty` = `slog.TextHandler`: строка `time=… level=INFO msg="…" event=… key=value`.
+- **Уровни** прежние: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` (`silent` — ничего не пишется).
+- Пример строки `json`: `{"time":"2026-10-17T12:00:00.123456789Z","level":"INFO","msg":"Sync finished.","event":"sync_finished"}`.
+- Если логи разбирались по числовому `level` или `time` в мс (Loki/jq-фильтры), их нужно переписать на строковый `level` и RFC3339 `time`.
 
 ## Разобранные примеры
 
