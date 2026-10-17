@@ -79,13 +79,17 @@
 - [ ] **Step 2: Run** `go test ./internal/common/...` → FAIL.
 - [ ] **Step 3: Implement** три пакета.
 - [ ] **Step 4: Run** `go test -race ./internal/common/... && golangci-lint run` → PASS.
-- [ ] **Step 5: Commit** `feat(common): add jsonout, listenaddr and regexlit packages` (body: D8, D9).
+- [ ] **Step 5: Commit** `feat(common): add jsonout, listenaddr and regexlit packages` (body: D8, D9) — вместе с пунктами `docs/CONFIG-MIGRATION.md` (D32; ревью-2 F05): `listen` (`statusServer.listen` scd, `server.listen` sfc/gtl) — `:8080` теперь допустим (все интерфейсы), IPv6 только в скобках; regex-фильтры — RE2, `/pattern/flags` с `i,m,s` или голый паттерн (D8).
 
 ---
 
 ### Task 1.3: `configload` и `schema`
 
-> **Поправка D29/D30 (обязательна):** фильтр меток — `labelIncludeRegex` (строка или список, AND) + новый `labelExcludeRegex` (строка или список, OR); общий пакет `internal/common/labelfilter` (`type Filter struct{Include, Exclude []*regexp.Regexp}`; `func Parse(node) (Filter, error)`; `func (f Filter) Match(label string) bool`), компиляция элементов через `regexlit` (D8); lookahead → обычная ошибка `regexlit` (D31: без спец-подсказок). Тесты: `TestLabelFilterRealShapeEquivalence` — для корпуса меток `testdata/reference/common/label-filter.json` (этап 0.6) решения Go-формы фильтров из D29 совпадают с решениями TS-регулярок; `TestRealShapeConfigGoFormValid` — Go-форма `docker/<svc>/config.real-shape.go.yml` проходит `validate-config`. Совместимость со старой формой не требуется (D31).
+> **Поправка D29/D30 (обязательна; уточнена ревью-2, F03):** фильтр меток — `labelIncludeRegex` (строка или список, AND) + новый `labelExcludeRegex` (строка или список, OR). Пакет `internal/common/labelfilter` создаётся **в этой задаче** (после `schema`, т.к. `Parse` пишет issues в `schema.Node`):
+> - `type Filter struct{ Include, Exclude []*regexp.Regexp; IncludeSrc, ExcludeSrc []string }`; `func Parse(n *schema.Node) Filter` — читает ключи `labelIncludeRegex`/`labelExcludeRegex` узла (строка → список из одного элемента; пустые после trim элементы и пустой список — issue `must not be empty`; ошибки `regexlit.Compile` — issue по пути `<…>.labelIncludeRegex.<i>` / `.labelExcludeRegex.<i>`, для строки — без индекса); `func (f Filter) Match(label string) bool` — все Include совпали **и** ни один Exclude не совпал (`MatchString`, D8); `func (f Filter) Empty() bool`; `func (f Filter) MarshalJSON()` — `{"labelIncludeRegex":[…]?,"labelExcludeRegex":[…]?}` из `*Src` (для `print-config`).
+> - Файлы: Create `internal/common/labelfilter/labelfilter.go`, `labelfilter_test.go`.
+> - Тесты (здесь и только здесь; в 3.1/4.1 не дублируются): `TestLabelFilterRealShapeEquivalence` — для корпуса `testdata/reference/common/label-filter.json` (0.6) решения Go-формы фильтров из D29 совпадают с решениями TS-регулярок на всех метках, кроме `allowedDiffs = {"Extra\nWhiteList": "JS . не матчит \\n: TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true (12 §6.3); Go-поведение не меняется"}` (тест также падает, если метка из `allowedDiffs` на деле совпала); `TestLabelFilterStringOrList`, `TestLabelFilterIssuePaths`, `TestLabelFilterLookaheadRejected` (обычная ошибка `regexlit`, D31 — без спец-подсказок).
+> - Проверка «Go-форма `docker/<svc>/config.real-shape.go.yml` проходит `validate-config`» здесь **невозможна** (конфиги и команды появляются в 2.1/3.1/4.1) — она перенесена в `TestGTLRealShapeGoFormValid` (2.1), `TestSFCRealShapeGoFormValid` (3.1), `TestSCDRealShapeGoFormValid` (4.1). Совместимость со старой формой не требуется (D31).
 
 **Read:** `01` §2.1–§2.4 (смысл правил; тексты zod не повторять — D9); `04` §3, §3.1, §3.3; `05` §3; `06` §4–§5; `07` D9.
 
@@ -100,7 +104,7 @@
   - `func ResolveInput(dir, input string) string`: `-` и `^(?i)https?://` — как есть; абсолютный — как есть; иначе `filepath.Join(dir, input)`.
 - Produces (`schema`) — маленький валидатор поверх `any`:
   - `type Issue struct{ Path, Message string }`; `type Issues []Issue`; `func (is Issues) Err(file string) error` → `nil` если пусто, иначе ошибка с текстом `invalid config <file>:` + по строке `\n  - <path>: <message>` (пустой путь → `<root>`).
-  - `type Node struct{…}`; `func Root(v any, issues *Issues) *Node`; методы (все nil-safe, ошибки типа/отсутствия пишут Issue с путём `a.b.0.c`): `Object(key string, required bool) *Node`, `Array(key string, required bool, minItems int) []*Node`, `String(key string, o StrOpt) (string, bool)` (`StrOpt{Required, Trim, MinLen, Default *string, EmptyToAbsent bool}`), `StringList(key string, o StrOpt) []string`, `Int(key string, o IntOpt) int` (`IntOpt{Required bool; Default, Min, Max *int}`; YAML-float с целым значением допустим), `Bool(key string, def bool) bool` (только YAML bool; `yes` → issue), `Enum(key string, allowed []string, def string) string`, `URL(key string, required bool) (string, bool)` (`net/url.Parse` + непустые scheme и host), `Strict(known ...string)` (неизвестные ключи → `unknown key "x"`), `Has(key) bool`, `Path() string`, `Addf(key, format string, args ...any)`, `StringMap(key string) map[string]string` (D33 `fetchHeaders`: отсутствует → `nil`; не объект → `expected object, got <type>`; значение не строка → issue по пути `<key>.<имя>` `expected string, got <type>`; ключи — как в YAML, порядок не важен).
+  - `type Node struct{…}`; `func Root(v any, issues *Issues) *Node`; методы (все nil-safe, ошибки типа/отсутствия пишут Issue с путём `a.b.0.c`): `Object(key string, required bool) *Node`, `Array(key string, required bool, minItems int) []*Node`, `String(key string, o StrOpt) (string, bool)` (`StrOpt{Required, Trim, MinLen, Default *string, EmptyToAbsent bool}`), `StringList(key string, o StrOpt) []string`, `Int(key string, o IntOpt) int` (`IntOpt{Required bool; Default, Min, Max *int}`; только YAML `!!int`; `5000.0` → issue `expected integer, got float` — JS-нюанс «число с целым значением» не переносится, D9/D31; ревью-2 F22), `Bool(key string, def bool) bool` (только YAML bool; `yes` → issue), `Enum(key string, allowed []string, def string) string`, `URL(key string, required bool) (string, bool)` (`net/url.Parse` + непустые scheme и host), `Strict(known ...string)` (неизвестные ключи → `unknown key "x"`), `Has(key) bool`, `Path() string`, `Addf(key, format string, args ...any)`, `StringMap(key string) map[string]string` (D33 `fetchHeaders`: отсутствует → `nil`; не объект → `expected object, got <type>`; значение не строка → issue по пути `<key>.<имя>` `expected string, got <type>`; ключи — как в YAML, порядок не важен).
   - Сообщения: `required`, `expected <type>, got <type>`, `must be at least N`, `must be at most N`, `must be one of a|b|c`, `must not be empty`, `invalid URL`, `unknown key "x"`.
 
 - [ ] **Step 1: Failing tests (`configload`):**
@@ -109,7 +113,7 @@
   - `TestLoadNoneKeepsLiteral`: `a: ${X}` → `"${X}"`.
   - `TestLoadDuplicateKeyFails`, `TestLoadEmptyFileIsEmptyMap`, `TestLoadMultiDocFails`, `TestLoadMissingFileError` (`errors.Is(err, fs.ErrNotExist)`).
   - `TestResolveInput`: `-`, `HTTP://x`, `/abs`, `rel/a.txt`, `ftp://x/y` (→ `<dir>/ftp:/x/y`).
-- [ ] **Step 2: Failing tests (`schema`):** `TestRequiredMissing` (путь `subscriptions.0.id`), `TestWrongType`, `TestTrimAndMin`, `TestIntBounds`, `TestFloatIntegralAccepted` (`5000.0` → 5000), `TestBoolRejectsYesString`, `TestEnumDefault`, `TestStrictUnknownKey`, `TestIssuesErrFormat` (точный текст двух issues), `TestStringMap` (`{x-hwid: abc}` → `map[x-hwid:abc]`; `{x-n: 5}` → issue `fetchHeaders.x-n: expected string, got int`; `fetchHeaders: [a]` → `expected object`).
+- [ ] **Step 2: Failing tests (`schema`):** `TestRequiredMissing` (путь `subscriptions.0.id`), `TestWrongType`, `TestTrimAndMin`, `TestIntBounds`, `TestFloatRejected` (`5000.0` → issue `expected integer`), `TestBoolRejectsYesString`, `TestEnumDefault`, `TestStrictUnknownKey`, `TestIssuesErrFormat` (точный текст двух issues), `TestStringMap` (`{x-hwid: abc}` → `map[x-hwid:abc]`; `{x-n: 5}` → issue `fetchHeaders.x-n: expected string, got int`; `fetchHeaders: [a]` → `expected object`).
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `go test -race ./internal/common/... && golangci-lint run` → PASS.
 - [ ] **Step 6: Commit** `feat(common): add config loading and schema validation helpers`.
 
@@ -143,7 +147,7 @@
   - `TestCausesFromJoin` (`03` §10.1 п.2): `errors.Join(errors.New("first cause"), errors.New("second cause"))` → `["first cause","second cause"]`.
   - `TestRunLoggedOverrunLog` / `TestRunLoggedFailureLogsCauses` (`03` §10.1 п.3–4, `04` §11 п.3–4): JSON-handler в буфер; overrun → warn с `event`, `subscriptionId`, `scheduledAt`; ошибка → ровно один error с `causes`; loop продолжает работу.
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement** (`go get github.com/robfig/cron/v3@v3.0.1`). **Step 5: Run** `go test -race ./internal/common/...` → PASS.
-- [ ] **Step 6: Commit** `feat(common): add cron parser and cron loop with immediate shutdown` (body: D7, D23, D24).
+- [ ] **Step 6: Commit** `feat(common): add cron parser and cron loop with immediate shutdown` (body: D7, D23, D24, D28) — вместе с разделом «Cron» `docs/CONFIG-MIGRATION.md` (D32; ревью-2 F05): что принимает/отвергает `robfig/cron/v3` по сравнению с `cron-parser` (`@midnight`/`@annually`/`?`/`@every`/`CRON_TZ=` — да; `L/W/#/H`, dow `7`, `@minutely|@secondly|@weekdays|@weekends` — ошибка; никогда не срабатывающие — ошибка).
 
 ---
 
@@ -161,10 +165,11 @@
   - `func Recover(log *slog.Logger, h http.Handler) http.Handler` — panic → 500 `text/plain; charset=utf-8` тело `internal server error\n`, лог `error` с `event` `http_handler_panic`, `panic`, `path`.
   - `func Run(ctx context.Context, ln net.Listener, h http.Handler, shutdownTimeout time.Duration) error` — `http.Server{Handler: h, ReadHeaderTimeout: 60*time.Second}` (без `WriteTimeout`: gtl отдаёт большие тела); при `ctx.Done()` → `Shutdown` с таймаутом; возвращает `nil` при штатной остановке.
   - `func Listen(addr string) (net.Listener, error)` — `net.Listen("tcp", addr)`.
+  - `func CleanPath(escaped string) string` (ревью-2 F01; используют gtl 2.2 и sfc 3.3) — удаление dot-сегментов (`path.Clean`) **без** декодирования `%xx` и **с сохранением хвостового `/`** (как `pathname` WHATWG URL у TS: `/load/` → `/load/`, `/load/1/` → `/load/1/`, `/a/../load/1` → `/load/1`, `/s/../s/test-all` → `/s/test-all`, `""` → `/`).
 
-- [ ] **Step 1: Failing tests:** `TestNewLevels` (trace пишет при level `trace`, не пишет при `debug`; `silent` ничего не пишет), `TestNewJSONHasEventAttr`, `TestNewPrettyIsText` (строка содержит `level=INFO` и `event=x`, не начинается с `{`), `TestNewRejectsUnknownLevel`, `TestNewRejectsUnknownFormat` (`text` → ошибка); `TestRecoverReturns500` (handler с panic → 500, лог содержит `http_handler_panic`), `TestRunShutsDownOnCancel` (запрос в процессе завершается, `Run` возвращает nil после cancel), `TestRunReturnsServeError`.
+- [ ] **Step 1: Failing tests:** `TestNewLevels` (trace пишет при level `trace`, не пишет при `debug`; `silent` ничего не пишет), `TestNewJSONHasEventAttr`, `TestNewPrettyIsText` (строка содержит `level=INFO` и `event=x`, не начинается с `{`), `TestNewRejectsUnknownLevel`, `TestNewRejectsUnknownFormat` (`text` → ошибка); `TestRecoverReturns500` (handler с panic → 500, лог содержит `http_handler_panic`), `TestRunShutsDownOnCancel` (запрос в процессе завершается, `Run` возвращает nil после cancel), `TestRunReturnsServeError`, `TestCleanPathKeepsTrailingSlash` (таблица из Interfaces).
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `go test -race ./internal/common/...` → PASS.
-- [ ] **Step 5: Commit** `feat(common): add slog logger factory and HTTP serve helpers` (body: D7, D9, D23, D27).
+- [ ] **Step 5: Commit** `feat(common): add slog logger factory and HTTP serve helpers` (body: D7, D9, D23, D27) — вместе с разделом «Логи» `docs/CONFIG-MIGRATION.md` (D32; ревью-2 F05): все сервисы — stderr, `json` = slog JSON (`time` RFC3339, `level` строкой, `msg`, `event` + поля; вместо pino `level`-числа и `time` в мс), `pretty` = `slog.TextHandler`; уровни прежние.
 
 ---
 
