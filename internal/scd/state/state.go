@@ -17,6 +17,7 @@ import (
 
 	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/topology"
+	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
 // Tunnel monitor states.
@@ -41,6 +42,66 @@ const (
 	RemotePingOK      = "ok"
 	RemotePingFailed  = "failed"
 )
+
+// Balancer selection states (D22, 10 §6.4). The zero value "" means the
+// selection was never polled (the feature is off or its first tick has not
+// run yet); status shows it as idle.
+const (
+	SelectionIdle  = "idle"
+	SelectionOK    = "ok"
+	SelectionError = "error"
+)
+
+// Mode is how the Xray balancer currently selects (10 §6.2).
+type Mode string
+
+// Selection modes.
+const (
+	// ModeOverride: OverrideBalancerTarget is set and always wins.
+	ModeOverride Mode = "override"
+	// ModeSingle: one principle target (leastPing, leastLoad with one node).
+	ModeSingle Mode = "single"
+	// ModePool: several principle targets, chosen per connection (random,
+	// roundRobin, leastLoad with expected > 1).
+	ModePool Mode = "pool"
+	// ModeNone: no alive candidate; traffic goes to fallbackTag or the
+	// default outbound.
+	ModeNone Mode = "none"
+	// ModeUnknown: Xray returned no principle target.
+	ModeUnknown Mode = "unknown"
+)
+
+// SelectionState is the balancer selection state of a target (D22, 10
+// §6.4), written by the balancer selection tick. It survives topology
+// replacements. On a GetBalancerInfo error the last selection is kept.
+type SelectionState struct {
+	// State is "" (never polled), ok or error.
+	State       string
+	BalancerTag string
+	Mode        Mode
+	// SelectedTag is the effective selection: the override or the single
+	// principle target; "" for pool, none and unknown.
+	SelectedTag      string
+	OverrideTarget   string
+	PrincipleTargets []string
+	// SelectedSince is when SelectedTag last changed.
+	SelectedSince       *time.Time
+	PreviousSelectedTag string
+
+	LastCheckedAt, LastSuccessAt, LastFailureAt *time.Time
+	// LastError is the GetBalancerInfo error of the last failed check.
+	LastError           string
+	ConsecutiveFailures int
+
+	// Observatory is the last GetOutboundStatus answer by tag; nil when it
+	// is disabled or failed (no decisions on stale liveness).
+	Observatory map[string]xrayapi.OutboundObservation
+	// ObservatoryError is the last GetOutboundStatus error.
+	ObservatoryError string
+	// ObservatoryCheckedAt is the time of the last successful
+	// GetOutboundStatus.
+	ObservatoryCheckedAt *time.Time
+}
 
 // TunnelMonitor is the monitor state of one tunnel (TS TunnelMonitorState).
 // Nil pointers are values that were never set or were cleared.
@@ -95,6 +156,8 @@ type Target struct {
 	Tunnels []*Tunnel
 	// Balancer survives topology replacements.
 	Balancer BalancerMonitor
+	// BalancerSelection survives topology replacements (10 §6.4).
+	BalancerSelection SelectionState
 }
 
 // Memory is the state of every target of this process.
@@ -161,8 +224,8 @@ func (m *Memory) Ensure(key string) {
 
 // ReplaceTopology installs topo and hashes after a fully successful apply
 // (03 §2.3): Generation++, Hashes become a copy of hashes, Tunnels are
-// rebuilt in topology order with idle monitors. The balancer monitor is
-// kept. The target is created if it does not exist; the *Target stays the
+// rebuilt in topology order with idle monitors. The balancer monitor and
+// the balancer selection are kept. The target is created if it does not exist; the *Target stays the
 // same object.
 func (m *Memory) ReplaceTopology(key string, topo topology.Topology, hashes map[apply.Kind]string) {
 	m.mu.Lock()

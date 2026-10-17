@@ -32,6 +32,8 @@ type fixture struct {
 			Enabled bool   `json:"enabled"`
 			Address string `json:"address"`
 			Prefix  string `json:"observatorySubjectSelectorPrefix"`
+			// BalancerSelection extends the 0.4 contract (task 6.6).
+			BalancerSelection config.BalancerSelectionConfig `json:"balancerSelection"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
 			ID       string `json:"id"`
@@ -44,7 +46,9 @@ type fixture struct {
 		SubscriptionID  string          `json:"subscriptionId"`
 		TargetAddress   string          `json:"targetAddress"`
 		BalancerMonitor fixtureBalancer `json:"balancerMonitor"`
-		Tunnels         []struct {
+		// BalancerSelection extends the 0.4 contract (task 6.6).
+		BalancerSelection *fixtureSelection `json:"balancerSelection"`
+		Tunnels           []struct {
 			BaseTunnelID             string         `json:"baseTunnelId"`
 			DisplayName              string         `json:"displayName"`
 			CountryISO2              string         `json:"countryIso2"`
@@ -89,6 +93,66 @@ type fixtureBalancer struct {
 	ConsecutiveFailures                                                   int
 }
 
+// fixtureSelection is targets[].balancerSelection (task 6.6): the keys of
+// the JSON view (10 §6.6) where they overlap, plus the state-only ones
+// (previousSelectedTag, consecutiveFailures, observatoryCheckedAt and the
+// observatory list; null observatory = unavailable).
+type fixtureSelection struct {
+	BalancerTag          string               `json:"balancerTag"`
+	State                string               `json:"state"`
+	Mode                 state.Mode           `json:"mode"`
+	SelectedOutboundTag  string               `json:"selectedOutboundTag"`
+	OverrideTarget       string               `json:"overrideTarget"`
+	PrincipleTargets     []string             `json:"principleTargets"`
+	SelectedSince        *time.Time           `json:"selectedSince"`
+	PreviousSelectedTag  string               `json:"previousSelectedTag"`
+	LastCheckedAt        *time.Time           `json:"lastCheckedAt"`
+	LastSuccessAt        *time.Time           `json:"lastSuccessAt"`
+	LastFailureAt        *time.Time           `json:"lastFailureAt"`
+	LastError            string               `json:"lastError"`
+	ConsecutiveFailures  int                  `json:"consecutiveFailures"`
+	Observatory          []fixtureObservation `json:"observatory"`
+	ObservatoryError     string               `json:"observatoryError"`
+	ObservatoryCheckedAt *time.Time           `json:"observatoryCheckedAt"`
+}
+
+type fixtureObservation struct {
+	Tag        string     `json:"tag"`
+	Alive      bool       `json:"alive"`
+	DelayMs    *int64     `json:"delayMs"`
+	LastError  string     `json:"lastError"`
+	LastSeenAt *time.Time `json:"lastSeenAt"`
+	LastTryAt  *time.Time `json:"lastTryAt"`
+	HealthPing *struct {
+		All, Fail                            int64
+		AverageMs, DeviationMs, MinMs, MaxMs float64
+	} `json:"healthPing"`
+}
+
+// selectionState converts the fixture form into the state.
+func (f *fixtureSelection) selectionState() state.SelectionState {
+	s := state.SelectionState{
+		State: f.State, BalancerTag: f.BalancerTag, Mode: f.Mode, SelectedTag: f.SelectedOutboundTag,
+		OverrideTarget: f.OverrideTarget, PrincipleTargets: f.PrincipleTargets,
+		SelectedSince: f.SelectedSince, PreviousSelectedTag: f.PreviousSelectedTag,
+		LastCheckedAt: f.LastCheckedAt, LastSuccessAt: f.LastSuccessAt, LastFailureAt: f.LastFailureAt,
+		LastError: f.LastError, ConsecutiveFailures: f.ConsecutiveFailures,
+		ObservatoryError: f.ObservatoryError, ObservatoryCheckedAt: f.ObservatoryCheckedAt,
+	}
+	if f.Observatory != nil {
+		ms := func(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
+		s.Observatory = make(map[string]xrayapi.OutboundObservation, len(f.Observatory))
+		for _, o := range f.Observatory {
+			obs := xrayapi.OutboundObservation{Tag: o.Tag, Alive: o.Alive, DelayMs: o.DelayMs, LastError: o.LastError, LastSeenAt: o.LastSeenAt, LastTryAt: o.LastTryAt}
+			if hp := o.HealthPing; hp != nil {
+				obs.HealthPing = &xrayapi.HealthPing{All: hp.All, Fail: hp.Fail, Average: ms(hp.AverageMs), Deviation: ms(hp.DeviationMs), Min: ms(hp.MinMs), Max: ms(hp.MaxMs)}
+			}
+			s.Observatory[o.Tag] = obs
+		}
+	}
+	return s
+}
+
 // loaded is a fixture turned into the inputs of the status layer.
 type loaded struct {
 	now time.Time
@@ -97,16 +161,36 @@ type loaded struct {
 	agg *Aggregator
 }
 
-// fixtureNames lists the 0.4 fixtures.
+// selectionPrefix names the balancer selection fixtures (task 6.6). They
+// have no TS reference: the feature does not exist in TS (D22).
+const selectionPrefix = "selection-"
+
+// fixtureNames lists the 0.4 fixtures (with a TS reference).
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
+	return globFixtures(t, func(name string) bool { return !strings.HasPrefix(name, selectionPrefix) })
+}
+
+// selectionFixtureNames lists the balancer selection fixtures.
+func selectionFixtureNames(t *testing.T) []string {
+	t.Helper()
+	return globFixtures(t, func(name string) bool { return strings.HasPrefix(name, selectionPrefix) })
+}
+
+func globFixtures(t *testing.T, keep func(name string) bool) []string {
+	t.Helper()
 	files, err := filepath.Glob(refStatusDir + "fixtures/*.json")
-	if err != nil || len(files) == 0 {
-		t.Fatalf("no fixtures: %v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	names := make([]string, 0, len(files))
+	var names []string
 	for _, f := range files {
-		names = append(names, strings.TrimSuffix(filepath.Base(f), ".json"))
+		if name := strings.TrimSuffix(filepath.Base(f), ".json"); keep(name) {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("no fixtures")
 	}
 	return names
 }
@@ -132,6 +216,7 @@ func loadFixture(t *testing.T, name string) loaded {
 			Target: config.SubscriptionTargetConfig{
 				Address: s.Address, TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: s.Prefix,
 				FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
+				BalancerSelection: s.BalancerSelection,
 			},
 		})
 	}
@@ -162,6 +247,9 @@ func loadFixture(t *testing.T, name string) loaded {
 		mem.ReplaceTopology(key, topo, nil)
 		mem.Update(key, func(st *state.Target) {
 			st.Balancer = state.BalancerMonitor(tg.BalancerMonitor)
+			if tg.BalancerSelection != nil {
+				st.BalancerSelection = tg.BalancerSelection.selectionState()
+			}
 			for i, tn := range tg.Tunnels {
 				st.Tunnels[i].Monitor = state.TunnelMonitor(tn.Monitor)
 			}

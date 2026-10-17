@@ -203,6 +203,33 @@
 | ошибки сбора remote (`lastError`) | тексты Node (`fetch failed`, `The operation was aborted due to timeout`) | тексты Go (`net/http`, `context deadline exceeded`, ошибки разбора JSON); `Remote status API returned HTTP <код>.` и тексты проверки схемы — без изменений | D9 |
 | `instanceId` без `statusServer.instanceId` | `os.hostname()` | `os.Hostname()`, при ошибке — `localhost` | D9 |
 
+### scd: выбор балансера Xray (`target.balancerSelection`)
+
+Новая функция (D22, `10` §6): scd показывает, какой outbound **сейчас** выбирает балансер Xray. В TS её нет; при `enabled: false` (по умолчанию) JSON API и дашборд такие же, как раньше (D3).
+
+| Что | Было (TS) | Стало (Go) | Причина |
+|---|---|---|---|
+| ключ `subscriptions[].target.balancerSelection` | — | `{enabled: false, observatory: true}` по умолчанию; при `enabled: true` обязательны `balancerTag` (= `routing.balancers[].tag`, **не** ruleTag: Xray не отдаёт тег балансера через API) и `schedule` (cron, 6 полей с секундами, напр. `"*/15 * * * * *"` = `probeInterval` observatory; чаще опрашивать бессмысленно); `observatory: false` отключает вызов `ObservatoryService`; `strategy` — подсказка для UI в режиме pool | D22, `10` §6.5 |
+| Xray `api.services` | `HandlerService, LoggerService, StatsService, RoutingService` | + `"ObservatoryService"` (`docker/xray/config/01_api.json`). ⚠️ `ObservatoryService` без секции `observatory`/`burstObservatory` **роняет старт Xray** (`core: not all dependencies are resolved.`); у нас она в `05_observatory.json`. Без сервиса функция работает, но живость кандидатов не видна (`observatoryError`: `Xray API service ObservatoryService is not enabled (add it to api.services).`) | D22 п.1, `10` §3.2 |
+| опрос | — | отдельный cron-цикл на target (6.7): read-only `GetBalancerInfo` + `GetOutboundStatus` параллельно, **без** target-lock; работает и до первого sync (сопоставление с туннелями появляется после sync). `OverrideBalancerTarget` scd не вызывает | D22 п.2, п.4, `10` §6.3, §6.8 |
+| логи | — | `balancer_selection_changed` (info: `from`, `to`, `mode`), `balancer_selection_failed` (warn, только при новом тексте ошибки), `balancer_selection_recovered` (info), `balancer_observatory_unavailable` (warn, один раз на текст); у всех `subscriptionId`, `targetAddress`, `balancerTag` | `10` §6.4 |
+| `/api/instance-status` `targets[]` | — | новый ключ `balancerSelection` (после `balancerMonitor`): `balancerTag, state (idle\|ok\|error), mode (override\|single\|pool\|none\|unknown), strategy?, selectedOutboundTag?, selectedTunnelId?, selectedDisplayName?, selectedCountryIso2?, selectedManaged?, selectedDelayMs?, overrideTarget?, principleTargets?, selectedSince?, lastCheckedAt?, lastSuccessAt?, lastFailureAt?, lastError?, observatoryError?`; при ошибке выбор прошлого успеха сохраняется | D22, `10` §6.6 |
+| туннели `/api/status`, `/api/instance-status` | — | после `balancerMonitor*`: `outboundTag, balancerSelected, balancerCandidate, observatoryStatus (alive\|dead\|awaiting\|n/a), observatoryAlive?, observatoryDelayMs?, observatoryLastError?, observatoryLastSeenAt?, observatoryLastTryAt?, observatoryHealthPing{All,Fail,AverageMs,DeviationMs}?` (только после первого опроса). Observatory-данные берутся только по текущему тегу туннеля: устаревшие записи удалённых/отремонтированных outbound'ов не показываются | `10` §4, §6.6 |
+| `/api/runtime-state` | — | `serviceState.balancerSelection`: то же + `previousSelectedTag`, `consecutiveFailures`, `observatory[]` (все статусы по тегу), `observatoryCheckedAt` | `10` §6.6 |
+| `version` снапшота | `1` | `1` (поля аддитивные; старые агрегаторы пропускают их насквозь, новые принимают снапшоты без них) | D3, D22 |
+| дашборд | — | карточка «Xray selection · {balancerTag}» после «External SOCKS check»: `Selected` (туннель / сырой тег / `override → tag` / `pool (n) · strategy` / `none (fallback/default outbound)`), `Latency`, `Since`, `Observatory` (`a/n alive` или `unavailable`), `Error` при ошибке; degraded — ошибка, `none`, override вне туннелей target'а, выбранный dead. У туннелей — рамка и бейдж `Selected`, бейдж `Pool`, метрика `Observatory`. Repaired-туннели балансер выбрать не может (без префикса они вне selector'а) | D22 п.3, п.5, `10` §6.7 |
+
+Пример (как в `docker/scd/config.example.yml`):
+
+```yaml
+target:
+  observatorySubjectSelectorPrefix: x-observe-
+  balancerSelection:
+    enabled: true
+    balancerTag: x-balancer
+    schedule: "*/15 * * * * *"
+```
+
 ### sfc: какие строки попадают в выходы
 
 Ключи конфига не менялись, но **содержимое выходов** `scd sfc` может стать больше (12 §6.2, D27 O7, D28, D18, D32).

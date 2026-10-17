@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/topology"
@@ -78,6 +79,56 @@ type StatusTunnel struct {
 	BalancerMonitorRemotePingLastReportedStatus string `json:"balancerMonitorRemotePingLastReportedStatus,omitempty"`
 	BalancerMonitorRemotePingLastReportedMsg    string `json:"balancerMonitorRemotePingLastReportedMsg,omitempty"`
 	BalancerMonitorRemotePingLastReportedPingMs *int   `json:"balancerMonitorRemotePingLastReportedPingMs,omitempty"`
+
+	// The balancer selection fields (D22, 10 §6.6) are set only when the
+	// target's balancer selection has been polled; otherwise the tunnel is
+	// the TS StatusSnapshotTunnel unchanged.
+	OutboundTag       string `json:"outboundTag,omitempty"`
+	BalancerSelected  *bool  `json:"balancerSelected,omitempty"`
+	BalancerCandidate *bool  `json:"balancerCandidate,omitempty"`
+	// ObservatoryStatus is alive, dead, awaiting or n/a (10 §6.7).
+	ObservatoryStatus                string   `json:"observatoryStatus,omitempty"`
+	ObservatoryAlive                 *bool    `json:"observatoryAlive,omitempty"`
+	ObservatoryDelayMs               *int64   `json:"observatoryDelayMs,omitempty"`
+	ObservatoryLastError             string   `json:"observatoryLastError,omitempty"`
+	ObservatoryLastSeenAt            string   `json:"observatoryLastSeenAt,omitempty"`
+	ObservatoryLastTryAt             string   `json:"observatoryLastTryAt,omitempty"`
+	ObservatoryHealthPingAll         *int64   `json:"observatoryHealthPingAll,omitempty"`
+	ObservatoryHealthPingFail        *int64   `json:"observatoryHealthPingFail,omitempty"`
+	ObservatoryHealthPingAverageMs   *float64 `json:"observatoryHealthPingAverageMs,omitempty"`
+	ObservatoryHealthPingDeviationMs *float64 `json:"observatoryHealthPingDeviationMs,omitempty"`
+}
+
+// BalancerSelectionView is the balancer selection of a grouped target
+// (D22, 10 §6.6): present only when target.balancerSelection is enabled.
+// The selected* fields describe the effective selection (override or single
+// principle target); they keep the last successful value while state is
+// error.
+type BalancerSelectionView struct {
+	BalancerTag string `json:"balancerTag"`
+	// State is idle (never polled), ok or error.
+	State string `json:"state"`
+	// Mode is override, single, pool, none or unknown.
+	Mode string `json:"mode,omitempty"`
+	// Strategy is the optional balancerSelection.strategy UI hint (D22 p.3).
+	Strategy            string `json:"strategy,omitempty"`
+	SelectedOutboundTag string `json:"selectedOutboundTag,omitempty"`
+	SelectedTunnelID    string `json:"selectedTunnelId,omitempty"`
+	SelectedDisplayName string `json:"selectedDisplayName,omitempty"`
+	SelectedCountryISO2 string `json:"selectedCountryIso2,omitempty"`
+	// SelectedManaged is set with SelectedOutboundTag: whether it is a tunnel
+	// of this target.
+	SelectedManaged *bool  `json:"selectedManaged,omitempty"`
+	SelectedDelayMs *int64 `json:"selectedDelayMs,omitempty"`
+	OverrideTarget  string `json:"overrideTarget,omitempty"`
+	// PrincipleTargets is [] for mode none and omitted when unknown.
+	PrincipleTargets []string `json:"principleTargets,omitzero"`
+	SelectedSince    string   `json:"selectedSince,omitempty"`
+	LastCheckedAt    string   `json:"lastCheckedAt,omitempty"`
+	LastSuccessAt    string   `json:"lastSuccessAt,omitempty"`
+	LastFailureAt    string   `json:"lastFailureAt,omitempty"`
+	LastError        string   `json:"lastError,omitempty"`
+	ObservatoryError string   `json:"observatoryError,omitempty"`
 }
 
 // BalancerMonitorView is the balancer monitor of a grouped target (TS
@@ -111,6 +162,8 @@ type GroupedStatusTarget struct {
 	TargetAddress   string              `json:"targetAddress"`
 	Tunnels         []StatusTunnel      `json:"tunnels"`
 	BalancerMonitor BalancerMonitorView `json:"balancerMonitor"`
+	// BalancerSelection is nil when the feature is off (D3: no key).
+	BalancerSelection *BalancerSelectionView `json:"balancerSelection,omitempty"`
 }
 
 // GroupedSubscription is a subscription with its targets, sorted by address.
@@ -182,7 +235,11 @@ func BuildTunnels(m *state.Memory) []StatusTunnel {
 		}
 		m.View(key, func(t *state.Target) {
 			for _, tn := range t.Tunnels {
-				tunnels = append(tunnels, statusTunnel(subID, addr, tn, &t.Balancer))
+				st := statusTunnel(subID, addr, tn, &t.Balancer)
+				if t.BalancerSelection.State != "" {
+					addSelection(&st, tn, &t.BalancerSelection)
+				}
+				tunnels = append(tunnels, st)
 			}
 		})
 	}
@@ -227,6 +284,59 @@ func statusTunnel(subID, addr string, tn *state.Tunnel, b *state.BalancerMonitor
 		BalancerMonitorRemotePingLastReportedMsg:    b.RemotePingLastReportedMsg,
 		BalancerMonitorRemotePingLastReportedPingMs: clone(b.RemotePingLastReportedPingMs),
 	}
+}
+
+// addSelection sets the balancer selection fields of st (10 §6.6).
+func addSelection(st *StatusTunnel, tn *state.Tunnel, s *state.SelectionState) {
+	v := balancer.ViewTunnel(tn, s)
+	st.OutboundTag = tn.Mapping.OutboundTagCurrent
+	st.BalancerSelected, st.BalancerCandidate = new(v.Selected), new(v.Candidate)
+	st.ObservatoryStatus = v.Status
+	o := v.Observation
+	if o == nil {
+		return
+	}
+	st.ObservatoryAlive = new(o.Alive)
+	st.ObservatoryDelayMs = clone(o.DelayMs)
+	st.ObservatoryLastError = o.LastError
+	st.ObservatoryLastSeenAt, st.ObservatoryLastTryAt = formatOptTime(o.LastSeenAt), formatOptTime(o.LastTryAt)
+	if hp := o.HealthPing; hp != nil {
+		st.ObservatoryHealthPingAll, st.ObservatoryHealthPingFail = new(hp.All), new(hp.Fail)
+		st.ObservatoryHealthPingAverageMs, st.ObservatoryHealthPingDeviationMs = new(durationMs(hp.Average)), new(durationMs(hp.Deviation))
+	}
+}
+
+// durationMs is d in (fractional) milliseconds.
+func durationMs(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
+
+// selectionView is the grouped balancer selection of a target: s with the
+// selected tag mapped onto tunnels (prefix is the target's
+// observatorySubjectSelectorPrefix). s is nil before any state exists.
+func selectionView(cfg config.BalancerSelectionConfig, prefix string, s *state.SelectionState, tunnels []*state.Tunnel) BalancerSelectionView {
+	v := BalancerSelectionView{BalancerTag: cfg.BalancerTag, State: state.SelectionIdle}
+	if s == nil || s.State == "" {
+		return v
+	}
+	v.BalancerTag, v.State = cmp.Or(s.BalancerTag, cfg.BalancerTag), s.State
+	v.Mode, v.Strategy = string(s.Mode), cfg.Strategy
+	if tag := s.SelectedTag; tag != "" {
+		v.SelectedOutboundTag = tag
+		id, managed := balancer.MapTag(tag, prefix, tunnels)
+		v.SelectedManaged = new(managed)
+		if i := slices.IndexFunc(tunnels, func(tn *state.Tunnel) bool { return tn.Mapping.BaseTunnelID == id }); managed && i >= 0 {
+			m := tunnels[i].Mapping
+			v.SelectedTunnelID, v.SelectedDisplayName, v.SelectedCountryISO2 = id, m.DisplayName, m.CountryISO2
+		}
+		if o, ok := s.Observatory[tag]; ok {
+			v.SelectedDelayMs = clone(o.DelayMs)
+		}
+	}
+	v.OverrideTarget = s.OverrideTarget
+	v.PrincipleTargets = slices.Clone(s.PrincipleTargets)
+	v.SelectedSince = formatOptTime(s.SelectedSince)
+	v.LastCheckedAt, v.LastSuccessAt, v.LastFailureAt = formatOptTime(s.LastCheckedAt), formatOptTime(s.LastSuccessAt), formatOptTime(s.LastFailureAt)
+	v.LastError, v.ObservatoryError = s.LastError, s.ObservatoryError
+	return v
 }
 
 // balancerViewOf is the balancer monitor of a group taken from the
@@ -335,7 +445,9 @@ func sortGroups(subs []GroupedSubscription) {
 // BuildConfiguredGroups groups tunnels and makes sure that every enabled
 // subscription of cfg and its target are present, even without tunnels or
 // memory state (TS buildConfiguredStatusGroups). A configured target's
-// balancer monitor is its memory state, else the group's, else idle.
+// balancer monitor is its memory state, else the group's, else idle; with
+// balancerSelection enabled it also gets the selection view (idle until
+// polled).
 func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *state.Memory) []GroupedSubscription {
 	subs := GroupTunnels(tunnels)
 	index := make(map[string]int, len(subs))
@@ -355,22 +467,33 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 		addr := c.Target.Address
 		j := slices.IndexFunc(subs[i].Targets, func(t GroupedStatusTarget) bool { return t.TargetAddress == addr })
 
-		var bm *BalancerMonitorView
+		var (
+			bm  *BalancerMonitorView
+			sel *BalancerSelectionView
+		)
+		bs := c.Target.BalancerSelection
+		if bs.Enabled {
+			sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, nil, nil))
+		}
 		m.View(state.Key(c.ID, addr), func(t *state.Target) {
 			v := balancerView(&t.Balancer)
 			bm = &v
+			if bs.Enabled {
+				sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, &t.BalancerSelection, t.Tunnels))
+			}
 		})
 		if j >= 0 {
 			if bm != nil {
 				subs[i].Targets[j].BalancerMonitor = *bm
 			}
+			subs[i].Targets[j].BalancerSelection = sel
 			continue
 		}
 		if bm == nil {
 			bm = &BalancerMonitorView{State: state.BalancerIdle}
 		}
 		subs[i].Targets = append(subs[i].Targets, GroupedStatusTarget{
-			SubscriptionID: c.ID, TargetAddress: addr, Tunnels: []StatusTunnel{}, BalancerMonitor: *bm,
+			SubscriptionID: c.ID, TargetAddress: addr, Tunnels: []StatusTunnel{}, BalancerMonitor: *bm, BalancerSelection: sel,
 		})
 	}
 	sortGroups(subs)

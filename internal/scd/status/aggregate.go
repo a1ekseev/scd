@@ -283,9 +283,12 @@ func fits(v any, t reflect.Type) bool {
 	case reflect.Bool:
 		_, ok := v.(bool)
 		return ok
-	case reflect.Int:
+	case reflect.Int, reflect.Int64:
 		f, ok := v.(float64)
 		return ok && f == math.Trunc(f) && math.Abs(f) <= 1<<53
+	case reflect.Float64:
+		_, ok := v.(float64)
+		return ok
 	case reflect.Struct:
 		_, ok := v.(map[string]any)
 		return ok

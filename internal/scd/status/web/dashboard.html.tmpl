@@ -68,24 +68,39 @@
         {{template "metric" (metric "Remote Push" (formatRemotePushStatus $b.RemotePingState $b.RemotePingLastReportedStatus))}}
       </div>
     </div>
-  </article>
+  </article>{{with selectionCard .}}
+  <article class="balancer-card state-{{.Class}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">Xray selection · {{.BalancerTag}}</div>
+      <div class="node-metrics">
+        {{- range .Metrics}}
+        {{template "metric" .}}
+        {{- end}}
+      </div>
+    </div>
+  </article>{{end}}
   <div class="nodes-grid">
-    {{range $i, $tn := .Tunnels}}{{if $i}}
+    {{range $i, $tn := tunnelCards .}}{{if $i}}
 {{end}}{{template "tunnel" $tn}}{{else}}<p class="empty-state">No tunnel data.</p>{{end}}
   </div>
 </section>
 {{- end}}
-{{- define "tunnel"}}<article class="node-card state-{{stateClass .State}}">
+{{- define "tunnel"}}<article class="node-card state-{{stateClass .State}}{{if .Selected}} is-selected{{end}}">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-title">{{.DisplayName}}</div>
+    <div class="node-title">{{with .Badge}}<span class="node-badge">{{.}}</span>{{end}}{{.DisplayName}}</div>
     <div class="node-meta">{{orDash .CountryISO2}} · {{.Endpoint}}</div>
     <div class="node-metrics">
       {{template "metric" (metric "State" .State)}}
       {{template "metric" (metric "Last Check" (formatLastCheck .LastLatencyMs .LastError))}}
       {{template "metric" (metric "Balancer" (formatBalancerStatus .Balanced))}}
+      {{- with .Observatory}}
+      {{template "metric" .}}
+      {{- end}}
     </div>
   </div>
 </article>
 {{- end}}
-{{- define "metric"}}<span class="metric{{metricClass .Label .Value}}"><span class="metric-label">{{.Label}}</span><span class="metric-value">{{.Value}}</span></span>{{end}}
+{{- define "metric"}}<span class="metric{{metricClass .Label .Value}}"{{with .Title}} title="{{.}}"{{end}}><span class="metric-label">{{.Label}}</span><span class="metric-value">{{.Value}}</span></span>{{end}}

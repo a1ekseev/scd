@@ -48,8 +48,9 @@ func addNewKeys(want map[string]any) {
 }
 
 // comparePrintConfig runs print-config on config and compares it with the
-// TS reference (plus the new keys); input is compared by suffix.
-func comparePrintConfig(t *testing.T, config, reference string) string {
+// TS reference (plus the new keys, then edit applied to the first
+// subscription); input is compared by suffix.
+func comparePrintConfig(t *testing.T, config, reference string, edit ...func(sub map[string]any)) string {
 	t.Helper()
 	code, out, errs := run("print-config", "--config", config)
 	if code != 0 || errs != "" {
@@ -63,6 +64,9 @@ func comparePrintConfig(t *testing.T, config, reference string) string {
 	addNewKeys(want)
 	gs := got["subscriptions"].([]any)[0].(map[string]any)
 	ws := want["subscriptions"].([]any)[0].(map[string]any)
+	for _, e := range edit {
+		e(ws)
+	}
 	gotInput, wantInput := gs["input"].(string), ws["input"].(string)
 	if !filepath.IsAbs(gotInput) || !strings.HasSuffix(gotInput, string(filepath.Separator)+wantInput) {
 		t.Fatalf("input %q, want suffix %q", gotInput, wantInput)
@@ -100,7 +104,12 @@ func TestPrintConfigMinimal(t *testing.T) {
 }
 
 func TestPrintConfigDockerExample(t *testing.T) {
-	comparePrintConfig(t, exampleConfig, refDir+"docker-example.json")
+	// The example enables the balancer selection (task 6.6, D22).
+	comparePrintConfig(t, exampleConfig, refDir+"docker-example.json", func(sub map[string]any) {
+		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{
+			"enabled": true, "balancerTag": "x-balancer", "schedule": "*/15 * * * * *", "observatory": true,
+		}
+	})
 }
 
 func TestValidateConfigJSON(t *testing.T) {
