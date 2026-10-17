@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -31,7 +30,7 @@ func freeAddr(t *testing.T) string {
 func writeConfig(t *testing.T, addr string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "config.yml")
-	body := "server:\n  listen: " + addr + "\nload:\n  path: /load\n  maxSizeKb: 10240\nlogging:\n  level: info\n  format: json\n"
+	body := "server:\n  listen: " + addr + "\nload:\n  path: /load\n  maxSizeKb: 1048576\nlogging:\n  level: info\n  format: json\n"
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -118,20 +117,60 @@ func TestServeServesAndStops(t *testing.T) {
 	}
 }
 
-func TestServeStopsOnSIGTERM(t *testing.T) {
+func TestServeStopsOnSignal(t *testing.T) {
+	for _, tc := range []struct {
+		sig  syscall.Signal
+		name string
+	}{{syscall.SIGINT, "SIGINT"}, {syscall.SIGTERM, "SIGTERM"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			addr := freeAddr(t)
+			ctx, stop := cli.NotifyContext(t.Context())
+			defer stop()
+			done, logs := startServe(ctx, t, addr)
+			_ = get(t, "http://"+addr+"/healthz").Body.Close()
+			if err := syscall.Kill(syscall.Getpid(), tc.sig); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(logs.String(), `"signal":"`+tc.name+`"`) {
+				t.Fatalf("signal name missing:\n%s", logs.String())
+			}
+		})
+	}
+}
+
+func TestServeShutdownTimeout(t *testing.T) {
+	defer cli.SetShutdownTimeout(200 * time.Millisecond)()
 	addr := freeAddr(t)
-	ctx, stop := signal.NotifyContext(t.Context(), syscall.SIGTERM)
-	defer stop()
-	done, logs := startServe(ctx, t, addr)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done, _ := startServe(ctx, t, addr)
 	_ = get(t, "http://"+addr+"/healthz").Body.Close()
-	if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
+
+	// A client that requests 1 GiB and never reads stalls the response.
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", addr)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := <-done; err != nil {
+	defer conn.Close()
+	if _, err := io.WriteString(conn, "GET /load/1048576 HTTP/1.1\r\nHost: x\r\n\r\n"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(logs.String(), `"signal":"SIGTERM"`) {
-		t.Fatalf("signal name missing:\n%s", logs.String())
+	time.Sleep(200 * time.Millisecond)
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "shutdown") {
+			t.Fatalf("err = %v", err)
+		}
+		if d := time.Since(start); d > 3*time.Second {
+			t.Fatalf("took %s", d)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunServe did not return")
 	}
 }
 
