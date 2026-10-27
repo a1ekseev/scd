@@ -24,6 +24,8 @@ const errEmptyOutput = "Filtered output is empty."
 
 // OutputReport is the refresh result of one enabled output.
 type OutputReport struct {
+	// ID is printed as config.RedactedID (see MarshalJSON); Name and
+	// SubscriptionID identify the output in the printed report.
 	ID             string `json:"id"`
 	SubscriptionID string `json:"subscriptionId"`
 	Name           string `json:"name,omitempty"`
@@ -143,7 +145,7 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 		links := r.parse(sub.ID, in.Content)
 		reports := r.buildOutputs(sub, links, false)
 		log.Info("Subscription refreshed.", "event", "subscription_refreshed", "subscriptionId", sub.ID,
-			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputIDs(sub), "parsedEntries", len(links))
+			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputNames(sub), "parsedEntries", len(links))
 		return reports, true
 	}
 	if ctx.Err() != nil {
@@ -247,14 +249,24 @@ func (r *Refresher) fail(sub config.Subscription, out config.Output, msg string,
 	}
 }
 
-func enabledOutputIDs(sub config.Subscription) []string {
-	ids := []string{}
+// MarshalJSON prints the report with the id redacted: the id is the secret
+// part of the public output URL.
+func (o OutputReport) MarshalJSON() ([]byte, error) {
+	type plain OutputReport
+	p := plain(o)
+	p.ID = config.RedactedID
+	return jsonout.Marshal(p)
+}
+
+// enabledOutputNames names the enabled outputs for logs; ids are secrets.
+func enabledOutputNames(sub config.Subscription) []string {
+	names := []string{}
 	for _, out := range sub.Outputs {
 		if out.Enabled {
-			ids = append(ids, out.ID)
+			names = append(names, out.LogName())
 		}
 	}
-	return ids
+	return names
 }
 
 func (r *Refresher) log() *slog.Logger {

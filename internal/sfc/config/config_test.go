@@ -140,7 +140,7 @@ func TestRejectsBrokenRegexAndDuplicateOutput(t *testing.T) {
 		"        labelIncludeRegex: '/broken'\n      - id: out\n        labelIncludeRegex: x\n")
 	mustFail(t, body,
 		`subscriptions.0.outputs.0.labelIncludeRegex: regex literal must end with "/flags"`,
-		`subscriptions.0.outputs.1.id: duplicate output id "out"`)
+		`subscriptions.0.outputs.1.id: duplicate output id`)
 }
 
 func TestDuplicateIDsAcrossDisabled(t *testing.T) {
@@ -166,7 +166,7 @@ server:
 `
 	mustFail(t, body,
 		`subscriptions.1.id: duplicate subscription id "main"`,
-		`subscriptions.1.outputs.0.id: duplicate output id "out"`)
+		`subscriptions.1.outputs.0.id: duplicate output id`)
 }
 
 func TestAtLeastOneEnabled(t *testing.T) {
@@ -387,5 +387,27 @@ func TestReadErrorHasPath(t *testing.T) {
 	_, err = Load(p)
 	if err == nil || !strings.HasPrefix(err.Error(), "invalid config "+p+":") || !strings.Contains(err.Error(), "  - subscriptions: required") {
 		t.Fatalf("err %v", err)
+	}
+}
+
+// An output id is the secret part of the public output URL: print-config
+// hides it unless --include-secrets, and a duplicate-id error does not echo it.
+func TestPrintedRedactsOutputIDs(t *testing.T) {
+	l := mustLoad(t, replace(t, "      - id: out\n", "      - id: s3cr3t-out\n"))
+	if js := marshal(t, l.Config.Printed(false)); strings.Contains(js, "s3cr3t-out") || !strings.Contains(js, `"id":"<redacted>"`) {
+		t.Fatalf("print-config leaks the output id: %s", js)
+	}
+	if js := marshal(t, l.Config.Printed(true)); !strings.Contains(js, `"id":"s3cr3t-out"`) {
+		t.Fatalf("--include-secrets misses the output id: %s", js)
+	}
+	if got := l.Config.Subscriptions[0].Outputs[0].ID; got != "s3cr3t-out" {
+		t.Fatalf("loaded id = %q", got)
+	}
+
+	dup := "      - id: s3cr3t-out\n        labelIncludeRegex: x\n      - id: s3cr3t-out\n        labelIncludeRegex: y\n"
+	msg := mustFail(t, strings.Replace(base, "      - id: out\n        labelIncludeRegex: '/Германия/i'\n", dup, 1),
+		"subscriptions.0.outputs.1.id: duplicate output id")
+	if strings.Contains(msg, "s3cr3t-out") {
+		t.Fatalf("error echoes the output id: %s", msg)
 	}
 }

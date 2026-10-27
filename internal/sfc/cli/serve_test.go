@@ -302,7 +302,7 @@ func TestRefreshCommandExitCode(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &rep); err != nil {
 				t.Fatalf("stdout is not JSON: %v\n%s", err, out)
 			}
-			if rep.Failed != tc.failed || rep.SourceCount != 1 || len(rep.Outputs) != 1 || rep.Outputs[0].ID != "test-all" {
+			if rep.Failed != tc.failed || rep.SourceCount != 1 || len(rep.Outputs) != 1 || rep.Outputs[0].ID != "<redacted>" {
 				t.Fatalf("report %s", out)
 			}
 			if !strings.HasPrefix(out, "{\n  \"refreshedAt\": ") || !strings.HasSuffix(out, "}\n") {

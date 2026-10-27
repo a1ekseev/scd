@@ -608,6 +608,15 @@ func reportJSON(t *testing.T, v any) any {
 	return out
 }
 
+// redactReportIDs applies the one Go-only difference to a TS reference
+// report: output ids are printed as "<redacted>" (they are secrets).
+func redactReportIDs(doc any) any {
+	for _, o := range doc.(map[string]any)["outputs"].([]any) {
+		o.(map[string]any)["id"] = config.RedactedID
+	}
+	return doc
+}
+
 func readJSON(t *testing.T, rel string) any {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(repoRoot, rel))
@@ -632,7 +641,7 @@ func TestRefreshDockerExampleMatchesReference(t *testing.T) {
 
 	rep := r.Run(t.Context())
 
-	want := readJSON(t, "testdata/reference/sfc/refresh-docker-example.json")
+	want := redactReportIDs(readJSON(t, "testdata/reference/sfc/refresh-docker-example.json"))
 	if got := reportJSON(t, rep); !reflect.DeepEqual(got, want) {
 		t.Fatalf("report:\n got %v\nwant %v", got, want)
 	}
@@ -724,7 +733,7 @@ func TestRefreshRealShapes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fixture = absFixture(t, tt.fixture)
 			rep := r.Run(t.Context())
-			want := ref[tt.name]
+			want := redactReportIDs(ref[tt.name])
 			applyDiffs(t, want, tt.diffs)
 			if got := reportJSON(t, rep); !reflect.DeepEqual(got, want) {
 				t.Fatalf("report:\n got %v\nwant %v", got, want)
@@ -853,6 +862,36 @@ server:
 		t.Fatalf("failed refresh: %+v", rep)
 	}
 	check("failure", rep)
+}
+
+// Output ids are the secret part of the public output URLs: the printed
+// report and the logs name outputs instead (named, else "<redacted>").
+func TestOutputIDsStayOutOfReportAndLogs(t *testing.T) {
+	src := &source{}
+	src.set(lineDE+"\n", nil)
+	r, rec := newRefresher(t, loadConfig(t, baseConfig), src)
+
+	rep := r.Run(t.Context())
+
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.mu.Lock()
+	logs := rec.buf.String()
+	rec.mu.Unlock()
+	for _, id := range []string{"out-germany", "out-europe", "out-off"} {
+		if strings.Contains(string(b), id) || strings.Contains(logs, id) {
+			t.Errorf("output id %s leaked:\nreport %s\nlogs %s", id, b, logs)
+		}
+	}
+	ev := rec.events(t, "subscription_refreshed")
+	if len(ev) != 1 || !reflect.DeepEqual(ev[0]["outputs"], []any{"germany", "<redacted>"}) {
+		t.Fatalf("subscription_refreshed = %v, want outputs [germany <redacted>]", ev)
+	}
+	if rep.Outputs[0].ID == config.RedactedID {
+		t.Fatalf("the in-memory report must keep the real id: %+v", rep.Outputs[0])
+	}
 }
 
 // Final review I1: a load cut short by the cancellation fails no output and

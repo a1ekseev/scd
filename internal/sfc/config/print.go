@@ -26,8 +26,8 @@ type printedConfig struct {
 
 // Printed returns the config as print-config prints it: unless
 // includeSecrets, subscription inputs are redacted with
-// inputsrc.RedactInput and fetchHeaders values are "<redacted>" (D33,
-// final review I3).
+// inputsrc.RedactInput, fetchHeaders values are "<redacted>" (D33,
+// final review I3) and output ids are RedactedID.
 func (c Config) Printed(includeSecrets bool) any {
 	subs := make([]printedSubscription, 0, len(c.Subscriptions))
 	for _, s := range c.Subscriptions {
@@ -38,6 +38,11 @@ func (c Config) Printed(includeSecrets bool) any {
 		}
 		if !includeSecrets {
 			p.Input = inputsrc.RedactInput(s.Input)
+			p.Outputs = make([]Output, len(s.Outputs))
+			for i, o := range s.Outputs {
+				o.ID = RedactedID
+				p.Outputs[i] = o
+			}
 		}
 		subs = append(subs, p)
 	}

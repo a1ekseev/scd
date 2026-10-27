@@ -212,12 +212,24 @@ func isCleanURLPath(route string) bool {
 	return httpserve.CleanPath(route) == route && (&url.URL{Path: route}).EscapedPath() == route
 }
 
+// RedactedID replaces an output id outside the HTTP route: the id is the
+// secret part of the public output URL.
+const RedactedID = "<redacted>"
+
+// LogName is how logs and reports name o: its name, or RedactedID.
+func (o Output) LogName() string {
+	if o.Name != "" {
+		return o.Name
+	}
+	return RedactedID
+}
+
 func parseOutput(n *schema.Node, seen *ids) Output {
 	n.Strict("id", "enabled", "name", labelfilter.IncludeKey, labelfilter.ExcludeKey, "userAgent", "profileTitle", "profileUpdateInterval")
 	var o Output
 	if id, ok := n.String("id", schema.StrOpt{Required: true, Trim: true, MinLen: 1}); ok {
 		if seen.outputs[id] {
-			n.Addf("id", "duplicate output id %q", id)
+			n.Addf("id", "duplicate output id") // the value is a secret
 		}
 		seen.outputs[id] = true
 		o.ID = id

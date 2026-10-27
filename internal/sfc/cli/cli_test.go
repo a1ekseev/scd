@@ -58,6 +58,7 @@ func TestPrintConfigDockerExample(t *testing.T) {
 	for _, o := range want["subscriptions"].([]any)[0].(map[string]any)["outputs"].([]any) {
 		m := o.(map[string]any)
 		m["labelIncludeRegex"] = []any{m["labelIncludeRegex"]}
+		m["id"] = "<redacted>" // output ids are secrets; --include-secrets prints them
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %s\nwant %s", out, raw)
