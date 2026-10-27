@@ -31,7 +31,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go), см. `docs/CONFIG-MIGRATION.md` |
-| `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` |
+| `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` (для scd — временную копию с sync раз в 5 секунд из `SCD_SMOKE_SCD_CONFIG`) |
 | `fixtures/subscription.txt` | 8 фейковых VLESS-ссылок: `tcp+tls`, `ws+tls`, `tcp+reality+vision` (DE/NL/FI/US) |
 | `fixtures/subscription.b64` | та же подписка в base64 |
 | `xray/config/*.json` | конфиг тестового Xray (`-confdir`) |
@@ -61,7 +61,9 @@ read-only RPC `RoutingService.GetBalancerInfo` и
 
 2. Smoke всего стека (собирает образ, поднимает Xray + три сервиса на
    примерах, проверяет ответы и всегда убирает за собой; игнорируемые
-   `docker/*/config.yml` не читает и не трогает):
+   `docker/*/config.yml` не читает и не трогает). В конце перезапускает Xray
+   и ждёт, что scd заметит потерю ресурсов (`xray_state_drift`) и применит их
+   снова; для этого scd в smoke синхронизируется раз в 5 секунд:
 
    ```bash
    bash scripts/compose-smoke.sh

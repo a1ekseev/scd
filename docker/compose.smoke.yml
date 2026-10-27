@@ -6,7 +6,8 @@
 services:
   scd:
     volumes:
-      - ./docker/scd/config.example.yml:/app/config/config.yml:ro
+      # A copy of config.example.yml with a 5-second sync, made by the script.
+      - ${SCD_SMOKE_SCD_CONFIG:?set by scripts/compose-smoke.sh}:/app/config/config.yml:ro
   sfc:
     volumes:
       - ./docker/sfc/config.example.yml:/app/config/config.yml:ro

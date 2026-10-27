@@ -38,6 +38,13 @@ if ((${#conflicts[@]} > 0)); then
 fi
 
 # Leftovers of an interrupted earlier smoke run.
+# The example syncs every 5 minutes; the smoke copy syncs every 5 seconds so
+# that the Xray restart check below does not wait for a 5-minute slot.
+smoke_dir="$(mktemp -d)"
+sed -E 's|^(  schedule: ).*|\1"*/5 * * * * *"|' docker/scd/config.example.yml >"$smoke_dir/scd.yml"
+grep -q '^  schedule: "\*/5 \* \* \* \* \*"$' "$smoke_dir/scd.yml" || die "runtime.schedule not found in docker/scd/config.example.yml"
+export SCD_SMOKE_SCD_CONFIG="$smoke_dir/scd.yml"
+
 "${compose[@]}" down -v --remove-orphans >&2
 
 busy=()
@@ -56,6 +63,7 @@ cleanup() {
     "${compose[@]}" logs --no-color >&2 || true
   fi
   "${compose[@]}" down -v --remove-orphans >&2 || true
+  rm -rf "$smoke_dir"
 }
 trap cleanup EXIT
 
@@ -94,7 +102,7 @@ scd_instance_status() {
   curl -fsS http://127.0.0.1:9090/api/instance-status | jq -e '.version == 1'
 }
 
-# The sync really applied the subscription to Xray 26.10.10.
+# The sync really applied the subscription to Xray 26.10.21.
 scd_runtime_state() {
   curl -fsS 'http://127.0.0.1:9090/api/runtime-state?subscriptionId=test-fixture&targetAddress=xray:8080' |
     jq -e '.diff.outbounds.missing == [] and (.diff.outbounds.matched | length) > 0'
@@ -113,6 +121,17 @@ poll "scd runtime-state: outbounds applied to Xray" scd_runtime_state
 if grep -qE '^[[:space:]]*balancerSelection:' docker/scd/config.example.yml; then
   poll "scd balancerSelection state" scd_balancer_selection
 fi
+
+# An Xray restart drops every API-added resource; with an unchanged manifest
+# the next sync must notice it and apply again.
+scd_logged_drift() {
+  # Not a pipe: grep -q would exit early and fail the pipe under pipefail.
+  grep -qE 'event(=|":")xray_state_drift' <<<"$("${compose[@]}" logs --no-color scd)"
+}
+log "restarting Xray"
+docker restart xray-test >&2
+poll "scd logged xray_state_drift after the Xray restart" scd_logged_drift
+poll "scd runtime-state: outbounds applied again" scd_runtime_state
 
 ok=1
 log "PASS"

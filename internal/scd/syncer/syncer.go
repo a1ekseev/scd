@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
@@ -265,6 +266,18 @@ func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, pl
 		}
 	})
 	if !changed {
+		// The hashes only say what scd applied last time; an Xray restart
+		// drops every API-added resource, so check that they still exist.
+		if missing := s.missingInXray(ctx, c, plans); len(missing) > 0 {
+			s.Log.LogAttrs(ctx, slog.LevelWarn, "Xray lost managed resources; applying again.",
+				slog.String("event", "xray_state_drift"),
+				slog.String("subscriptionId", c.ID),
+				slog.String("targetAddress", t.Address),
+				slog.Any("missing", missing))
+			changed = true
+		}
+	}
+	if !changed {
 		unchanged := make([]apply.Kind, 0, len(plans))
 		for _, p := range plans {
 			unchanged = append(unchanged, p.Kind)
@@ -314,6 +327,66 @@ func (s *Syncer) syncTarget(ctx context.Context, c config.SubscriptionConfig, pl
 		s.Memory.ReplaceTopology(key, *plans[len(plans)-1].Topology, hashes)
 	}
 	return newTargetReport(c.ID, t.Address, c.ID, nil, reports, skipped), true
+}
+
+// missingInXray counts, per kind, the managed resources of plans that the
+// target no longer has. It reads under the target lock so that a tunnel
+// repair (remove + add outbound) is never seen half done. A repaired
+// outbound has no observatory prefix and still counts as present. Dial or
+// list errors return nil: the sync stays unchanged, as before the check.
+func (s *Syncer) missingInXray(ctx context.Context, c config.SubscriptionConfig, plans []apply.Plan) map[apply.Kind]int {
+	t := c.Target
+	unlock := s.Memory.LockTarget(state.Key(c.ID, t.Address))
+	defer unlock()
+	if ctx.Err() != nil {
+		return nil
+	}
+	client, err := s.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = client.Close() }()
+
+	missing := map[apply.Kind]int{}
+	for _, p := range plans {
+		have := map[string]bool{}
+		switch p.Kind {
+		case apply.KindOutbound:
+			list, err := client.ListOutbounds(ctx)
+			if err != nil {
+				return nil
+			}
+			for _, o := range list {
+				have[o.GetTag()] = true
+			}
+		case apply.KindInbound:
+			list, err := client.ListInbounds(ctx)
+			if err != nil {
+				return nil
+			}
+			for _, in := range list {
+				have[in.GetTag()] = true
+			}
+		case apply.KindRouting:
+			list, err := client.ListRules(ctx)
+			if err != nil {
+				return nil
+			}
+			for _, r := range list {
+				have[r.RuleTag] = true
+			}
+		}
+		for _, id := range p.ManagedIDs {
+			base := strings.TrimPrefix(id, t.ObservatorySubjectSelectorPrefix)
+			if !have[id] && !have[base] {
+				missing[p.Kind]++
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return missing
 }
 
 // logApply logs apply_finished, or apply_failed with the failed items and

@@ -204,6 +204,11 @@ Validation errors list every problem with its field path, for example:
   Apply order is outbound → inbound → routing. Each kind is fully replaced.
   Fixed resources are kept. If an add fails, the outbound kind is rolled back
   best-effort. Resource hashes are stored only when all kinds succeed.
+- When the manifest hash is unchanged, sync still lists the target's
+  outbounds, inbounds and rules (read-only). If a managed resource is missing,
+  for example after an Xray restart, it logs warning `xray_state_drift` with
+  per-kind counts and applies again. A repaired outbound (without the
+  observatory prefix) is not a loss.
 - Topology: one outbound per filtered entry. With inbounds and routing
   enabled, each outbound also gets one SOCKS inbound (`in-…`) and one routing
   rule (`route-…`). Ports are allocated sequentially from `portRange`. If the

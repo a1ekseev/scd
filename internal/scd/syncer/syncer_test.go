@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -16,6 +17,9 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	core "github.com/xtls/xray-core/core"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
@@ -255,18 +259,93 @@ func TestSkipsXrayWhenUnchanged(t *testing.T) {
 	if len(second.Targets[0].Resources) != 0 {
 		t.Errorf("unchanged target has resources: %v", second.Targets[0].Resources)
 	}
+	// The second sync only reads Xray to confirm nothing was lost.
 	calls := f.x.servers[addrA].Calls()
-	if n := count(calls, "ListOutbounds"); n != 1 {
-		t.Errorf("ListOutbounds calls = %d, want 1", n)
+	if n := count(calls, "ListOutbounds"); n != 2 {
+		t.Errorf("ListOutbounds calls = %d, want 2", n)
 	}
-	if n := count(calls, "RemoveOutbound"); n != 0 {
-		t.Errorf("RemoveOutbound calls = %d, want 0", n)
+	if n := count(calls, "RemoveOutbound") + count(calls, "AddOutbound"); n != 1 {
+		t.Errorf("outbound mutations = %d, want only the first sync's add", n)
 	}
-	if got := f.x.dials(); len(got) != 1 {
-		t.Errorf("dials = %v, want one", got)
+	if got := f.x.dials(); len(got) != 2 {
+		t.Errorf("dials = %v, want two", got)
 	}
 	if n := len(f.logs.events(t, "skipped_no_changes")); n != 1 {
 		t.Errorf("skipped_no_changes events = %d, want 1", n)
+	}
+}
+
+// An Xray restart drops every API-added resource while the manifest stays
+// the same: the next sync must apply again instead of skipping by hash.
+func TestReappliesAfterXrayLostResources(t *testing.T) {
+	f := newFixture(t, cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010))), map[string]string{"/s1": vienna}, addrA)
+	if r := f.run(t); r.Failed != 0 {
+		t.Fatalf("first sync failed = %d", r.Failed)
+	}
+	client, err := f.x.servers[addrA].Dialer()(addrA, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	inbounds, err := client.ListInbounds(t.Context())
+	if err != nil || len(inbounds) != 1 {
+		t.Fatalf("inbounds = %v, %v", inbounds, err)
+	}
+	if err := client.RemoveInbound(t.Context(), inbounds[0].GetTag()); err != nil {
+		t.Fatal(err)
+	}
+
+	second := f.run(t)
+
+	if second.Unchanged != 0 || second.Failed != 0 {
+		t.Fatalf("second sync unchanged = %d, failed = %d, want a clean re-apply", second.Unchanged, second.Failed)
+	}
+	drift := f.logs.events(t, "xray_state_drift")
+	if len(drift) != 1 {
+		t.Fatalf("xray_state_drift events = %d, want 1", len(drift))
+	}
+	if got := drift[0]["missing"]; !reflect.DeepEqual(got, map[string]any{"inbound": float64(1)}) {
+		t.Errorf("missing = %v, want inbound: 1", got)
+	}
+	if after, _ := client.ListInbounds(t.Context()); len(after) != 1 || after[0].GetTag() != inbounds[0].GetTag() {
+		t.Errorf("inbounds after re-apply = %v", after)
+	}
+}
+
+// A tunnel repair recreates the outbound without the observatory prefix;
+// that is scd's own state, not a loss, so the sync still skips.
+func TestRepairedOutboundIsNotDrift(t *testing.T) {
+	f := newFixture(t, cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010))), map[string]string{"/s1": vienna}, addrA)
+	if r := f.run(t); r.Failed != 0 {
+		t.Fatalf("first sync failed = %d", r.Failed)
+	}
+	client, err := f.x.servers[addrA].Dialer()(addrA, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	outs, err := client.ListOutbounds(t.Context())
+	if err != nil || len(outs) != 1 {
+		t.Fatalf("outbounds = %v, %v", outs, err)
+	}
+	prefixed := outs[0]
+	if !strings.HasPrefix(prefixed.GetTag(), "x-observe-") {
+		t.Fatalf("outbound tag %q has no observatory prefix", prefixed.GetTag())
+	}
+	repaired := proto.Clone(prefixed).(*core.OutboundHandlerConfig)
+	repaired.Tag = strings.TrimPrefix(prefixed.GetTag(), "x-observe-")
+	if err := client.RemoveOutbound(t.Context(), prefixed.GetTag()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.AddOutbound(t.Context(), repaired); err != nil {
+		t.Fatal(err)
+	}
+
+	if second := f.run(t); second.Unchanged != 3 {
+		t.Errorf("second sync unchanged = %d, want all 3 kinds", second.Unchanged)
+	}
+	if n := len(f.logs.events(t, "xray_state_drift")); n != 0 {
+		t.Errorf("xray_state_drift events = %d, want 0", n)
 	}
 }
 
