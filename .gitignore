@@ -4,3 +4,4 @@ vpn
 /bin/
 coverage/
 .cache/
+/.test_config/
