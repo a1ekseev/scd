@@ -3,10 +3,17 @@
 Captured from the TS implementation before it was removed, so the Go rewrite can be
 checked against them. These files are frozen Go test data (D20): the TS services and the
 capture scripts (`tools/golden/`) are gone from the tree, so the references cannot be
-regenerated. The TS references were captured by commits `a67b320`..`e6c9839`
-(tooling and TS sources as of `e6c9839`: `git show e6c9839:tools/golden/README.md`);
+regenerated. The TS references were captured by commits `ae1fde2`..`975287a`
+(tooling and TS sources as of `975287a`: `git show 975287a:tools/golden/README.md`);
 later commits only add Go-side fixtures (`scd/status/fixtures/selection-*.json`).
 Script names below (`tools/golden/*.mjs`) refer to that commit.
+
+Exception (2026-10-27): the REALITY key, short ids and one SNI in the fixtures came from a
+real provider subscription and were replaced in the whole history with synthetic values.
+Tunnel tags and hashes derive from the raw link, so `scd/corpus/ts-parse.json`,
+`scd/generate/vpn-sample.manifest.json` and `scd/status/runtime-state/vision-udp443.json`
+were regenerated with the same scripts and TS sources (`scd-domain.mjs`, `status.mjs`,
+`node:24-alpine`); only tags and hashes of the affected lines changed.
 
 Fields depending on ICU (country `nameEn`, `localeCompare` order) are informational:
 Go is not required to reproduce them. Captured on the Node version recorded in
