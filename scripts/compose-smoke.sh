@@ -122,6 +122,20 @@ if grep -qE '^[[:space:]]*balancerSelection:' docker/scd/config.example.yml; the
   poll "scd balancerSelection state" scd_balancer_selection
 fi
 
+# The image runs as nonroot (65532), and sfc must still be able to write its
+# source cache (a failed write is only a warning, so check the event).
+for svc in scd sfc gtl; do
+  user="$(docker inspect --format '{{.Config.User}}' "$svc")"
+  [[ "$user" == "65532:65532" ]] || die "$svc runs as user '$user', want 65532:65532"
+done
+log "ok: scd, sfc and gtl run as 65532:65532"
+sfc_cache_written() {
+  local logs
+  logs="$("${compose[@]}" logs --no-color sfc)"
+  grep -q 'subscription_source_cache_written' <<<"$logs" && ! grep -q 'subscription_source_cache_write_failed' <<<"$logs"
+}
+poll "sfc wrote its source cache as nonroot" sfc_cache_written
+
 # An Xray restart drops every API-added resource; with an unchanged manifest
 # the next sync must notice it and apply again.
 scd_logged_drift() {

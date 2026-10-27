@@ -1,10 +1,8 @@
-.git
-bin
-docs
-testdata
-**/config.yml
-**/.sfc-cache
-.superpowers
-.github
-.golangci.yml
-**/.env*
+# Allow-list: the build needs only the Go module. Everything else (local
+# configs with secrets, notes, legacy node_modules, docs, test data) stays out
+# of the build context, including files added later.
+*
+!go.mod
+!go.sum
+!cmd/**
+!internal/**

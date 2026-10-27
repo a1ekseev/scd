@@ -52,7 +52,7 @@ The live and visual tests skip without their environment variables.
 
 ## Docker Image
 - `ghcr.io/a1ekseev/scd` only. The `sfc` and `gtl` images are no longer published.
-- Distroless static image. Default `CMD ["scd","daemon","--config","/app/config/config.yml"]`. Compose selects sfc and gtl with `command: ["scd","sfc","serve",…]` and `["scd","gtl","serve",…]`.
+- Distroless static `:nonroot` image, user `65532:65532`; the sfc cache dir `/app/config/.sfc-cache` is created owned by it. `.dockerignore` is an allow-list (`go.mod`, `go.sum`, `cmd/`, `internal/`). Default `CMD ["scd","daemon","--config","/app/config/config.yml"]`. Compose selects sfc and gtl with `command: ["scd","sfc","serve",…]` and `["scd","gtl","serve",…]`.
 
 ## scd Notes
 - Pipeline:

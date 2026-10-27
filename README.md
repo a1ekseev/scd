@@ -68,8 +68,9 @@ requests (up to 10 s), and pending remote pings. A second signal exits at once.
 
 The image is `ghcr.io/a1ekseev/scd:latest` or `:<X.Y.Z>`, for `linux/amd64` and
 `linux/arm64`. It is published from release tags `vX.Y.Z`. The image is distroless
-(`gcr.io/distroless/static-debian13`: CA certificates and tzdata, no shell). It
-runs `CMD ["scd", "daemon", "--config", "/app/config/config.yml"]`. Choose the
+(`gcr.io/distroless/static-debian13:nonroot`: CA certificates and tzdata, no
+shell). It runs as the non-root user `65532:65532` with
+`CMD ["scd", "daemon", "--config", "/app/config/config.yml"]`. Choose the
 service with `command:`:
 
 | Service | `command:` |
@@ -77,6 +78,13 @@ service with `command:`:
 | scd | default CMD |
 | sfc | `["scd", "sfc", "serve", "--config", "/app/config/config.yml"]` |
 | gtl | `["scd", "gtl", "serve", "--config", "/app/config/config.yml"]` |
+
+The config only needs to be readable. sfc writes its source cache to
+`/app/config/.sfc-cache`: a new named volume gets the right owner from the
+image, but a bind mount or a volume created by an older root image must be
+owned by `65532:65532` (`chown -R 65532:65532 <dir>`). Otherwise sfc keeps
+serving but logs `subscription_source_cache_write_failed` and has no fallback
+cache. Ports below 1024 are not available to the non-root user.
 
 The root `docker-compose.yml` runs Xray `ghcr.io/xtls/xray-core:26.10.21` and
 all three services on one locally built image. It mounts the git-ignored

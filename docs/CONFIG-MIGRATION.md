@@ -413,8 +413,8 @@ sfc **не проверяет** применимость параметров к
 | `CMD` образа | `["node","dist/cli.js","daemon","--config","/app/config/config.yml"]` (`sfc`/`gtl`: `… "serve" …`) | `["scd","daemon","--config","/app/config/config.yml"]` | D10 |
 | `command:` sfc / gtl | не задавался (CMD своего образа) | `["scd","sfc","serve","--config","/app/config/config.yml"]` / `["scd","gtl","serve","--config","/app/config/config.yml"]` на образе `ghcr.io/a1ekseev/scd` | D10 |
 | свой `command:` вида `node dist/cli.js …` | работал | **не работает** (в образе нет Node) — заменить на `scd …`/`scd sfc …`/`scd gtl …` с теми же аргументами | D10 |
-| база образа | `node:24-alpine` (есть shell) | `gcr.io/distroless/static-debian13` (CA-сертификаты, tzdata; без shell — `docker exec … sh` недоступен), пользователь root | D1 |
-| путь конфига, порт, кэш sfc | `/app/config/config.yml`, `8080`, volume `/app/config/.sfc-cache` | без изменений | — |
+| база образа | `node:24-alpine` (есть shell) | `gcr.io/distroless/static-debian13` (CA-сертификаты, tzdata; без shell — `docker exec … sh` недоступен), вариант `:nonroot` — **пользователь `65532:65532`, не root** | D1, боевые тесты 2026-10-27 |
+| путь конфига, порт, кэш sfc | `/app/config/config.yml`, `8080`, volume `/app/config/.sfc-cache` | без изменений; конфигу достаточно чтения. **Каталог кэша sfc должен принадлежать `65532:65532`**: новый именованный volume получает владельца из образа сам, а bind mount или volume, созданный старым root-образом, нужно один раз `chown -R 65532:65532 <каталог>` — иначе sfc работает, но кэш не пишет (`subscription_source_cache_write_failed: permission denied`) и при сбое источника резервной копии не будет. Порты < 1024 non-root недоступны | — |
 | тестовый Xray в compose | `ghcr.io/xtls/xray-core:26.3.27` | `ghcr.io/xtls/xray-core:26.10.21` (версия в `.xray-version`, сверяется с `go.mod`: `scripts/check-xray-version.sh`) | D4 |
 
 ```diff
@@ -561,5 +561,5 @@ invalid config docker/sfc/config.real-shape.yml:
    - `scd gtl validate-config --config docker/gtl/config.yml` — `Config is valid`.
 3. `scd print-config` / `scd sfc print-config` — проверить умолчания новых ключей (`allowInsecure`, `balancerSelection`) и что `input`, URL мониторов/`remotePing` и `fetchHeaders` скрыты (`<redacted>`); сырой вид — `--include-secrets`.
 4. `scd generate --input <снимок подписки> --output m.json --log log.json` — сравнить `skipped`/`warnings` и число entries с ожидаемым; `scd sfc refresh --config …` — число строк в выходах.
-5. Обновить compose (`image:` + `command:`), Xray-образ — `ghcr.io/xtls/xray-core:26.10.21` с `ObservatoryService` только при наличии секции `observatory`.
+5. Если кэш sfc — bind mount или volume от старого образа: `chown -R 65532:65532 <каталог кэша>` (образ работает не от root). Обновить compose (`image:` + `command:`), Xray-образ — `ghcr.io/xtls/xray-core:26.10.21` с `ObservatoryService` только при наличии секции `observatory`.
 6. После запуска: первый sync переприменяет все target'ы (ожидаемо), логи — в stderr в новом формате.

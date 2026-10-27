@@ -13,10 +13,16 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/scd ./cmd/scd
+# The sfc source cache dir, owned by the runtime user: a named volume mounted
+# there copies this ownership on first use.
+RUN mkdir -p /out/app/config/.sfc-cache
 
-# gcr.io/distroless/static-debian13:latest (CA certificates, tzdata, /etc/passwd; no shell).
-# Runs as root: the sfc cache lives in the mounted /app/config/.sfc-cache volume.
-FROM gcr.io/distroless/static-debian13@sha256:15f8637509792e05b97d83451b0b6ccfa4abd548f997e406ac1e72c87fe1fa78
+# gcr.io/distroless/static-debian13:nonroot (CA certificates, tzdata, /etc/passwd;
+# no shell; user nonroot 65532). No service needs root: all listen on ports
+# >= 1024 and only sfc writes, to /app/config/.sfc-cache.
+FROM gcr.io/distroless/static-debian13@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 COPY --from=build /out/scd /usr/local/bin/scd
+COPY --from=build --chown=65532:65532 /out/app /app
 WORKDIR /app
+USER 65532:65532
 CMD ["scd", "daemon", "--config", "/app/config/config.yml"]
