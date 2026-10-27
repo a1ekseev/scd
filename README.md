@@ -8,7 +8,7 @@
 | `scd sfc …` | **sfc** — Subscription Filter Control | Downloads upstream subscriptions, keeps VLESS lines whose label matches per-output filters, repacks them to base64 and serves them by public URL. Does not talk to Xray. |
 | `scd gtl …` | **gtl** — Gen Test Load | HTTP server that streams a deterministic payload of the requested size, for download/load tests. |
 
-There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.10**.
+There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.21**.
 
 Upgrading from the pre-Go version: config keys changed. Read
 [`docs/CONFIG-MIGRATION.md`](docs/CONFIG-MIGRATION.md) (in Russian). It has
@@ -33,7 +33,7 @@ configs step by step.
 
 ## Build
 
-Requires Go 1.27 (`go.mod`: `go 1.27.0`, `toolchain go1.27.2`).
+Requires Go 1.27 (`go.mod`: `go 1.27.0`, `toolchain go1.27.3`).
 
 ```bash
 go build -o bin/scd ./cmd/scd
@@ -78,7 +78,7 @@ service with `command:`:
 | sfc | `["scd", "sfc", "serve", "--config", "/app/config/config.yml"]` |
 | gtl | `["scd", "gtl", "serve", "--config", "/app/config/config.yml"]` |
 
-The root `docker-compose.yml` runs Xray `ghcr.io/xtls/xray-core:26.10.10` and
+The root `docker-compose.yml` runs Xray `ghcr.io/xtls/xray-core:26.10.21` and
 all three services on one locally built image. It mounts the git-ignored
 `docker/<svc>/config.yml` files. To start from the examples, run
 `cp docker/<svc>/config.example.yml docker/<svc>/config.yml`.
@@ -171,7 +171,7 @@ statusServer:
 | `.id` | Source id used in logs, reports and the dashboard. | required |
 | `.input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. | required |
 | `.enabled` / `.format` / `.fetchTimeoutMs` | On/off; decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). | `true` / `auto` / `5000` |
-| `.allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.10 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
+| `.allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
 | `.fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
 | `.filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. | no filter |
 | `.filters.labelIncludeRegex`, `.filters.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
@@ -310,7 +310,7 @@ has no meaning to scd. Select entries with the filters above.
 The scope is fixed (D26): transports `tcp`/`raw`, `ws`, `xhttp`; security
 `tls`, `reality`; VLESS encryption `none` and ML-KEM
 (`mlkem768x25519plus.*`, also with `security=none`). Inside that scope, every
-combination and parameter that Xray v26.10.10 accepts is accepted and reaches
+combination and parameter that Xray v26.10.21 accepts is accepted and reaches
 Xray over the API. The manifest JSON goes through Xray's own `infra/conf` and
 then `AddOutbound`. A link is skipped only when Xray would reject it or it is
 out of scope.
@@ -550,7 +550,7 @@ as is). The same parser validates configs and drives the scheduler.
 
 ## Known limitations
 
-Of Xray v26.10.10, documented rather than worked around in code:
+Of Xray v26.10.21, documented rather than worked around in code:
 
 - TLS outbounds trust only Xray's built-in CA bundle. Private CAs installed in
   the image are not used. `allowInsecure` no longer exists, so use `pcs` or
@@ -585,7 +585,7 @@ Full guide: [`docs/CONFIG-MIGRATION.md`](docs/CONFIG-MIGRATION.md).
   `balancerSelection`. Validation is stricter in places, and errors carry
   field paths.
 - The first sync after the upgrade fully re-applies every target once.
-  Manifest `jsonOutbound` now uses the Xray v26.10.10 form, so hashes change.
+  Manifest `jsonOutbound` now uses the Xray v26.10.21 form, so hashes change.
   Tags of the old profiles stay the same.
 - Tunnel SOCKS ports may be reassigned. They are internal to scd. Make sure
   `portRange` is big enough, otherwise that target fails with a clear message.
@@ -608,7 +608,7 @@ go build -o bin/scd ./cmd/scd
 bash scripts/check-xray-version.sh     # .xray-version == go.mod xray-core == compose image
 bash scripts/check-no-node.sh          # Go-only repository
 
-# Live tests against a real Xray v26.10.10 binary
+# Live tests against a real Xray v26.10.21 binary
 SCD_XRAY_BIN=/path/to/xray go test -tags xraylive -count=1 ./internal/scd/livetest/...
 # Dashboard visual regression (headless Chromium)
 SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/...

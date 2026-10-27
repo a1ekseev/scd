@@ -65,7 +65,7 @@ func (p Params) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Normalized is a VLESS link resolved for Xray v26.10.10 (01 §1.2
+// Normalized is a VLESS link resolved for Xray v26.10.21 (01 §1.2
 // NormalizedOutbound plus the D26/D33 fields after shortId).
 type Normalized struct {
 	Kind     string `json:"kind"`
@@ -121,9 +121,9 @@ const (
 	reasonUserID        = "The VLESS user id is not accepted by Xray."
 	reasonFlow          = "Unsupported VLESS flow value."
 	reasonAllowInsecure = "allowInsecure must be 0, 1, true, or false."
-	reasonInsecureDeny  = "allowInsecure=1 requires pcs or vcn: Xray v26.10.10 no longer supports allowInsecure " +
+	reasonInsecureDeny  = "allowInsecure=1 requires pcs or vcn: Xray v26.10.21 no longer supports allowInsecure " +
 		"(set subscriptions[].allowInsecure: allow to keep such links)."
-	messageInsecure = "allowInsecure is not supported by Xray v26.10.10; the outbound will verify certificates (use pcs/vcn)."
+	messageInsecure = "allowInsecure is not supported by Xray v26.10.21; the outbound will verify certificates (use pcs/vcn)."
 )
 
 const (
@@ -131,7 +131,7 @@ const (
 	flowVisionUDP443 = "xtls-rprx-vision-udp443"
 )
 
-// Normalize checks a parsed link against the D26 scope and the Xray v26.10.10
+// Normalize checks a parsed link against the D26 scope and the Xray v26.10.21
 // rules that conf.Build cannot check (11 §5) and resolves its profile, tag and
 // fields. A link is either an entry (with optional warnings) or a skip.
 func Normalize(l vless.Link, p Policy) (Normalized, []Warning, *vless.Skip) {

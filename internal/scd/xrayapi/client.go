@@ -1,7 +1,7 @@
 // Package xrayapi is the only scd package that talks gRPC to Xray: a Client
 // over the xray-core command services (HandlerService, RoutingService and the
 // read-only balancer/observatory RPCs of D22) built on the native xray-core
-// v26.10.10 types (D2, D4). One *grpc.ClientConn is kept per
+// v26.10.21 types (D2, D4). One *grpc.ClientConn is kept per
 // target, every RPC runs under its own context.WithTimeout(timeout), and every
 // error is mapped to *Error with the texts of 02 §2.7 (the read-only D22 RPCs
 // add *ServiceDisabledError and *BalancerNotFoundError, 10 §6.1).

@@ -19,7 +19,7 @@
 | `gtl` | `["scd","gtl","serve","--config","/app/config/config.yml"]` |
 
 Конфиг — по-прежнему `/app/config/config.yml`, кэш sfc — volume
-`/app/config/.sfc-cache`. Тестовый Xray — `ghcr.io/xtls/xray-core:26.10.10`;
+`/app/config/.sfc-cache`. Тестовый Xray — `ghcr.io/xtls/xray-core:26.10.21`;
 версия зафиксирована в `.xray-version` и обновляется только вместе с
 xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 

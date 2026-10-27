@@ -18,7 +18,7 @@ const (
 )
 
 // TestLiveBalancerAndObservatory (D22, 10 §6.9 p.8): the read-only RPCs
-// against live Xray 26.10.10 with the template's leastPing balancer and
+// against live Xray 26.10.21 with the template's leastPing balancer and
 // observatory: GetBalancerInfo knows the principle target, GetOutboundStatus
 // answers, an unknown balancer is a *BalancerNotFoundError; a freedom
 // candidate x-observe-live becomes the leastPing principle target once the

@@ -3,7 +3,7 @@
 # .xray-version together with go.mod (scripts/check-xray-version.sh, D4).
 services:
   xray:
-    image: ghcr.io/xtls/xray-core:26.10.10
+    image: ghcr.io/xtls/xray-core:26.10.21
     pull_policy: missing
     container_name: xray-test
     restart: unless-stopped

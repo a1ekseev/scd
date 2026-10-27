@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Xray v26.10.10 error texts of the handler managers (08 §3).
+// Xray v26.10.21 error texts of the handler managers (08 §3).
 const (
 	errOutboundExists = "app/proxyman/outbound: existing tag found: "
 	errInboundExists  = "app/proxyman/inbound: existing tag found: "

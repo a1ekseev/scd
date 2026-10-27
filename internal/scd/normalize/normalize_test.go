@@ -99,7 +99,7 @@ const (
 	wantID         = "The VLESS user id is not accepted by Xray."
 	wantFlow       = "Unsupported VLESS flow value."
 	wantInsecure   = "allowInsecure must be 0, 1, true, or false."
-	wantInsecureNo = "allowInsecure=1 requires pcs or vcn: Xray v26.10.10 no longer supports allowInsecure (set subscriptions[].allowInsecure: allow to keep such links)."
+	wantInsecureNo = "allowInsecure=1 requires pcs or vcn: Xray v26.10.21 no longer supports allowInsecure (set subscriptions[].allowInsecure: allow to keep such links)."
 )
 
 func TestProfileMatrix(t *testing.T) {
@@ -402,7 +402,7 @@ func TestAllowInsecure(t *testing.T) {
 	mustSkip(t, "type=ws&security=tls&allowInsecure=TRUE&pcs=", Policy{}, vless.CodeUnsupportedValue, wantInsecureNo)
 
 	n, w := mustEntry(t, "type=tcp&security=tls&allowInsecure=1", Policy{AllowInsecure: true})
-	want := []Warning{{"allow_insecure_ignored", "allowInsecure is not supported by Xray v26.10.10; the outbound will verify certificates (use pcs/vcn)."}}
+	want := []Warning{{"allow_insecure_ignored", "allowInsecure is not supported by Xray v26.10.21; the outbound will verify certificates (use pcs/vcn)."}}
 	if !slices.Equal(w, want) || n.AllowInsecure == nil || !*n.AllowInsecure {
 		t.Fatalf("allow: got %v %v", w, n.AllowInsecure)
 	}

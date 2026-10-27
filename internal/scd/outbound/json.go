@@ -1,4 +1,4 @@
-// Package outbound builds the Xray v26.10.10 JSON outbound of a normalized
+// Package outbound builds the Xray v26.10.21 JSON outbound of a normalized
 // VLESS link and turns it into the protobuf handler config of the Xray API
 // through infra/conf (D19: link → JSON outbound → conf.Build → protobuf).
 //
@@ -14,7 +14,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 )
 
-// Outbound is a VLESS outbound in the Xray v26.10.10 config form. The field
+// Outbound is a VLESS outbound in the Xray v26.10.21 config form. The field
 // order of every struct is the key order of its JSON.
 type Outbound struct {
 	Tag            string         `json:"tag"`

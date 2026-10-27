@@ -10,7 +10,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// Xray v26.10.10 error texts of the router (08 §3).
+// Xray v26.10.21 error texts of the router (08 §3).
 const (
 	errRouterPrefix   = "app/router: "
 	errEmptyTagName   = errRouterPrefix + "empty tag name!"

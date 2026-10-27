@@ -1,5 +1,5 @@
 // Package xrayfake is an in-process fake Xray API server on bufconn with the
-// observable semantics of Xray v26.10.10 (08 §3, 02 §6 level 2): the
+// observable semantics of Xray v26.10.21 (08 §3, 02 §6 level 2): the
 // HandlerService outbound/inbound RPCs, the RoutingService rule and balancer
 // RPCs and the ObservatoryService used by scd (D22, 10 §6.9), the exact Xray
 // error texts (codes.Unknown), shuffled List*

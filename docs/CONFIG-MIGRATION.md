@@ -52,7 +52,7 @@ statusServer:
 | `subscriptions[].filters.labelIncludeRegex` | строка, JS-регулярка (`/pattern/flags`, lookahead допускался); пустая строка = ключа нет | строка **или список** RE2-выражений (AND); lookahead/lookbehind/backreferences — ошибка; пустая строка/пустой список — `must not be empty`; в `print-config` — всегда список | D8, D29 |
 | `subscriptions[].filters.labelExcludeRegex` | — | **новый**, необязательный: строка или список RE2-выражений (OR — метка отбрасывается при совпадении с любым) | D29 |
 | `subscriptions[].filters.countryAllowlist` | trim + верхний регистр, длина 2, один из 45 кодов; ошибка на весь список | смысл тот же; ошибка — по пути элемента: `subscriptions.N.filters.countryAllowlist.M: must be a 2-letter ISO2 country code` / `unsupported ISO2 country code "ZZ"`. `[]` допустим (фильтра нет), в `print-config` не печатается (было `[]`) | D9 |
-| `subscriptions[].allowInsecure` | — (ссылки с `allowInsecure=1` принимались, TLS без проверки) | **новый**: `deny` (по умолчанию) — ссылка с `allowInsecure=1` без `pcs`/`vcn` пропускается с причиной; `allow` — outbound создаётся (в Xray v26.10.10 поля нет — сертификат проверяется), warning `allow_insecure_ignored`. Иное — `must be one of deny\|allow` | D15, O6 |
+| `subscriptions[].allowInsecure` | — (ссылки с `allowInsecure=1` принимались, TLS без проверки) | **новый**: `deny` (по умолчанию) — ссылка с `allowInsecure=1` без `pcs`/`vcn` пропускается с причиной; `allow` — outbound создаётся (в Xray v26.10.21 поля нет — сертификат проверяется), warning `allow_insecure_ignored`. Иное — `must be one of deny\|allow` | D15, O6 |
 | `subscriptions[].fetchUserAgent` | — (заголовок `User-Agent: node`) | **новый**, необязательный: непустая строка (trim) — `User-Agent` загрузки по http(s); по умолчанию `scd/<версия>`; пустая строка — `must not be empty`; без ключа в `print-config` его нет | D27 O9 |
 | `subscriptions[].fetchHeaders` | — | **новый**, необязательный: объект `имя: значение` — доп. заголовки HTTP-запроса подписки, только для `http(s)`-input. Значения — непустые строки без управляющих символов; имена — валидные, без повторов без учёта регистра; `User-Agent` — `use fetchUserAgent instead`; `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` — `header is not allowed`; путь ошибки `subscriptions.N.fetchHeaders.<имя>`; `{}` = ключа нет. **Значения — секрет**: в `print-config` (без `--include-secrets`), логах и runtime-state (без `includeSecrets`) — `<redacted>` | D33 |
 | `subscriptions[].target.balancerSelection` | — | **новый** объект (strict), по умолчанию `{enabled: false, observatory: true}`; подробно — «[Выбор балансера Xray](#scd-выбор-балансера-xray-targetbalancerselection)» | D22, `10` §6.5 |
@@ -145,7 +145,7 @@ statusServer:
 - `manifest_built.managedCount` — число управляемых ресурсов своего kind (было: `0` для inbound/routing);
 - новое событие `manifest_entry_warning` (см. «[Логи](#логи)»).
 
-`scd generate --input … --output … --log …` — без изменений по флагам; содержимое манифеста — по новым правилам ссылок («[Подписки](#подписки)»), `jsonOutbound` — форма Xray v26.10.10.
+`scd generate --input … --output … --log …` — без изменений по флагам; содержимое манифеста — по новым правилам ссылок («[Подписки](#подписки)»), `jsonOutbound` — форма Xray v26.10.21.
 
 ## scd sfc
 
@@ -276,7 +276,7 @@ URL подписки в логах `refresh`/`serve` (`subscription_refreshed.so
 
 ### scd: политика `allowInsecure`
 
-`subscriptions[].allowInsecure: deny` (по умолчанию): ссылка с `allowInsecure=1` и без `pcs`/`vcn` пропускается с причиной «allowInsecure=1 requires pcs or vcn: Xray v26.10.10 no longer supports allowInsecure (set subscriptions[].allowInsecure: allow to keep such links).» — в Xray v26.10.10 отключить проверку сертификата нельзя, такой outbound не подключился бы к серверу с невалидным сертификатом. `allow` — ссылка принимается, параметр игнорируется с warning `allow_insecure_ignored`. Ссылки с `pcs` (`pinnedPeerCertSha256`) или `vcn` (`verifyPeerCertByName`) обрабатываются штатно при любой политике.
+`subscriptions[].allowInsecure: deny` (по умолчанию): ссылка с `allowInsecure=1` и без `pcs`/`vcn` пропускается с причиной «allowInsecure=1 requires pcs or vcn: Xray v26.10.21 no longer supports allowInsecure (set subscriptions[].allowInsecure: allow to keep such links).» — в Xray v26.10.21 отключить проверку сертификата нельзя, такой outbound не подключился бы к серверу с невалидным сертификатом. `allow` — ссылка принимается, параметр игнорируется с warning `allow_insecure_ignored`. Ссылки с `pcs` (`pinnedPeerCertSha256`) или `vcn` (`verifyPeerCertByName`) обрабатываются штатно при любой политике.
 
 `allowInsecure=1` проверяется только при `security=tls`: у REALITY и у ML-KEM без TLS параметр неприменим и молча игнорируется (O16). Значение, кроме `0|1|true|false` (без учёта регистра), пропускает ссылку при любой политике.
 
@@ -291,7 +291,7 @@ URL подписки в логах `refresh`/`serve` (`subscription_refreshed.so
 | `type=xhttp`, REALITY без `flow`, VLESS Encryption (`encryption=mlkem768x25519plus.*`, в т.ч. с `security=none`), параметры `spx`, `pqv`, `pcs`, `vcn`, `ech`, `fm`, `mode`, `extra`, `cs`, ws `heartbeatPeriod` | skip `unsupported_combo`/`unsupported_value`/`unsupported_param` | entry с новым профилем (ниже), параметры доходят до Xray (`cs` → `tlsSettings.cipherSuites`, `heartbeatPeriod` → `wsSettings.heartbeatPeriod`) | D26, D33 |
 | `type=grpc`, `httpupgrade`, `kcp` и прочие транспорты; `ws`+`reality`; `security=none` (или без `security`) без ML-KEM; `security=xtls` | skip `unsupported_combo` | без изменений: skip `unsupported_combo` | D26 (вне scope) |
 | ключ ML-KEM правильной длины, но не ключ | — | skip `unsupported_value` «Invalid VLESS encryption key.» (иначе Xray отверг бы outbound при `AddOutbound`) | D25 |
-| `flow=xtls-rprx-vision` на ws/xhttp без ML-KEM | ws+tls: outbound с `flow` (Xray v26.10.10 рвал бы каждое соединение) | `flow` сбрасывается, warning `flow_cleared` «flow xtls-rprx-vision is not supported on ws+tls; flow cleared.» | D16 |
+| `flow=xtls-rprx-vision` на ws/xhttp без ML-KEM | ws+tls: outbound с `flow` (Xray v26.10.21 рвал бы каждое соединение) | `flow` сбрасывается, warning `flow_cleared` «flow xtls-rprx-vision is not supported on ws+tls; flow cleared.» | D16 |
 | значение `flow` | tcp+tls и ws+tls — любое как есть; REALITY — только `xtls-rprx-vision`, иначе skip | `""`, `xtls-rprx-vision`, `xtls-rprx-vision-udp443` (регистр важен); иное — skip `unsupported_value` «Unsupported VLESS flow value.» | D16, D26 |
 | id не UUID (`vless://my-user@…`), UUID v6+ | skip | принимается; id приводится как в Xray (`uuid.ParseString`: строка ≤30 символов → UUIDv5, UUID — в нижний регистр; тег не зависит). Skip `unsupported_value` «The VLESS user id is not accepted by Xray.» — только если Xray не примет (31 символ, 37+, не-hex UUID) | D18, O4 |
 | ws без `path`; REALITY без `sni`/`fp`/`sid` | skip `missing_required_field` | принимается; у REALITY обязателен только `pbk` | O15 |
@@ -302,7 +302,7 @@ URL подписки в логах `refresh`/`serve` (`subscription_refreshed.so
 
 Пример: `vless://…@h:443?type=tcp&security=reality&pbk=…&sid=ab#🇩🇪 Berlin` — было skip «Unsupported VLESS type/security/flow combination.», стало outbound `vless-de-berlin-tcp-reality-<hash>`.
 
-После обновления первый sync **полностью** переприменяет каждый target один раз (D11): `jsonOutbound` в манифесте — форма Xray v26.10.10, хэши меняются (теги старых профилей — нет). SOCKS-порты туннелей могут перераспределиться (D21) — они внутренние для scd; проверьте только ёмкость `portRange`.
+После обновления первый sync **полностью** переприменяет каждый target один раз (D11): `jsonOutbound` в манифесте — форма Xray v26.10.21, хэши меняются (теги старых профилей — нет). SOCKS-порты туннелей могут перераспределиться (D21) — они внутренние для scd; проверьте только ёмкость `portRange`.
 
 ### scd и sfc: User-Agent и заголовки загрузки
 
@@ -413,7 +413,7 @@ sfc **не проверяет** применимость параметров к
 | свой `command:` вида `node dist/cli.js …` | работал | **не работает** (в образе нет Node) — заменить на `scd …`/`scd sfc …`/`scd gtl …` с теми же аргументами | D10 |
 | база образа | `node:24-alpine` (есть shell) | `gcr.io/distroless/static-debian13` (CA-сертификаты, tzdata; без shell — `docker exec … sh` недоступен), пользователь root | D1 |
 | путь конфига, порт, кэш sfc | `/app/config/config.yml`, `8080`, volume `/app/config/.sfc-cache` | без изменений | — |
-| тестовый Xray в compose | `ghcr.io/xtls/xray-core:26.3.27` | `ghcr.io/xtls/xray-core:26.10.10` (версия в `.xray-version`, сверяется с `go.mod`: `scripts/check-xray-version.sh`) | D4 |
+| тестовый Xray в compose | `ghcr.io/xtls/xray-core:26.3.27` | `ghcr.io/xtls/xray-core:26.10.21` (версия в `.xray-version`, сверяется с `go.mod`: `scripts/check-xray-version.sh`) | D4 |
 
 ```diff
    sfc:
@@ -558,5 +558,5 @@ invalid config docker/sfc/config.real-shape.yml:
    - `scd gtl validate-config --config docker/gtl/config.yml` — `Config is valid`.
 3. `scd print-config` / `scd sfc print-config` — проверить умолчания новых ключей (`allowInsecure`, `balancerSelection`) и что `input`, URL мониторов/`remotePing` и `fetchHeaders` скрыты (`<redacted>`); сырой вид — `--include-secrets`.
 4. `scd generate --input <снимок подписки> --output m.json --log log.json` — сравнить `skipped`/`warnings` и число entries с ожидаемым; `scd sfc refresh --config …` — число строк в выходах.
-5. Обновить compose (`image:` + `command:`), Xray-образ — `ghcr.io/xtls/xray-core:26.10.10` с `ObservatoryService` только при наличии секции `observatory`.
+5. Обновить compose (`image:` + `command:`), Xray-образ — `ghcr.io/xtls/xray-core:26.10.21` с `ObservatoryService` только при наличии секции `observatory`.
 6. После запуска: первый sync переприменяет все target'ы (ожидаемо), логи — в stderr в новом формате.

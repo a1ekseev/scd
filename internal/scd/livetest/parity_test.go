@@ -90,7 +90,7 @@ func paritySteps(t *testing.T, c xrayapi.Client, port int) []string {
 // TestLiveFakeParity (D2, 02 §2.7, 08 §3): the same scenario — duplicate
 // outbound/inbound/ruleTag, RemoveRule(""), removing unknown resources, an
 // unknown balancer — gives the same results and error texts on live Xray
-// 26.10.10 and on xrayfake started with the template's fixed resources.
+// 26.10.21 and on xrayfake started with the template's fixed resources.
 func TestLiveFakeParity(t *testing.T) {
 	c, _, _ := startXray(t)
 	port := freePort(t)

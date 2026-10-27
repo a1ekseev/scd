@@ -18,9 +18,9 @@
 - User docs: `README.md`. Config migration guide: `docs/CONFIG-MIGRATION.md`.
 
 ## Common Rules
-- Go `1.27` (`go 1.27.0`, `toolchain go1.27.2`). Use the latest dependency versions, except xray-core.
+- Go `1.27` (`go 1.27.0`, `toolchain go1.27.3`). Use the latest dependency versions, except xray-core.
 - `internal/scd`, `internal/sfc` and `internal/gtl` never import each other, and `internal/common` imports no service. `internal/archtest` enforces this. Shared code goes only in `internal/common`.
-- xray-core is pinned by commit: `v1.260327.1-0.20261010092107-701af60772cd` = Xray v26.10.10. Never `@latest`. Update the go.mod pin, the compose image `ghcr.io/xtls/xray-core:<ver>` and `.xray-version` **together**; `scripts/check-xray-version.sh` checks this.
+- xray-core is pinned by commit: `v1.260327.1-0.20261021115930-1b1647cd9ddf` = Xray v26.10.21. Never `@latest`. Update the go.mod pin, the compose image `ghcr.io/xtls/xray-core:<ver>` and `.xray-version` **together**; `scripts/check-xray-version.sh` checks this.
 - Behaviour follows Go conventions (D9): Go error texts, `log/slog` to stderr, `regexp` (RE2), `net/url`, stdlib base64, `strings.Compare` ordering. Kept as a contract: log `event` names and fields, the status JSON API (additive only, `version: 1`), the dashboard look (visual regression), and Xray API behaviour (RPC set and order, fixed resources, rollback, error texts).
 - Lint: `golangci-lint` v2.15.0 with `.golangci.yml` (gofumpt and goimports formatters, revive). Every package and exported identifier needs a doc comment. Do not add `//nolint` without a reason.
 - Tests use stdlib `testing`, table-driven where it fits, with real in-process servers (`httptest`, bufconn fake Xray `internal/scd/xrayapi/xrayfake`) instead of mocks.
@@ -40,7 +40,7 @@ go build -o bin/scd ./cmd/scd            # always -o bin/scd
 ./bin/scd gtl validate-config --config docker/gtl/config.example.yml
 bash scripts/check-xray-version.sh
 bash scripts/check-no-node.sh
-SCD_XRAY_BIN=/path/to/xray-26.10.10 go test -tags xraylive -count=1 ./internal/scd/livetest/...
+SCD_XRAY_BIN=/path/to/xray-26.10.21 go test -tags xraylive -count=1 ./internal/scd/livetest/...
 SCD_CHROME=/path/to/headless_shell go test -tags visual -count=1 ./internal/scd/status/...
 bash scripts/compose-smoke.sh            # Docker smoke on the example configs
 ```
