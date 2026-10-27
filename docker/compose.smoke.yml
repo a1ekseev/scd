@@ -1,0 +1,20 @@
+# Override for scripts/compose-smoke.sh: mounts the tracked secret-free
+# docker/<svc>/config.example.yml as /app/config/config.yml, so the ignored
+# docker/<svc>/config.yml (owner's real configs, D12) are never read or touched.
+# The sfc cache goes to a named volume removed by `down -v`.
+# Relative paths resolve against the project directory (the repo root).
+services:
+  scd:
+    volumes:
+      # A copy of config.example.yml with a 5-second sync, made by the script.
+      - ${SCD_SMOKE_SCD_CONFIG:?set by scripts/compose-smoke.sh}:/app/config/config.yml:ro
+  sfc:
+    volumes:
+      - ./docker/sfc/config.example.yml:/app/config/config.yml:ro
+      - sfc-cache:/app/config/.sfc-cache
+  gtl:
+    volumes:
+      - ./docker/gtl/config.example.yml:/app/config/config.yml:ro
+
+volumes:
+  sfc-cache:

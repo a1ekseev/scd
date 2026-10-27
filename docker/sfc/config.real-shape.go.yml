@@ -1,0 +1,44 @@
+# Go-форма боевого конфига sfc владельца (2026-10-17) для `scd sfc`. Секреты заменены так же,
+# как в config.real-shape.yml: input → example.com, pathRoute и id выходов → фейковые UUID.
+# Отличия от TS-формы — только фильтры меток без lookahead (D29, D31); разбор шагов —
+# docs/CONFIG-MIGRATION.md, раздел «Разобранные примеры».
+subscriptions:
+  - id: main
+    input: https://sub.example.com/api/sub/REDACTED
+    enabled: true
+    format: auto
+    fetchTimeoutMs: 15000
+    pathRoute: /00000000-0000-4000-8000-000000000a01
+    outputs:
+      - id: 00000000-0000-4000-8000-000000000b01
+        enabled: true
+        name: en-server
+        # было: labelIncludeRegex: '/^(?!.*Extra)(?!.*WhiteList).*$/i'
+        labelExcludeRegex: '/Extra|WhiteList/i'
+        userAgent: [Happ]
+        profileTitle: EN Servers
+        profileUpdateInterval: 1
+      - id: 00000000-0000-4000-8000-000000000b02
+        enabled: true
+        name: extra-server
+        # было: labelIncludeRegex: '/^(?=.*Extra)(?!.*WhiteList).*$/i'
+        labelIncludeRegex: '/Extra/i'
+        labelExcludeRegex: '/WhiteList/i'
+        userAgent: [Happ]
+        profileTitle: Extra Servers
+        profileUpdateInterval: 1
+      - id: 00000000-0000-4000-8000-000000000b03
+        enabled: true
+        name: extra-whitelist
+        # было: labelIncludeRegex: '/(?=.*Extra)(?=.*WhiteList)/i'
+        labelIncludeRegex: ['/Extra/i', '/WhiteList/i']
+        userAgent: [Happ]
+        profileTitle: Extra Whitelist
+        profileUpdateInterval: 1
+runtime:
+  refreshSchedule: "15 * * * *"
+server:
+  listen: 172.31.3.4:8080
+logging:
+  level: info
+  format: json

@@ -1,0 +1,945 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-15T10:00:00.000Z",
+  "sourceFile": "<input>",
+  "entries": [
+    {
+      "kind": "outbound",
+      "tag": "vless-at-3ed0e2a1-tcp-tls-08e81a31",
+      "label": "🇦🇹 Вена, Австрия, Extra",
+      "profile": "tcp-tls",
+      "line": 1,
+      "country": {
+        "emoji": "🇦🇹",
+        "iso2": "AT",
+        "nameEn": "Austria",
+        "nameRu": "Австрия"
+      },
+      "city": "Вена",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-at-3ed0e2a1-tcp-tls-08e81a31",
+        "line": 1,
+        "raw": "vless://11111111-1111-4111-8111-111111111111@at1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇦🇹 Вена, Австрия, Extra",
+        "label": "🇦🇹 Вена, Австрия, Extra",
+        "address": "at1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111111",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇦🇹",
+          "iso2": "AT",
+          "nameEn": "Austria",
+          "nameRu": "Австрия"
+        },
+        "city": "Вена",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-at-3ed0e2a1-tcp-tls-08e81a31",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "at1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111111",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-51bd674f-tcp-tls-b52bc279",
+      "label": "🇩🇪 Берлин, Германия, Extra",
+      "profile": "tcp-tls",
+      "line": 2,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Берлин",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-de-51bd674f-tcp-tls-b52bc279",
+        "line": 2,
+        "raw": "vless://11111111-1111-4111-8111-111111111112@de1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇩🇪 Берлин, Германия, Extra",
+        "label": "🇩🇪 Берлин, Германия, Extra",
+        "address": "de1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111112",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Берлин",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-51bd674f-tcp-tls-b52bc279",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111112",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-3c2095ba-tcp-tls-89905e7f",
+      "label": "🇳🇱 Амстердам, Нидерланды, Extra",
+      "profile": "tcp-tls",
+      "line": 3,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Амстердам",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-nl-3c2095ba-tcp-tls-89905e7f",
+        "line": 3,
+        "raw": "vless://11111111-1111-4111-8111-111111111113@nl1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇳🇱 Амстердам, Нидерланды, Extra",
+        "label": "🇳🇱 Амстердам, Нидерланды, Extra",
+        "address": "nl1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111113",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Амстердам",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-3c2095ba-tcp-tls-89905e7f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "nl1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111113",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-fi-ba698f18-tcp-tls-16cdbc69",
+      "label": "🇫🇮 Оулу, Финляндия, Extra",
+      "profile": "tcp-tls",
+      "line": 4,
+      "country": {
+        "emoji": "🇫🇮",
+        "iso2": "FI",
+        "nameEn": "Finland",
+        "nameRu": "Финляндия"
+      },
+      "city": "Оулу",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-fi-ba698f18-tcp-tls-16cdbc69",
+        "line": 4,
+        "raw": "vless://11111111-1111-4111-8111-111111111114@fi1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇫🇮 Оулу, Финляндия, Extra",
+        "label": "🇫🇮 Оулу, Финляндия, Extra",
+        "address": "fi1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111114",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇫🇮",
+          "iso2": "FI",
+          "nameEn": "Finland",
+          "nameRu": "Финляндия"
+        },
+        "city": "Оулу",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-fi-ba698f18-tcp-tls-16cdbc69",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fi1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111114",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-20268a39-tcp-tls-7f42b84e",
+      "label": "🇺🇸 Майами, США, Extra",
+      "profile": "tcp-tls",
+      "line": 5,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "Майами",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-us-20268a39-tcp-tls-7f42b84e",
+        "line": 5,
+        "raw": "vless://11111111-1111-4111-8111-111111111115@us1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇺🇸 Майами, США, Extra",
+        "label": "🇺🇸 Майами, США, Extra",
+        "address": "us1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111115",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "Майами",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-20268a39-tcp-tls-7f42b84e",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "us1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111115",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-jp-9f87fe63-tcp-tls-9b62d38f",
+      "label": "🇯🇵 Токио, Япония, Extra",
+      "profile": "tcp-tls",
+      "line": 6,
+      "country": {
+        "emoji": "🇯🇵",
+        "iso2": "JP",
+        "nameEn": "Japan",
+        "nameRu": "Япония"
+      },
+      "city": "Токио",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-jp-9f87fe63-tcp-tls-9b62d38f",
+        "line": 6,
+        "raw": "vless://11111111-1111-4111-8111-111111111116@jp1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇯🇵 Токио, Япония, Extra",
+        "label": "🇯🇵 Токио, Япония, Extra",
+        "address": "jp1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111116",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇯🇵",
+          "iso2": "JP",
+          "nameEn": "Japan",
+          "nameRu": "Япония"
+        },
+        "city": "Токио",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-jp-9f87fe63-tcp-tls-9b62d38f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "jp1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111116",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-sg-0c116488-tcp-tls-447474da",
+      "label": "🇸🇬 Сингапур, Сингапур, Extra",
+      "profile": "tcp-tls",
+      "line": 7,
+      "country": {
+        "emoji": "🇸🇬",
+        "iso2": "SG",
+        "nameEn": "Singapore",
+        "nameRu": "Сингапур"
+      },
+      "city": "Сингапур",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-sg-0c116488-tcp-tls-447474da",
+        "line": 7,
+        "raw": "vless://11111111-1111-4111-8111-111111111117@sg1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇸🇬 Сингапур, Сингапур, Extra",
+        "label": "🇸🇬 Сингапур, Сингапур, Extra",
+        "address": "sg1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111117",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇸🇬",
+          "iso2": "SG",
+          "nameEn": "Singapore",
+          "nameRu": "Сингапур"
+        },
+        "city": "Сингапур",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-sg-0c116488-tcp-tls-447474da",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "sg1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111117",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-ca-182aceb6-tcp-tls-413c3656",
+      "label": "🇨🇦 Торонто, Канада, Extra",
+      "profile": "tcp-tls",
+      "line": 8,
+      "country": {
+        "emoji": "🇨🇦",
+        "iso2": "CA",
+        "nameEn": "Canada",
+        "nameRu": "Канада"
+      },
+      "city": "Торонто",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-ca-182aceb6-tcp-tls-413c3656",
+        "line": 8,
+        "raw": "vless://11111111-1111-4111-8111-111111111118@ca1.example.test:8443?type=tcp&path=%2F&security=tls&alpn=h2#🇨🇦 Торонто, Канада, Extra",
+        "label": "🇨🇦 Торонто, Канада, Extra",
+        "address": "ca1.example.test",
+        "port": 8443,
+        "uuid": "11111111-1111-4111-8111-111111111118",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "path": "/",
+        "country": {
+          "emoji": "🇨🇦",
+          "iso2": "CA",
+          "nameEn": "Canada",
+          "nameRu": "Канада"
+        },
+        "city": "Торонто",
+        "query": {
+          "type": "tcp",
+          "path": "/",
+          "security": "tls",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-ca-182aceb6-tcp-tls-413c3656",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "ca1.example.test",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111118",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "alpn": [
+              "h2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-c2574453-ws-tls-0b245a2f",
+      "label": "🇩🇪 Германия, Extra Whitelist#2(Test)",
+      "profile": "ws-tls",
+      "line": 9,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Германия",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "ws-tls",
+        "tag": "vless-de-c2574453-ws-tls-0b245a2f",
+        "line": 9,
+        "raw": "vless://11111111-1111-4111-8111-111111111119@198.51.100.10:443?encryption=none&type=ws&fp=chrome&sni=cdn.example.test&flow=&host=cdn-1.example.test&path=%2Fstream%2Fupdates%2Fcase-a&security=tls&allowInsecure=1#🇩🇪 Германия, Extra Whitelist#2(Test)",
+        "label": "🇩🇪 Германия, Extra Whitelist#2(Test)",
+        "address": "198.51.100.10",
+        "port": 443,
+        "uuid": "11111111-1111-4111-8111-111111111119",
+        "encryption": "none",
+        "network": "ws",
+        "security": "tls",
+        "alpn": [],
+        "sni": "cdn.example.test",
+        "host": "cdn-1.example.test",
+        "path": "/stream/updates/case-a",
+        "fingerprint": "chrome",
+        "allowInsecure": true,
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Германия",
+        "query": {
+          "encryption": "none",
+          "type": "ws",
+          "fp": "chrome",
+          "sni": "cdn.example.test",
+          "flow": "",
+          "host": "cdn-1.example.test",
+          "path": "/stream/updates/case-a",
+          "security": "tls",
+          "allowinsecure": "1"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-c2574453-ws-tls-0b245a2f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.10",
+              "port": 443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111119",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "cdn.example.test",
+            "fingerprint": "chrome",
+            "allowInsecure": true
+          },
+          "wsSettings": {
+            "path": "/stream/updates/case-a",
+            "headers": {
+              "Host": "cdn-1.example.test"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-se-c9cdda41-ws-tls-c4ed22f5",
+      "label": "🇸🇪 Швеция, Extra Whitelist#2(Test)",
+      "profile": "ws-tls",
+      "line": 10,
+      "country": {
+        "emoji": "🇸🇪",
+        "iso2": "SE",
+        "nameEn": "Sweden",
+        "nameRu": "Швеция"
+      },
+      "city": "Швеция",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "ws-tls",
+        "tag": "vless-se-c9cdda41-ws-tls-c4ed22f5",
+        "line": 10,
+        "raw": "vless://11111111-1111-4111-8111-111111111120@198.51.100.11:443?encryption=none&type=ws&fp=chrome&sni=cdn.example.test&flow=&host=cdn-2.example.test&path=%2Fstream%2Fupdates%2Fcase-b&security=tls&allowInsecure=1#🇸🇪 Швеция, Extra Whitelist#2(Test)",
+        "label": "🇸🇪 Швеция, Extra Whitelist#2(Test)",
+        "address": "198.51.100.11",
+        "port": 443,
+        "uuid": "11111111-1111-4111-8111-111111111120",
+        "encryption": "none",
+        "network": "ws",
+        "security": "tls",
+        "alpn": [],
+        "sni": "cdn.example.test",
+        "host": "cdn-2.example.test",
+        "path": "/stream/updates/case-b",
+        "fingerprint": "chrome",
+        "allowInsecure": true,
+        "country": {
+          "emoji": "🇸🇪",
+          "iso2": "SE",
+          "nameEn": "Sweden",
+          "nameRu": "Швеция"
+        },
+        "city": "Швеция",
+        "query": {
+          "encryption": "none",
+          "type": "ws",
+          "fp": "chrome",
+          "sni": "cdn.example.test",
+          "flow": "",
+          "host": "cdn-2.example.test",
+          "path": "/stream/updates/case-b",
+          "security": "tls",
+          "allowinsecure": "1"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-se-c9cdda41-ws-tls-c4ed22f5",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.11",
+              "port": 443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111120",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "cdn.example.test",
+            "fingerprint": "chrome",
+            "allowInsecure": true
+          },
+          "wsSettings": {
+            "path": "/stream/updates/case-b",
+            "headers": {
+              "Host": "cdn-2.example.test"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-c2574453-tcp-reality-vision-a80f0cb6",
+      "label": "🇩🇪 Германия, Extra Whitelist#3(Test)",
+      "profile": "tcp-reality-vision",
+      "line": 11,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Германия",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-reality-vision",
+        "tag": "vless-de-c2574453-tcp-reality-vision-a80f0cb6",
+        "line": 11,
+        "raw": "vless://11111111-1111-4111-8111-111111111121@203.0.113.20:443?security=reality&encryption=none&fp=chrome&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=io.example.test&pbk=OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg&sid=cbad7f159438fee4#🇩🇪 Германия, Extra Whitelist#3(Test)",
+        "label": "🇩🇪 Германия, Extra Whitelist#3(Test)",
+        "address": "203.0.113.20",
+        "port": 443,
+        "uuid": "11111111-1111-4111-8111-111111111121",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "reality",
+        "flow": "xtls-rprx-vision",
+        "alpn": [],
+        "sni": "io.example.test",
+        "fingerprint": "chrome",
+        "headerType": "none",
+        "publicKey": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+        "shortId": "cbad7f159438fee4",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Германия",
+        "query": {
+          "security": "reality",
+          "encryption": "none",
+          "fp": "chrome",
+          "headertype": "none",
+          "type": "tcp",
+          "flow": "xtls-rprx-vision",
+          "sni": "io.example.test",
+          "pbk": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+          "sid": "cbad7f159438fee4"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-c2574453-tcp-reality-vision-a80f0cb6",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "203.0.113.20",
+              "port": 443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111121",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "io.example.test",
+            "fingerprint": "chrome",
+            "publicKey": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+            "shortId": "cbad7f159438fee4"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-e31ebb59-tcp-reality-vision-8aeb7a4f",
+      "label": "🇳🇱 Нидерланды, Extra Whitelist#3(Test)",
+      "profile": "tcp-reality-vision",
+      "line": 12,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Нидерланды",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-reality-vision",
+        "tag": "vless-nl-e31ebb59-tcp-reality-vision-8aeb7a4f",
+        "line": 12,
+        "raw": "vless://11111111-1111-4111-8111-111111111122@203.0.113.21:443?security=reality&encryption=none&fp=chrome&headerType=none&type=tcp&flow=xtls-rprx-vision&sni=st.example.test&pbk=OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg&sid=c23b38f47a2bbd25#🇳🇱 Нидерланды, Extra Whitelist#3(Test)",
+        "label": "🇳🇱 Нидерланды, Extra Whitelist#3(Test)",
+        "address": "203.0.113.21",
+        "port": 443,
+        "uuid": "11111111-1111-4111-8111-111111111122",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "reality",
+        "flow": "xtls-rprx-vision",
+        "alpn": [],
+        "sni": "st.example.test",
+        "fingerprint": "chrome",
+        "headerType": "none",
+        "publicKey": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+        "shortId": "c23b38f47a2bbd25",
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Нидерланды",
+        "query": {
+          "security": "reality",
+          "encryption": "none",
+          "fp": "chrome",
+          "headertype": "none",
+          "type": "tcp",
+          "flow": "xtls-rprx-vision",
+          "sni": "st.example.test",
+          "pbk": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+          "sid": "c23b38f47a2bbd25"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-e31ebb59-tcp-reality-vision-8aeb7a4f",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "203.0.113.21",
+              "port": 443,
+              "users": [
+                {
+                  "id": "11111111-1111-4111-8111-111111111122",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "st.example.test",
+            "fingerprint": "chrome",
+            "publicKey": "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg",
+            "shortId": "c23b38f47a2bbd25"
+          }
+        }
+      }
+    }
+  ],
+  "skipped": [],
+  "summary": {
+    "totalLines": 12,
+    "parsed": 12,
+    "skipped": 0,
+    "filtered": 0,
+    "filteredByCountry": 0,
+    "filteredByLabelRegex": 0,
+    "unsupportedScheme": 0,
+    "unsupportedParam": 0,
+    "unsupportedValue": 0,
+    "unsupportedCombo": 0,
+    "invalidUri": 0,
+    "missingRequiredField": 0,
+    "duplicateTag": 0
+  }
+}

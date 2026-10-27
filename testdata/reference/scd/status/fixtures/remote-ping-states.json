@@ -1,0 +1,160 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "ping-delivered-down",
+        "enabled": true,
+        "address": "127.0.0.1:8084",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "ping-delivered-up",
+        "enabled": true,
+        "address": "127.0.0.1:8083",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "ping-failed",
+        "enabled": true,
+        "address": "127.0.0.1:8082",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "ping-idle",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      },
+      {
+        "id": "ping-pending",
+        "enabled": true,
+        "address": "127.0.0.1:8081",
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "ping-idle",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "idle",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0
+      },
+      "tunnels": []
+    },
+    {
+      "subscriptionId": "ping-pending",
+      "targetAddress": "127.0.0.1:8081",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "pending",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+        "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 21,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 21,
+        "remotePingLastRunAt": "2026-08-15T10:00:00.000Z"
+      },
+      "tunnels": []
+    },
+    {
+      "subscriptionId": "ping-failed",
+      "targetAddress": "127.0.0.1:8082",
+      "balancerMonitor": {
+        "state": "degraded",
+        "remotePingState": "failed",
+        "consecutiveFailures": 1,
+        "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+        "lastFailureAt": "2026-08-15T10:00:00.000Z",
+        "lastError": "SOCKS5 connect timed out",
+        "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+        "remotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+        "remotePingLastStatusCode": 500,
+        "remotePingLastError": "push failed",
+        "remotePingLastReportedStatus": "down",
+        "remotePingLastReportedMsg": "SOCKS5 connect timed out"
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "alpha",
+          "displayName": "Alpha",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 22000,
+          "outboundTagInitial": "x-observe-alpha",
+          "outboundTagCurrent": "x-observe-alpha",
+          "outboundWithoutPrefixTag": "alpha",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42,
+            "consecutiveFailures": 0
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "ping-delivered-up",
+      "targetAddress": "127.0.0.1:8083",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "ok",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 17,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 17,
+        "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "remotePingLastStatusCode": 200,
+        "remotePingLastReportedStatus": "up",
+        "remotePingLastReportedMsg": "OK",
+        "remotePingLastReportedPingMs": 17
+      },
+      "tunnels": []
+    },
+    {
+      "subscriptionId": "ping-delivered-down",
+      "targetAddress": "127.0.0.1:8084",
+      "balancerMonitor": {
+        "state": "degraded",
+        "remotePingState": "ok",
+        "consecutiveFailures": 3,
+        "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:55:00.000Z",
+        "lastFailureAt": "2026-08-15T10:00:00.000Z",
+        "lastStatusCode": 503,
+        "lastLatencyMs": 120,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 19,
+        "lastError": "Unexpected HTTP status 503.",
+        "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+        "remotePingLastSuccessAt": "2026-08-15T10:00:00.000Z",
+        "remotePingLastStatusCode": 200,
+        "remotePingLastReportedStatus": "down",
+        "remotePingLastReportedMsg": "Unexpected HTTP status 503.",
+        "remotePingLastReportedPingMs": 120
+      },
+      "tunnels": []
+    }
+  ],
+  "remotes": []
+}

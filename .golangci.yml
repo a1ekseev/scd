@@ -1,0 +1,33 @@
+version: "2"
+
+run:
+  build-tags:
+    - xraylive
+    - visual
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - revive
+    - bodyclose
+    - contextcheck
+    - noctx
+    - modernize
+    - usestdlibvars
+    - perfsprint
+    - misspell
+    - unconvert
+  exclusions:
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/a1ekseev/scd

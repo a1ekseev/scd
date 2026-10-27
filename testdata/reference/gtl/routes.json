@@ -1,0 +1,158 @@
+[
+  {
+    "path": "/healthz",
+    "method": "GET",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "2"
+    },
+    "body": "ok"
+  },
+  {
+    "path": "/load/32",
+    "method": "GET",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "content-length": "32768",
+      "x-gtl-status-code": "200",
+      "x-gtl-requested-size-kb": "32",
+      "x-gtl-requested-size-bytes": "32768",
+      "x-gtl-actual-size-bytes": "32768"
+    },
+    "bodyBytes": 32768
+  },
+  {
+    "path": "/load/0",
+    "method": "GET",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "content-length": "0",
+      "x-gtl-status-code": "200",
+      "x-gtl-requested-size-kb": "0",
+      "x-gtl-requested-size-bytes": "0",
+      "x-gtl-actual-size-bytes": "0"
+    },
+    "bodyBytes": 0
+  },
+  {
+    "path": "/load/007",
+    "method": "GET",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "content-length": "7168",
+      "x-gtl-status-code": "200",
+      "x-gtl-requested-size-kb": "7",
+      "x-gtl-requested-size-bytes": "7168",
+      "x-gtl-actual-size-bytes": "7168"
+    },
+    "bodyBytes": 7168
+  },
+  {
+    "path": "/load/1?x=y",
+    "method": "GET",
+    "status": 200,
+    "headers": {
+      "content-type": "application/octet-stream",
+      "content-length": "1024",
+      "x-gtl-status-code": "200",
+      "x-gtl-requested-size-kb": "1",
+      "x-gtl-requested-size-bytes": "1024",
+      "x-gtl-actual-size-bytes": "1024"
+    },
+    "bodyBytes": 1024
+  },
+  {
+    "path": "/load/65",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "39"
+    },
+    "body": "sizeKb must be an integer from 0 to 64\n"
+  },
+  {
+    "path": "/load/",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "43"
+    },
+    "body": "invalid load route, expected /load/:sizeKb\n"
+  },
+  {
+    "path": "/load/1/",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "43"
+    },
+    "body": "invalid load route, expected /load/:sizeKb\n"
+  },
+  {
+    "path": "/load",
+    "method": "GET",
+    "status": 404,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "10"
+    },
+    "body": "not found\n"
+  },
+  {
+    "path": "/load/200_32",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "43"
+    },
+    "body": "invalid load route, expected /load/:sizeKb\n"
+  },
+  {
+    "path": "/load/%33",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "43"
+    },
+    "body": "invalid load route, expected /load/:sizeKb\n"
+  },
+  {
+    "path": "/unknown",
+    "method": "GET",
+    "status": 404,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "10"
+    },
+    "body": "not found\n"
+  },
+  {
+    "path": "/load/99999999999999999999",
+    "method": "GET",
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": "39"
+    },
+    "body": "sizeKb must be an integer from 0 to 64\n"
+  },
+  {
+    "path": "/load/1",
+    "method": "HEAD",
+    "status": 405,
+    "headers": {
+      "content-length": "19",
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "body": "method not allowed\n"
+  }
+]

@@ -1,0 +1,669 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-15T10:00:00.000Z",
+  "sourceFile": "<input>",
+  "entries": [
+    {
+      "kind": "outbound",
+      "tag": "vless-de-81b05f6e-tcp-tls-233b9ab0",
+      "label": "🇩🇪 Франкфурт, Германия, Extra",
+      "profile": "tcp-tls",
+      "line": 1,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Франкфурт",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-de-81b05f6e-tcp-tls-233b9ab0",
+        "line": 1,
+        "raw": "vless://00000000-0000-4000-8000-000000000001@de1.example.com:443?type=tcp&security=tls&encryption=none&sni=de1.example.com&fp=chrome&alpn=h2%2Chttp%2F1.1#🇩🇪 Франкфурт, Германия, Extra",
+        "label": "🇩🇪 Франкфурт, Германия, Extra",
+        "address": "de1.example.com",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000001",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "sni": "de1.example.com",
+        "fingerprint": "chrome",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Франкфурт",
+        "query": {
+          "type": "tcp",
+          "security": "tls",
+          "encryption": "none",
+          "sni": "de1.example.com",
+          "fp": "chrome",
+          "alpn": "h2,http/1.1"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-81b05f6e-tcp-tls-233b9ab0",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de1.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "de1.example.com",
+            "alpn": [
+              "h2",
+              "http/1.1"
+            ],
+            "fingerprint": "chrome"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-3c2095ba-tcp-tls-c397957a",
+      "label": "🇳🇱 Амстердам, Нидерланды, Extra",
+      "profile": "tcp-tls",
+      "line": 2,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Амстердам",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-nl-3c2095ba-tcp-tls-c397957a",
+        "line": 2,
+        "raw": "vless://00000000-0000-4000-8000-000000000002@nl1.example.com:443?type=tcp&security=tls&encryption=none&sni=nl1.example.com&fp=chrome&alpn=h2#🇳🇱 Амстердам, Нидерланды, Extra",
+        "label": "🇳🇱 Амстердам, Нидерланды, Extra",
+        "address": "nl1.example.com",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000002",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [
+          "h2"
+        ],
+        "sni": "nl1.example.com",
+        "fingerprint": "chrome",
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Амстердам",
+        "query": {
+          "type": "tcp",
+          "security": "tls",
+          "encryption": "none",
+          "sni": "nl1.example.com",
+          "fp": "chrome",
+          "alpn": "h2"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-3c2095ba-tcp-tls-c397957a",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "nl1.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "nl1.example.com",
+            "alpn": [
+              "h2"
+            ],
+            "fingerprint": "chrome"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-fi-63ea8d1f-tcp-tls-7cd955ea",
+      "label": "🇫🇮 Хельсинки, Финляндия",
+      "profile": "tcp-tls",
+      "line": 3,
+      "country": {
+        "emoji": "🇫🇮",
+        "iso2": "FI",
+        "nameEn": "Finland",
+        "nameRu": "Финляндия"
+      },
+      "city": "Хельсинки",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-tls",
+        "tag": "vless-fi-63ea8d1f-tcp-tls-7cd955ea",
+        "line": 3,
+        "raw": "vless://00000000-0000-4000-8000-000000000003@fi1.example.com:8443?type=tcp&security=tls&encryption=none&sni=fi1.example.com&fp=firefox#🇫🇮 Хельсинки, Финляндия",
+        "label": "🇫🇮 Хельсинки, Финляндия",
+        "address": "fi1.example.com",
+        "port": 8443,
+        "uuid": "00000000-0000-4000-8000-000000000003",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "tls",
+        "alpn": [],
+        "sni": "fi1.example.com",
+        "fingerprint": "firefox",
+        "country": {
+          "emoji": "🇫🇮",
+          "iso2": "FI",
+          "nameEn": "Finland",
+          "nameRu": "Финляндия"
+        },
+        "city": "Хельсинки",
+        "query": {
+          "type": "tcp",
+          "security": "tls",
+          "encryption": "none",
+          "sni": "fi1.example.com",
+          "fp": "firefox"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-fi-63ea8d1f-tcp-tls-7cd955ea",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fi1.example.com",
+              "port": 8443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000003",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "fi1.example.com",
+            "fingerprint": "firefox"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-51bd674f-ws-tls-439d5804",
+      "label": "🇩🇪 Берлин, Германия, WS",
+      "profile": "ws-tls",
+      "line": 4,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Берлин",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "ws-tls",
+        "tag": "vless-de-51bd674f-ws-tls-439d5804",
+        "line": 4,
+        "raw": "vless://00000000-0000-4000-8000-000000000004@203.0.113.10:443?type=ws&security=tls&encryption=none&sni=cdn.example.com&host=ws-de.example.com&path=%2Fws%2Fde&fp=chrome#🇩🇪 Берлин, Германия, WS",
+        "label": "🇩🇪 Берлин, Германия, WS",
+        "address": "203.0.113.10",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000004",
+        "encryption": "none",
+        "network": "ws",
+        "security": "tls",
+        "alpn": [],
+        "sni": "cdn.example.com",
+        "host": "ws-de.example.com",
+        "path": "/ws/de",
+        "fingerprint": "chrome",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Берлин",
+        "query": {
+          "type": "ws",
+          "security": "tls",
+          "encryption": "none",
+          "sni": "cdn.example.com",
+          "host": "ws-de.example.com",
+          "path": "/ws/de",
+          "fp": "chrome"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-51bd674f-ws-tls-439d5804",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "203.0.113.10",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000004",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "cdn.example.com",
+            "fingerprint": "chrome"
+          },
+          "wsSettings": {
+            "path": "/ws/de",
+            "headers": {
+              "Host": "ws-de.example.com"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-67b32ad2-ws-tls-d8669ab7",
+      "label": "🇳🇱 Роттердам, Нидерланды, WS",
+      "profile": "ws-tls",
+      "line": 5,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Роттердам",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "ws-tls",
+        "tag": "vless-nl-67b32ad2-ws-tls-d8669ab7",
+        "line": 5,
+        "raw": "vless://00000000-0000-4000-8000-000000000005@203.0.113.11:443?type=ws&security=tls&encryption=none&sni=cdn.example.com&host=ws-nl.example.com&path=%2Fws%2Fnl&fp=chrome&allowInsecure=0#🇳🇱 Роттердам, Нидерланды, WS",
+        "label": "🇳🇱 Роттердам, Нидерланды, WS",
+        "address": "203.0.113.11",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000005",
+        "encryption": "none",
+        "network": "ws",
+        "security": "tls",
+        "alpn": [],
+        "sni": "cdn.example.com",
+        "host": "ws-nl.example.com",
+        "path": "/ws/nl",
+        "fingerprint": "chrome",
+        "allowInsecure": false,
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Роттердам",
+        "query": {
+          "type": "ws",
+          "security": "tls",
+          "encryption": "none",
+          "sni": "cdn.example.com",
+          "host": "ws-nl.example.com",
+          "path": "/ws/nl",
+          "fp": "chrome",
+          "allowinsecure": "0"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-67b32ad2-ws-tls-d8669ab7",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "203.0.113.11",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000005",
+                  "encryption": "none"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "ws",
+          "security": "tls",
+          "tlsSettings": {
+            "serverName": "cdn.example.com",
+            "fingerprint": "chrome",
+            "allowInsecure": false
+          },
+          "wsSettings": {
+            "path": "/ws/nl",
+            "headers": {
+              "Host": "ws-nl.example.com"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-de-17bba321-tcp-reality-vision-e774187b",
+      "label": "🇩🇪 Мюнхен, Германия, Reality",
+      "profile": "tcp-reality-vision",
+      "line": 6,
+      "country": {
+        "emoji": "🇩🇪",
+        "iso2": "DE",
+        "nameEn": "Germany",
+        "nameRu": "Германия"
+      },
+      "city": "Мюнхен",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-reality-vision",
+        "tag": "vless-de-17bba321-tcp-reality-vision-e774187b",
+        "line": 6,
+        "raw": "vless://00000000-0000-4000-8000-000000000006@198.51.100.20:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&sni=www.example.com&fp=chrome&pbk=GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI&sid=2b029fcc7f4caf3d&headerType=none#🇩🇪 Мюнхен, Германия, Reality",
+        "label": "🇩🇪 Мюнхен, Германия, Reality",
+        "address": "198.51.100.20",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000006",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "reality",
+        "flow": "xtls-rprx-vision",
+        "alpn": [],
+        "sni": "www.example.com",
+        "fingerprint": "chrome",
+        "headerType": "none",
+        "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+        "shortId": "2b029fcc7f4caf3d",
+        "country": {
+          "emoji": "🇩🇪",
+          "iso2": "DE",
+          "nameEn": "Germany",
+          "nameRu": "Германия"
+        },
+        "city": "Мюнхен",
+        "query": {
+          "type": "tcp",
+          "security": "reality",
+          "encryption": "none",
+          "flow": "xtls-rprx-vision",
+          "sni": "www.example.com",
+          "fp": "chrome",
+          "pbk": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+          "sid": "2b029fcc7f4caf3d",
+          "headertype": "none"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-de-17bba321-tcp-reality-vision-e774187b",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.20",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000006",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.com",
+            "fingerprint": "chrome",
+            "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+            "shortId": "2b029fcc7f4caf3d"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-nl-3c2095ba-tcp-reality-vision-de3aec8d",
+      "label": "🇳🇱 Амстердам, Нидерланды, Reality",
+      "profile": "tcp-reality-vision",
+      "line": 7,
+      "country": {
+        "emoji": "🇳🇱",
+        "iso2": "NL",
+        "nameEn": "Netherlands",
+        "nameRu": "Нидерланды"
+      },
+      "city": "Амстердам",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-reality-vision",
+        "tag": "vless-nl-3c2095ba-tcp-reality-vision-de3aec8d",
+        "line": 7,
+        "raw": "vless://00000000-0000-4000-8000-000000000007@198.51.100.21:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&sni=www.example.com&fp=chrome&pbk=GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI&sid=2b029fcc7f4caf3d&headerType=none#🇳🇱 Амстердам, Нидерланды, Reality",
+        "label": "🇳🇱 Амстердам, Нидерланды, Reality",
+        "address": "198.51.100.21",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000007",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "reality",
+        "flow": "xtls-rprx-vision",
+        "alpn": [],
+        "sni": "www.example.com",
+        "fingerprint": "chrome",
+        "headerType": "none",
+        "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+        "shortId": "2b029fcc7f4caf3d",
+        "country": {
+          "emoji": "🇳🇱",
+          "iso2": "NL",
+          "nameEn": "Netherlands",
+          "nameRu": "Нидерланды"
+        },
+        "city": "Амстердам",
+        "query": {
+          "type": "tcp",
+          "security": "reality",
+          "encryption": "none",
+          "flow": "xtls-rprx-vision",
+          "sni": "www.example.com",
+          "fp": "chrome",
+          "pbk": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+          "sid": "2b029fcc7f4caf3d",
+          "headertype": "none"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-nl-3c2095ba-tcp-reality-vision-de3aec8d",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.21",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000007",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.com",
+            "fingerprint": "chrome",
+            "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+            "shortId": "2b029fcc7f4caf3d"
+          }
+        }
+      }
+    },
+    {
+      "kind": "outbound",
+      "tag": "vless-us-80d2b069-tcp-reality-vision-897a61b2",
+      "label": "🇺🇸 Нью-Йорк, США, Reality",
+      "profile": "tcp-reality-vision",
+      "line": 8,
+      "country": {
+        "emoji": "🇺🇸",
+        "iso2": "US",
+        "nameEn": "United States",
+        "nameRu": "США"
+      },
+      "city": "Нью-Йорк",
+      "normalized": {
+        "kind": "outbound",
+        "protocol": "vless",
+        "profile": "tcp-reality-vision",
+        "tag": "vless-us-80d2b069-tcp-reality-vision-897a61b2",
+        "line": 8,
+        "raw": "vless://00000000-0000-4000-8000-000000000008@198.51.100.22:443?type=tcp&security=reality&encryption=none&flow=xtls-rprx-vision&sni=www.example.com&fp=chrome&pbk=GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI&sid=2b029fcc7f4caf3d&headerType=none#🇺🇸 Нью-Йорк, США, Reality",
+        "label": "🇺🇸 Нью-Йорк, США, Reality",
+        "address": "198.51.100.22",
+        "port": 443,
+        "uuid": "00000000-0000-4000-8000-000000000008",
+        "encryption": "none",
+        "network": "tcp",
+        "security": "reality",
+        "flow": "xtls-rprx-vision",
+        "alpn": [],
+        "sni": "www.example.com",
+        "fingerprint": "chrome",
+        "headerType": "none",
+        "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+        "shortId": "2b029fcc7f4caf3d",
+        "country": {
+          "emoji": "🇺🇸",
+          "iso2": "US",
+          "nameEn": "United States",
+          "nameRu": "США"
+        },
+        "city": "Нью-Йорк",
+        "query": {
+          "type": "tcp",
+          "security": "reality",
+          "encryption": "none",
+          "flow": "xtls-rprx-vision",
+          "sni": "www.example.com",
+          "fp": "chrome",
+          "pbk": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+          "sid": "2b029fcc7f4caf3d",
+          "headertype": "none"
+        }
+      },
+      "jsonOutbound": {
+        "tag": "vless-us-80d2b069-tcp-reality-vision-897a61b2",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.22",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.com",
+            "fingerprint": "chrome",
+            "publicKey": "GfXF1r493DSSqCtXMjqIvwiTpV_XPN5mCkj-GwcMjKI",
+            "shortId": "2b029fcc7f4caf3d"
+          }
+        }
+      }
+    }
+  ],
+  "skipped": [],
+  "summary": {
+    "totalLines": 8,
+    "parsed": 8,
+    "skipped": 0,
+    "filtered": 0,
+    "filteredByCountry": 0,
+    "filteredByLabelRegex": 0,
+    "unsupportedScheme": 0,
+    "unsupportedParam": 0,
+    "unsupportedValue": 0,
+    "unsupportedCombo": 0,
+    "invalidUri": 0,
+    "missingRequiredField": 0,
+    "duplicateTag": 0
+  }
+}

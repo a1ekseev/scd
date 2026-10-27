@@ -1,0 +1,124 @@
+{
+  "now": "2026-10-17T09:00:30.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancerSelection": {
+          "enabled": true,
+          "balancerTag": "x-balancer",
+          "schedule": "*/15 * * * * *",
+          "observatory": true
+        }
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-1",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+        "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 55,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 55
+      },
+      "balancerSelection": {
+        "balancerTag": "x-balancer",
+        "state": "ok",
+        "mode": "single",
+        "selectedOutboundTag": "x-observe-de-1",
+        "overrideTarget": "",
+        "principleTargets": [
+          "x-observe-de-1"
+        ],
+        "selectedSince": "2026-10-17T08:45:00.000Z",
+        "previousSelectedTag": "",
+        "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+        "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+        "lastError": "",
+        "consecutiveFailures": 0,
+        "observatory": null,
+        "observatoryError": "Xray API service ObservatoryService is not enabled (add it to api.services)."
+      },
+      "tunnels": [
+        {
+          "baseTunnelId": "de-1",
+          "displayName": "🇩🇪 Germany 1",
+          "countryIso2": "DE",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-de-1",
+          "outboundTagCurrent": "x-observe-de-1",
+          "outboundWithoutPrefixTag": "de-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+            "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 40,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 40,
+            "consecutiveFailures": 0
+          }
+        },
+        {
+          "baseTunnelId": "nl-1",
+          "displayName": "🇳🇱 Netherlands 1",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 20001,
+          "outboundTagInitial": "x-observe-nl-1",
+          "outboundTagCurrent": "x-observe-nl-1",
+          "outboundWithoutPrefixTag": "nl-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+            "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 60,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 60,
+            "consecutiveFailures": 0
+          }
+        },
+        {
+          "baseTunnelId": "at-1",
+          "displayName": "🇦🇹 Austria 1",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20002,
+          "outboundTagInitial": "x-observe-at-1",
+          "outboundTagCurrent": "x-observe-at-1",
+          "outboundWithoutPrefixTag": "at-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+            "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 80,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 80,
+            "consecutiveFailures": 0
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": []
+}

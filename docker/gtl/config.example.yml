@@ -1,0 +1,18 @@
+# ВРЕМЕННЫЙ ТЕСТОВЫЙ КОНФИГ gtl (temporary test config, no secrets).
+# Будет заменён реальным конфигом владельца. Скопируйте в docker/gtl/config.yml
+# (файл в .gitignore), который монтирует docker-compose.yml в /app/config/config.yml.
+#
+# Проверка (compose публикует 8080 как 127.0.0.1:9092):
+#   curl -i http://127.0.0.1:9092/healthz
+#   curl -s http://127.0.0.1:9092/load/32 | wc -c   # 32768
+
+server:
+  listen: 0.0.0.0:8080
+
+load:
+  path: /load
+  maxSizeKb: 10240
+
+logging:
+  level: info
+  format: pretty

@@ -1,0 +1,48 @@
+{
+  "subscriptions": [
+    {
+      "id": "test-fixture",
+      "input": "docker/fixtures/subscription.b64",
+      "enabled": true,
+      "format": "auto",
+      "fetchTimeoutMs": 5000,
+      "pathRoute": "/s",
+      "outputs": [
+        {
+          "id": "test-de",
+          "enabled": true,
+          "name": "germany",
+          "labelIncludeRegex": "/Германия/i",
+          "userAgent": [
+            "Clash",
+            "Stash"
+          ],
+          "profileTitle": "Test Germany",
+          "profileUpdateInterval": 6
+        },
+        {
+          "id": "test-nl",
+          "enabled": true,
+          "name": "netherlands",
+          "labelIncludeRegex": "/Нидерланды/i"
+        },
+        {
+          "id": "test-all",
+          "enabled": true,
+          "name": "all",
+          "labelIncludeRegex": "/.*/"
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "refreshSchedule": "*/10 * * * *"
+  },
+  "server": {
+    "listen": "0.0.0.0:8080"
+  },
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  }
+}

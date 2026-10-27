@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Control Daemon Status</title>
+  <style>
+{{.CSS}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Subscription Control Daemon Status</h1>
+    {{if .Instances}}<nav class="instance-tabs" role="tablist" aria-label="Instances">
+{{- range $i, $in := .Instances}}{{if $i}}
+{{end}}<button
+  type="button"
+  class="instance-tab{{if eq $i 0}} is-active{{end}}"
+  id="instance-tab-{{$i}}"
+  role="tab"
+  aria-selected="{{if eq $i 0}}true{{else}}false{{end}}"
+  aria-controls="instance-panel-{{$i}}"
+  tabindex="{{if eq $i 0}}0{{else}}-1{{end}}"
+>{{$in.ID}}</button>{{end}}</nav>{{end}}
+    {{range $i, $in := .Instances}}{{if $i}}
+{{end}}<section
+  class="instance-panel"
+  id="instance-panel-{{$i}}"
+  role="tabpanel"
+  aria-labelledby="instance-tab-{{$i}}"
+  tabindex="0"{{if $i}} hidden{{end}}
+>
+  <div class="instance-head"><div><h2>{{$in.ID}}</h2><p>{{$in.Source}} · {{$in.Freshness}}</p></div></div>
+  {{if $in.Snapshot}}{{template "subscriptions" $in.Snapshot.Subscriptions}}{{else}}<section class="subscription-card"><p class="empty-state">No snapshot available.</p></section>{{end}}
+</section>
+{{- else}}<section class="subscription-card"><div class="subscription-head"><h2>No subscriptions</h2></div></section>{{end}}
+  </main>
+  <script>
+{{.JS}}
+  </script>
+</body>
+</html>
+{{- define "subscriptions"}}{{range $i, $s := .}}{{if $i}}
+{{end}}<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>{{$s.SubscriptionID}}</h2>
+  </div>
+  {{range $j, $t := $s.Targets}}{{if $j}}
+{{end}}{{template "target" $t}}{{end}}
+</section>
+{{- end}}{{end}}
+{{- define "target"}}<section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>{{.TargetAddress}}</h3>
+      <p>{{len .Tunnels}} tunnel(s)</p>
+    </div>
+  </div>
+  {{- $b := .BalancerMonitor}}{{$state := orIdle $b.State}}
+  <article class="balancer-card state-{{stateClass $state}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">External SOCKS check</div>
+      <div class="node-metrics">
+        {{template "metric" (metric "State" $state)}}
+        {{template "metric" (metric "Last Check" (formatLastCheck $b.LastLatencyMs $b.LastError))}}
+        {{template "metric" (metric "Remote Push" (formatRemotePushStatus $b.RemotePingState $b.RemotePingLastReportedStatus))}}
+      </div>
+    </div>
+  </article>{{with selectionCard .}}
+  <article class="balancer-card state-{{.Class}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Balancer</div>
+      <div class="node-title">Xray selection · {{.BalancerTag}}</div>
+      <div class="node-metrics">
+        {{- range .Metrics}}
+        {{template "metric" .}}
+        {{- end}}
+      </div>
+    </div>
+  </article>{{end}}
+  <div class="nodes-grid">
+    {{range $i, $tn := tunnelCards .}}{{if $i}}
+{{end}}{{template "tunnel" $tn}}{{else}}<p class="empty-state">No tunnel data.</p>{{end}}
+  </div>
+</section>
+{{- end}}
+{{- define "tunnel"}}<article class="node-card state-{{stateClass .State}}{{if .Selected}} is-selected{{end}}">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-title">{{with .Badge}}<span class="node-badge">{{.}}</span>{{end}}{{.DisplayName}}</div>
+    <div class="node-meta">{{orDash .CountryISO2}} · {{.Endpoint}}</div>
+    <div class="node-metrics">
+      {{template "metric" (metric "State" .State)}}
+      {{template "metric" (metric "Last Check" (formatLastCheck .LastLatencyMs .LastError))}}
+      {{template "metric" (metric "Balancer" (formatBalancerStatus .Balanced))}}
+      {{- with .Observatory}}
+      {{template "metric" .}}
+      {{- end}}
+    </div>
+  </div>
+</article>
+{{- end}}
+{{- define "metric"}}<span class="metric{{metricClass .Label .Value}}"{{with .Title}} title="{{.}}"{{end}}><span class="metric-label">{{.Label}}</span><span class="metric-value">{{.Value}}</span></span>{{end}}

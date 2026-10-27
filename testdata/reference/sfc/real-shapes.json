@@ -1,0 +1,73 @@
+{
+  "provider2": {
+    "refreshedAt": "2026-08-15T10:00:00.000Z",
+    "sourceCount": 1,
+    "outputCount": 3,
+    "successful": 1,
+    "failed": 2,
+    "outputs": [
+      {
+        "id": "00000000-0000-4000-8000-000000000b01",
+        "subscriptionId": "main",
+        "name": "en-server",
+        "matchedLines": 50,
+        "ok": true,
+        "usedCachedValue": false
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000b02",
+        "subscriptionId": "main",
+        "name": "extra-server",
+        "matchedLines": 0,
+        "ok": false,
+        "usedCachedValue": false,
+        "error": "Filtered output is empty."
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000b03",
+        "subscriptionId": "main",
+        "name": "extra-whitelist",
+        "matchedLines": 0,
+        "ok": false,
+        "usedCachedValue": false,
+        "error": "Filtered output is empty."
+      }
+    ]
+  },
+  "remnawave": {
+    "refreshedAt": "2026-08-15T10:00:00.000Z",
+    "sourceCount": 1,
+    "outputCount": 3,
+    "successful": 0,
+    "failed": 3,
+    "outputs": [
+      {
+        "id": "00000000-0000-4000-8000-000000000b01",
+        "subscriptionId": "main",
+        "name": "en-server",
+        "matchedLines": 0,
+        "ok": false,
+        "usedCachedValue": false,
+        "error": "Filtered output is empty."
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000b02",
+        "subscriptionId": "main",
+        "name": "extra-server",
+        "matchedLines": 0,
+        "ok": false,
+        "usedCachedValue": false,
+        "error": "Filtered output is empty."
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000b03",
+        "subscriptionId": "main",
+        "name": "extra-whitelist",
+        "matchedLines": 0,
+        "ok": false,
+        "usedCachedValue": false,
+        "error": "Filtered output is empty."
+      }
+    ]
+  }
+}

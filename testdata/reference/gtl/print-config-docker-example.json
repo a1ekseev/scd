@@ -1,0 +1,13 @@
+{
+  "server": {
+    "listen": "0.0.0.0:8080"
+  },
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  },
+  "load": {
+    "path": "/load",
+    "maxSizeKb": 10240
+  }
+}

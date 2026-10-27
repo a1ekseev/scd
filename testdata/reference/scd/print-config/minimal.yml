@@ -1,0 +1,8 @@
+subscriptions:
+  - id: s1
+    input: ./sub.txt
+    target:
+      address: 127.0.0.1:8080
+runtime: {}
+logging: {}
+resources: {}
