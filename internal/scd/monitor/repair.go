@@ -45,9 +45,13 @@ func (d Deps) dial(t config.SubscriptionTargetConfig) (xrayapi.Client, error) {
 // and AddRule(route → unprefixed). Success leaves the tunnel degraded with
 // "Tunnel repaired; …" until the next successful check; an RPC failure is
 // recorded on the tunnel and logged (tunnel_repair_failed). A tunnel that is
-// gone is ignored. The only returned error is a failure to create the
-// client (TS createMutationClient outside the try); the tunnel then stays
-// "repairing" until its next check, as in TS.
+// gone is ignored. A tunnel that already runs on its unprefixed outbound
+// (repaired, not yet rejoined) is left alone: no RPC, only a debug log
+// (tunnel_repair_skipped); checkTunnel has already recorded the failure. The
+// check is made under the target lock, so a sync that replaced the topology
+// meanwhile (prefixed again) gets a real repair. The only returned error is
+// a failure to create the client (TS createMutationClient outside the try);
+// the tunnel then stays "repairing" until its next check, as in TS.
 func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID string) error {
 	t := sub.Target
 	key := state.Key(sub.ID, t.Address)
@@ -55,14 +59,28 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 	defer unlock()
 
 	var (
-		cur   state.Tunnel
-		found bool
+		cur              state.Tunnel
+		found, withdrawn bool
 	)
 	updateTunnel(d.Memory, key, tunnelID, func(tn *state.Tunnel) {
-		tn.Monitor.State = state.TunnelRepairing
-		cur, found = *tn, true
+		found, withdrawn = true, shouldRejoin(tn.Mapping)
+		if !withdrawn {
+			tn.Monitor.State = state.TunnelRepairing
+		}
+		cur = *tn
 	})
 	if !found {
+		return nil
+	}
+	if withdrawn {
+		// Already out of the balancer: recreating the same unprefixed
+		// outbound on every failed check only churns Xray.
+		d.Log.LogAttrs(ctx, slog.LevelDebug, "Tunnel already out of the balancer; repair skipped.",
+			slog.String("event", "tunnel_repair_skipped"),
+			slog.String("subscriptionId", sub.ID),
+			slog.String("targetAddress", t.Address),
+			slog.String("tunnelId", tunnelID),
+			slog.String("outboundTag", cur.Mapping.OutboundTagCurrent))
 		return nil
 	}
 	client, err := d.dial(t)

@@ -249,6 +249,14 @@ Validation errors list every problem with its field path, for example:
   `observatorySubjectSelectorPrefix`. This takes the tunnel out of the
   balancer. After the next successful check, scd restores the prefixed
   outbound and rule (rejoin).
+- A tunnel that is already out of the balancer is not repaired again: further
+  failed checks only update its monitor state (`degraded`, `lastError` = the
+  probe error, the failure counter) and log `tunnel_repair_skipped` at debug.
+  Xray is not touched until the tunnel passes a check (rejoin) or a sync
+  replaces the topology (manifest change or `xray_state_drift`), after which a
+  failure repairs it once again. A failed repair is retried at the next failed
+  check. Without `observatorySubjectSelectorPrefix` there is no balancer to
+  leave, so every final failure still recreates the outbound.
 - `balancerMonitor` checks the balancer end-to-end through an external SOCKS5.
   It never repairs or applies anything. `remotePing` then pushes one group
   result (`status`, `msg`, `ping` query parameters) to an Uptime-Kuma-style

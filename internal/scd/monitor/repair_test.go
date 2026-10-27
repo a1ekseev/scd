@@ -13,9 +13,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
+	"github.com/a1ekseev/scd/internal/scd/resources"
 	"github.com/a1ekseev/scd/internal/scd/socks"
 	"github.com/a1ekseev/scd/internal/scd/state"
+	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
@@ -331,5 +335,199 @@ func TestRejoinRollbackFailureDoesNotFailTick(t *testing.T) {
 	}
 	if n := strings.Count(strings.Join(calls, " "), "AddRule:"); n != 2 {
 		t.Errorf("AddRule calls = %d (%q)", n, calls)
+	}
+}
+
+// mutations returns the outbound and rule mutations among calls.
+func mutations(calls []string) []string {
+	var out []string
+	for _, c := range calls {
+		if !strings.HasPrefix(c, "List") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// A tunnel that is already out of the balancer is not repaired again: the
+// failed checks only update its monitor state, with no dial and no RPC.
+func TestRepairOncePerWithdrawal(t *testing.T) {
+	for _, failures := range []int{2, 5} {
+		e := newEnv(t, newSub(prefixed), linkAT)
+		tn := e.tunnel(0).Mapping
+		e.install(tn)
+		before := len(e.xray.Calls())
+		e.deps.Probe = failProbe
+
+		for range failures {
+			if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := mutations(e.callsSince(before)); len(got) != 4 {
+			t.Errorf("failures=%d: calls = %q, want one repair", failures, got)
+		}
+		if e.dials.Load() != 1 {
+			t.Errorf("failures=%d: dials = %d, want 1", failures, e.dials.Load())
+		}
+		cur := e.tunnel(0)
+		m := cur.Monitor
+		if cur.Mapping.OutboundTagCurrent != tn.OutboundWithoutPrefix.Tag || m.State != state.TunnelDegraded ||
+			m.LastError != "probe failed" || m.ConsecutiveFailures != failures-1 || m.LastFailureAt == nil {
+			t.Errorf("failures=%d: tunnel = %q / %+v", failures, cur.Mapping.OutboundTagCurrent, m)
+		}
+		if n := len(e.logs.events(t, "tunnel_repaired")); n != 1 {
+			t.Errorf("failures=%d: tunnel_repaired = %d", failures, n)
+		}
+		skipped := e.logs.events(t, "tunnel_repair_skipped")
+		if len(skipped) != failures-1 || skipped[0]["level"] != "DEBUG" ||
+			skipped[0]["outboundTag"] != tn.OutboundWithoutPrefix.Tag || skipped[0]["tunnelId"] != tn.BaseTunnelID {
+			t.Errorf("failures=%d: tunnel_repair_skipped = %v", failures, skipped)
+		}
+
+		// A success rejoins; the next failure repairs once again.
+		before = len(e.xray.Calls())
+		e.deps.Probe = ok(200, 25)
+		if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.tunnel(0).Mapping.OutboundTagCurrent; got != tn.OutboundTagInitial {
+			t.Errorf("failures=%d: current after success = %q", failures, got)
+		}
+		e.deps.Probe = failProbe
+		for range 2 {
+			if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want := []string{
+			"AddOutbound:" + tn.OutboundTagInitial,
+			"RemoveRule:" + tn.RouteTag,
+			"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
+			"RemoveOutbound:" + tn.OutboundWithoutPrefix.Tag,
+			"RemoveRule:" + tn.RouteTag,
+			"RemoveOutbound:" + tn.OutboundTagInitial,
+			"AddOutbound:" + tn.OutboundWithoutPrefix.Tag,
+			"AddRule:" + tn.RouteTag + "->" + tn.OutboundWithoutPrefix.Tag,
+		}
+		if got := mutations(e.callsSince(before)); !slices.Equal(got, want) {
+			t.Errorf("failures=%d: calls = %q\nwant    %q", failures, got, want)
+		}
+		if n := len(e.logs.events(t, "tunnel_repaired")); n != 2 {
+			t.Errorf("failures=%d: tunnel_repaired = %d, want 2", failures, n)
+		}
+	}
+}
+
+// syncBack is the sync's full replace in the fake: the repaired tunnel's
+// unprefixed outbound and rule give way to the prefixed ones of m. It may
+// run on a monitor worker goroutine, so it reports with Error.
+func (e *env) syncBack(ctx context.Context, m topology.Tunnel) {
+	e.t.Helper()
+	h, err := outbound.ToProto(m.OutboundInitial.JSON)
+	if err != nil {
+		e.t.Error(err)
+		return
+	}
+	for _, err := range []error{
+		e.client.RemoveRule(ctx, m.RouteTag),
+		e.client.RemoveOutbound(ctx, m.OutboundWithoutPrefix.Tag),
+		e.client.AddOutbound(ctx, h),
+		e.client.AddRule(ctx, resources.Rule(m, m.OutboundTagInitial)),
+	} {
+		if err != nil {
+			e.t.Error(err)
+		}
+	}
+}
+
+// A sync that replaces the topology puts the tunnel back on its prefixed
+// outbound, so the next failure repairs it again.
+func TestRepairAgainAfterTopologyReplaced(t *testing.T) {
+	e := newEnv(t, newSub(prefixed), linkAT)
+	tn := e.tunnel(0).Mapping
+	e.install(tn)
+	e.deps.Probe = failProbe
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+
+	e.syncBack(t.Context(), tn)
+	e.mem.ReplaceTopology(e.key, topoOf(t, e.sub, linkAT), map[apply.Kind]string{apply.KindOutbound: "hash-new"})
+	before := len(e.xray.Calls())
+
+	for range 3 {
+		if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := mutations(e.callsSince(before)); len(got) != 4 || got[1] != "RemoveOutbound:"+tn.OutboundTagInitial {
+		t.Errorf("calls = %q, want one repair", got)
+	}
+	if got := e.xray.OutboundTags(); !slices.Equal(got, []string{tn.OutboundWithoutPrefix.Tag}) {
+		t.Errorf("xray outbounds = %v", got)
+	}
+	if n := len(e.logs.events(t, "tunnel_repaired")); n != 2 {
+		t.Errorf("tunnel_repaired = %d, want 2", n)
+	}
+}
+
+// A repair that failed leaves the mapping prefixed, so the next failure
+// tries again; after that success the tunnel is left alone.
+func TestRepairRetriedAfterFailedRepair(t *testing.T) {
+	e := newEnv(t, newSub(prefixed), linkAT)
+	tn := e.tunnel(0).Mapping
+	e.install(tn)
+	e.deps.Probe = failProbe
+	e.xray.FailNext("AddOutbound", status.Error(codes.Unknown, "xray rejected outbound"))
+	before := len(e.xray.Calls())
+
+	for range 3 {
+		if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := strings.Join(mutations(e.callsSince(before)), " ")
+	if n := strings.Count(calls, "AddOutbound:"+tn.OutboundWithoutPrefix.Tag); n != 2 {
+		t.Errorf("AddOutbound(unprefixed) = %d, want 2 (%s)", n, calls)
+	}
+	if e.dials.Load() != 2 {
+		t.Errorf("dials = %d, want 2", e.dials.Load())
+	}
+	if len(e.logs.events(t, "tunnel_repair_failed")) != 1 || len(e.logs.events(t, "tunnel_repaired")) != 1 ||
+		len(e.logs.events(t, "tunnel_repair_skipped")) != 1 {
+		t.Errorf("logs = %s", e.logs.String())
+	}
+	if got := e.xray.OutboundTags(); !slices.Equal(got, []string{tn.OutboundWithoutPrefix.Tag}) {
+		t.Errorf("xray outbounds = %v", got)
+	}
+}
+
+// The "already withdrawn" decision is made under the target lock, not at the
+// start of the tick: a sync that replaced the topology while the probe ran
+// still gets its repair.
+func TestRepairDecidedAfterConcurrentSync(t *testing.T) {
+	e := newEnv(t, newSub(prefixed), linkAT)
+	e.repairTunnel(0)
+	tn := e.tunnel(0).Mapping
+	topo := topoOf(t, e.sub, linkAT)
+	var before int
+	e.deps.Probe = func(ctx context.Context, _ socks.Request) (socks.Response, error) {
+		unlock := e.mem.LockTarget(e.key)
+		e.syncBack(ctx, tn)
+		e.mem.ReplaceTopology(e.key, topo, map[apply.Kind]string{apply.KindOutbound: "hash-new"})
+		before = len(e.xray.Calls())
+		unlock()
+		return socks.Response{}, errors.New("probe failed")
+	}
+
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if got := mutations(e.callsSince(before)); len(got) != 4 || got[1] != "RemoveOutbound:"+tn.OutboundTagInitial {
+		t.Errorf("calls = %q, want a repair of the prefixed outbound", got)
+	}
+	if n := len(e.logs.events(t, "tunnel_repaired")); n != 1 {
+		t.Errorf("tunnel_repaired = %d, want 1", n)
 	}
 }
