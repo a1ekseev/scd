@@ -71,9 +71,9 @@
     "status": 400,
     "headers": {
       "content-type": "text/plain; charset=utf-8",
-      "content-length": "39"
+      "content-length": "12"
     },
-    "body": "sizeKb must be an integer from 0 to 64\n"
+    "body": "bad request\n"
   },
   {
     "path": "/load/",
@@ -141,9 +141,9 @@
     "status": 400,
     "headers": {
       "content-type": "text/plain; charset=utf-8",
-      "content-length": "39"
+      "content-length": "12"
     },
-    "body": "sizeKb must be an integer from 0 to 64\n"
+    "body": "bad request\n"
   },
   {
     "path": "/load/1",

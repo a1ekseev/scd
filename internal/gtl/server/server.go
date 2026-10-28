@@ -12,9 +12,11 @@ import (
 )
 
 // New returns the gtl handler: GET /healthz and GET <load.path>/:sizeKb.
+// Each handler has its own random payload key (see payload.New).
 func New(cfg config.Config) http.Handler {
 	prefix := cfg.Load.Path + "/"
 	maxKb := uint64(cfg.Load.MaxSizeKb)
+	src := payload.New()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			text(w, http.StatusMethodNotAllowed, "method not allowed\n")
@@ -36,20 +38,15 @@ func New(cfg config.Config) http.Handler {
 		}
 		kb, err := strconv.ParseUint(tail, 10, 64)
 		if err != nil || kb > maxKb {
-			text(w, http.StatusBadRequest, "sizeKb must be an integer from 0 to "+strconv.FormatUint(maxKb, 10)+"\n")
+			text(w, http.StatusBadRequest, "bad request\n")
 			return
 		}
-		size := strconv.FormatUint(kb*1024, 10)
 		h := w.Header()
 		h.Set("Content-Type", "application/octet-stream")
-		h.Set("Content-Length", size)
-		h.Set("X-Gtl-Status-Code", "200")
-		h.Set("X-Gtl-Requested-Size-Kb", strconv.FormatUint(kb, 10))
-		h.Set("X-Gtl-Requested-Size-Bytes", size)
-		h.Set("X-Gtl-Actual-Size-Bytes", size)
+		h.Set("Content-Length", strconv.FormatUint(kb*1024, 10))
 		w.WriteHeader(http.StatusOK)
 		// Stop as soon as the client disconnects (write error or cancelled context).
-		_ = payload.Write(&ctxWriter{r: r, w: w}, kb*1024)
+		_ = src.Write(&ctxWriter{r: r, w: w}, kb*1024)
 	})
 }
 

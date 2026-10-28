@@ -3,18 +3,17 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/a1ekseev/scd/internal/gtl/config"
-	"github.com/a1ekseev/scd/internal/gtl/payload"
 )
 
 func cfgWith(path string, maxKb int64) config.Config {
@@ -56,6 +55,10 @@ func TestRoutesReference(t *testing.T) {
 				t.Fatalf("status %d want %d", rec.Code, rt.Status)
 			}
 			for k, v := range rt.Headers {
+				// The x-gtl-* headers of the TS reference were dropped on purpose.
+				if strings.HasPrefix(k, "x-gtl-") {
+					continue
+				}
 				if got := rec.Header().Get(k); got != v {
 					t.Errorf("header %s = %q want %q", k, got, v)
 				}
@@ -64,17 +67,8 @@ func TestRoutesReference(t *testing.T) {
 			if rt.Body != nil && string(body) != *rt.Body {
 				t.Errorf("body %q want %q", body, *rt.Body)
 			}
-			if rt.BodyBytes != nil {
-				if len(body) != *rt.BodyBytes {
-					t.Fatalf("body len %d want %d", len(body), *rt.BodyBytes)
-				}
-				var want bytes.Buffer
-				if err := payload.Write(&want, uint64(*rt.BodyBytes)); err != nil {
-					t.Fatal(err)
-				}
-				if sha256.Sum256(body) != sha256.Sum256(want.Bytes()) {
-					t.Error("body sha256 differs from generator")
-				}
+			if rt.BodyBytes != nil && len(body) != *rt.BodyBytes {
+				t.Fatalf("body len %d want %d", len(body), *rt.BodyBytes)
 			}
 		})
 	}
@@ -110,17 +104,63 @@ func TestRouting(t *testing.T) {
 	}
 }
 
-func TestLoadBodyMatchesGenerator(t *testing.T) {
-	rec := do(New(cfgWith("/load", 1024)), "GET", "/load/100")
-	var want bytes.Buffer
-	if err := payload.Write(&want, 100*1024); err != nil {
+func get(t *testing.T, url string) (int, http.Header, []byte) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(rec.Body.Bytes(), want.Bytes()) {
-		t.Fatal("body differs from generator output")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if rec.Header().Get("Content-Length") != strconv.Itoa(100*1024) {
-		t.Fatal("bad content-length")
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, resp.Header, body
+}
+
+func TestLoadBody(t *testing.T) {
+	const maxKb = 1024
+	srv := httptest.NewServer(New(cfgWith("/load", maxKb)))
+	defer srv.Close()
+	for _, kb := range []int{0, 1, 65, 100, maxKb} {
+		t.Run(strconv.Itoa(kb), func(t *testing.T) {
+			status, hdr, body := get(t, srv.URL+"/load/"+strconv.Itoa(kb))
+			if status != http.StatusOK || len(body) != kb*1024 {
+				t.Fatalf("status %d, len %d want %d", status, len(body), kb*1024)
+			}
+			if hdr.Get("Content-Length") != strconv.Itoa(kb*1024) ||
+				hdr.Get("Content-Type") != "application/octet-stream" {
+				t.Fatalf("headers %v", hdr)
+			}
+			for k := range hdr {
+				if strings.HasPrefix(strings.ToLower(k), "x-gtl-") {
+					t.Errorf("unexpected header %s", k)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadBodyRandomPerRequest(t *testing.T) {
+	a := httptest.NewServer(New(cfgWith("/load", 64)))
+	defer a.Close()
+	b := httptest.NewServer(New(cfgWith("/load", 64)))
+	defer b.Close()
+	_, _, b1 := get(t, a.URL+"/load/64")
+	_, _, b2 := get(t, a.URL+"/load/64")
+	_, _, b3 := get(t, b.URL+"/load/64")
+	if bytes.Equal(b1, b2) {
+		t.Fatal("two requests returned the same body")
+	}
+	if bytes.Equal(b1, b3) || bytes.Equal(b2, b3) {
+		t.Fatal("two servers returned the same body")
+	}
+	if bytes.Equal(b1, make([]byte, len(b1))) {
+		t.Fatal("body is zeros")
 	}
 }
 

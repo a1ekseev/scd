@@ -6,7 +6,7 @@
 |---|---|---|
 | `scd …` | **scd** — Subscription Control Daemon | Turns VLESS subscriptions into Xray outbounds (plus SOCKS inbounds and routing rules per tunnel), applies them to Xray over the gRPC API, monitors and repairs tunnels, and serves a read-only status dashboard and JSON API. |
 | `scd sfc …` | **sfc** — Subscription Filter Control | Downloads upstream subscriptions, keeps VLESS lines whose label matches per-output filters, repacks them to base64 and serves them by public URL. Does not talk to Xray. |
-| `scd gtl …` | **gtl** — Gen Test Load | HTTP server that streams a deterministic payload of the requested size, for download/load tests. |
+| `scd gtl …` | **gtl** — Gen Test Load | HTTP server that streams a random payload of the requested size, for download/load tests. |
 
 There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.21**.
 
@@ -525,15 +525,15 @@ logging: {level: info, format: json}
 
 - `GET /healthz` → `200 ok`.
 - `GET <load.path>/<sizeKb>` returns `200` with exactly `sizeKb × 1024` bytes,
-  `content-type: application/octet-stream`, and the headers
-  `x-gtl-status-code`, `x-gtl-requested-size-kb`, `x-gtl-requested-size-bytes`
-  and `x-gtl-actual-size-bytes`.
+  `content-type: application/octet-stream` and `content-length`; no other
+  custom headers.
 - A bad size, or a size above `maxSizeKb`, returns `400`. Other paths return
   `404`. Methods other than `GET` return `405`. Unknown config keys are errors.
-- The payload is deterministic pseudo-random bytes, streamed in 64 KiB chunks.
-  Each chunk comes from xorshift32 (`s ^= s<<13; s ^= s>>17; s ^= s<<5`, low
-  byte), seeded with `0x9e3779b9 ^ uint32(offset)` at the start of the chunk.
-  Streaming stops when the client disconnects.
+- The payload is an AES-128-CTR keystream, streamed in 64 KiB chunks: the key
+  is random per process (memory only, new on every restart), the IV random per
+  request. Every body is different and incompressible, so nothing in the path
+  (e.g. a TLS-terminating CDN) sees repeated content. Streaming stops when the
+  client disconnects.
 
 ## Cron schedules
 

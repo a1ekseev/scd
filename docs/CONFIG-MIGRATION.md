@@ -202,6 +202,9 @@ URL подписки в логах `refresh`/`serve` (`subscription_refreshed.so
 | `server.listen` | `:80` невалиден | `:8080` допустим (см. «Общее») | — |
 | `load.path`, `load.maxSizeKb`, `logging.*` | — | ключи, умолчания (`maxSizeKb: 10240`, `info`/`json`) и проверки `load.path` прежние; `maxSizeKb` — от 1 до `9007199254740991` (было до `8796093022207`) | D9 |
 | Ошибки валидации | `✖ …` / `→ at path` (zod) | формат «Общее»; неизвестный ключ — `unknown key "x"` | D9 |
+| тело `GET <load.path>/<sizeKb>` | детерминированное (xorshift32, побайтно одинаковое при каждом запросе) | **случайное на каждый запрос**: keystream AES-128-CTR, ключ случайный на процесс (только в памяти, новый при каждом рестарте), IV — на запрос; размер прежний (`sizeKb × 1024`). Проверять сумму тела (`sha256`) больше нельзя — только статус и длину | тело не должно повторяться и узнаваться посредниками (CDN с терминацией TLS) |
+| заголовки ответа `x-gtl-status-code`, `x-gtl-requested-size-kb`, `x-gtl-requested-size-bytes`, `x-gtl-actual-size-bytes` | отдавались | **удалены**; остались `content-type: application/octet-stream` и `content-length` | то же |
+| текст ответа `400` | `sizeKb must be an integer from 0 to <maxSizeKb>` | `bad request` — лимит наружу не раскрывается | то же |
 
 Пример — без изменений ключей, меняется только запуск:
 
@@ -213,7 +216,7 @@ URL подписки в логах `refresh`/`serve` (`subscription_refreshed.so
 +    command: ["scd", "gtl", "serve", "--config", "/app/config/config.yml"]
 ```
 
-Команды: `scd gtl validate-config` (вывод `Config is valid`), `scd gtl print-config` (порядок `server`, `logging`, `load`), `scd gtl serve`. `--version` у `scd gtl` нет — только `scd --version` (D27 O10). Логи — в stderr (было — stdout), см. «[Логи](#логи)». Поведение HTTP прежнее (`200` на валидный размер, `400`/`404`/`405`), payload побайтно тот же; при обрыве клиента генерация останавливается (D7).
+Команды: `scd gtl validate-config` (вывод `Config is valid`), `scd gtl print-config` (порядок `server`, `logging`, `load`), `scd gtl serve`. `--version` у `scd gtl` нет — только `scd --version` (D27 O10). Логи — в stderr (было — stdout), см. «[Логи](#логи)». Коды HTTP прежние (`200` на валидный размер, `400`/`404`/`405`); тело — случайное на каждый запрос, заголовков `x-gtl-*` нет (см. таблицу выше); при обрыве клиента генерация останавливается (D7).
 
 ## Фильтры меток
 

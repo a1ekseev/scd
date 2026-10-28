@@ -1,32 +1,43 @@
-// Package payload generates the deterministic xorshift32 load payload.
+// Package payload generates the random load payload: an AES-128-CTR keystream
+// under a per-process key and a per-request IV, so no two bodies repeat.
 package payload
 
-import "io"
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"io"
+)
 
-// ChunkSize is the payload chunk length; the generator is reseeded at the
-// start of every chunk.
+// ChunkSize is the length of each write to the response.
 const ChunkSize = 65536
 
-// Fill fills b with payload bytes for a chunk starting at the absolute body
-// offset. Only the low 32 bits of offset seed the generator.
-func Fill(b []byte, offset uint64) {
-	s := uint32(0x9e3779b9) ^ uint32(offset)
-	for i := range b {
-		s ^= s << 13
-		s ^= s >> 17
-		s ^= s << 5
-		b[i] = byte(s)
-	}
+// Source produces payload bodies. It is safe for concurrent use.
+type Source struct {
+	block cipher.Block
 }
 
-// Write streams total payload bytes to w in ChunkSize chunks using a single
-// reused buffer. It returns the first write error.
-func Write(w io.Writer, total uint64) error {
+// New returns a Source with a fresh random AES-128 key, held only in memory.
+func New() *Source {
+	key := make([]byte, 16)
+	_, _ = rand.Read(key)          // never fails: crypto/rand crashes the process instead
+	block, _ := aes.NewCipher(key) // 16-byte key: cannot fail
+	return &Source{block: block}
+}
+
+// Write streams total random bytes to w in ChunkSize chunks using a single
+// reused buffer, with a fresh random IV per call. It returns the first write
+// error.
+func (s *Source) Write(w io.Writer, total uint64) error {
+	iv := make([]byte, aes.BlockSize)
+	_, _ = rand.Read(iv)
+	ctr := cipher.NewCTR(s.block, iv)
 	buf := make([]byte, min(uint64(ChunkSize), max(total, 1)))
 	for off := uint64(0); off < total; off += ChunkSize {
-		n := min(uint64(ChunkSize), total-off)
-		Fill(buf[:n], off)
-		if _, err := w.Write(buf[:n]); err != nil {
+		b := buf[:min(uint64(ChunkSize), total-off)]
+		clear(b) // the keystream XORs in place, so start from zeros every chunk
+		ctr.XORKeyStream(b, b)
+		if _, err := w.Write(b); err != nil {
 			return err
 		}
 	}

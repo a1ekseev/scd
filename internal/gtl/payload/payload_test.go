@@ -2,113 +2,55 @@ package payload
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
+	"compress/flate"
 	"errors"
-	"os"
+	"io"
 	"testing"
 )
 
-type vector struct {
-	SizeBytes *uint64 `json:"sizeBytes"`
-	Sha256    string  `json:"sha256"`
-	First16   string  `json:"first16hex"`
-	Offset    *uint64 `json:"offset"`
-	Fill8     string  `json:"fill8"`
-}
-
-func loadVectors(t *testing.T) []vector {
+func write(t *testing.T, s *Source, n uint64) []byte {
 	t.Helper()
-	data, err := os.ReadFile("../../../testdata/reference/gtl/payload-vectors.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var v []vector
-	if err := json.Unmarshal(data, &v); err != nil {
-		t.Fatal(err)
-	}
-	return v
-}
-
-func TestFillVectors(t *testing.T) {
-	n := 0
-	for _, v := range loadVectors(t) {
-		if v.Offset == nil {
-			continue
-		}
-		n++
-		b := make([]byte, 8)
-		Fill(b, *v.Offset)
-		if got := hex.EncodeToString(b); got != v.Fill8 {
-			t.Errorf("offset %d: got %s want %s", *v.Offset, got, v.Fill8)
-		}
-	}
-	if n != 4 {
-		t.Fatalf("expected 4 fill vectors, got %d", n)
-	}
-}
-
-func TestWriteSHA256Vectors(t *testing.T) {
-	n := 0
-	for _, v := range loadVectors(t) {
-		if v.SizeBytes == nil {
-			continue
-		}
-		n++
-		var buf bytes.Buffer
-		if err := Write(&buf, *v.SizeBytes); err != nil {
-			t.Fatal(err)
-		}
-		if uint64(buf.Len()) != *v.SizeBytes {
-			t.Errorf("size %d: wrote %d", *v.SizeBytes, buf.Len())
-		}
-		sum := sha256.Sum256(buf.Bytes())
-		if got := hex.EncodeToString(sum[:]); got != v.Sha256 {
-			t.Errorf("size %d: sha256 %s want %s", *v.SizeBytes, got, v.Sha256)
-		}
-		first := buf.Bytes()
-		if len(first) > 16 {
-			first = first[:16]
-		}
-		if got := hex.EncodeToString(first); got != v.First16 {
-			t.Errorf("size %d: first16 %s want %s", *v.SizeBytes, got, v.First16)
-		}
-	}
-	if n != 8 {
-		t.Fatalf("expected 8 size vectors, got %d", n)
-	}
-}
-
-func TestWriteDiffersByOffset(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Write(&buf, 2*ChunkSize); err != nil {
+	if err := s.Write(&buf, n); err != nil {
 		t.Fatal(err)
 	}
-	b := buf.Bytes()
-	if bytes.Equal(b[:ChunkSize], b[ChunkSize:]) {
-		t.Fatal("chunks at different offsets must differ")
+	return buf.Bytes()
+}
+
+func TestWriteLength(t *testing.T) {
+	s := New()
+	for _, n := range []uint64{0, 1, 16, 1024, ChunkSize, ChunkSize + 1, 65 * 1024, 98311} {
+		if got := len(write(t, s, n)); uint64(got) != n {
+			t.Errorf("size %d: wrote %d", n, got)
+		}
 	}
 }
 
-func TestWriteNotASCIIa(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Write(&buf, 98311); err != nil {
-		t.Fatal(err)
+func TestWriteDiffers(t *testing.T) {
+	s := New()
+	a, b := write(t, s, 2*ChunkSize), write(t, s, 2*ChunkSize)
+	if bytes.Equal(a, b) {
+		t.Fatal("two calls on one source must differ")
 	}
-	b := buf.Bytes()
-	if len(b) != 98311 {
-		t.Fatalf("len %d", len(b))
+	if bytes.Equal(a[:ChunkSize], a[ChunkSize:]) {
+		t.Fatal("chunks must differ")
 	}
-	if bytes.Equal(b[:8], []byte("aaaaaaaa")) {
-		t.Fatal("payload must not be ASCII a")
+	if bytes.Equal(a, write(t, New(), 2*ChunkSize)) {
+		t.Fatal("two sources must differ")
 	}
-	distinct := map[byte]bool{}
-	for _, c := range b[:256] {
-		distinct[c] = true
+}
+
+func TestWriteIncompressible(t *testing.T) {
+	b := write(t, New(), 1<<20)
+	if bytes.Equal(b[:ChunkSize], make([]byte, ChunkSize)) {
+		t.Fatal("payload is zeros")
 	}
-	if len(distinct) <= 128 {
-		t.Fatalf("only %d distinct bytes in first 256", len(distinct))
+	var z bytes.Buffer
+	fw, _ := flate.NewWriter(&z, flate.BestCompression)
+	_, _ = fw.Write(b)
+	_ = fw.Close()
+	if z.Len() < len(b)*99/100 {
+		t.Fatalf("compressed %d of %d bytes", z.Len(), len(b))
 	}
 }
 
@@ -124,10 +66,21 @@ func (f *failingWriter) Write(p []byte) (int, error) {
 
 func TestWriteStopsOnWriterError(t *testing.T) {
 	w := &failingWriter{}
-	if err := Write(w, 10*ChunkSize); err == nil {
+	if err := New().Write(w, 10*ChunkSize); err == nil {
 		t.Fatal("expected error")
 	}
 	if w.calls != 2 {
 		t.Fatalf("expected stop at second write, got %d calls", w.calls)
+	}
+}
+
+func BenchmarkWrite64MiB(b *testing.B) {
+	const total = 64 << 20
+	s := New()
+	b.SetBytes(total)
+	for b.Loop() {
+		if err := s.Write(io.Discard, total); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

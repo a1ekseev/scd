@@ -4,7 +4,7 @@
 - One Go module, `github.com/a1ekseev/scd`, builds one binary, `scd`, which runs three services:
   - `scd`: Subscription Control Daemon. Manages Xray through the gRPC API and serves the status dashboard. Its commands are top level: `scd sync|daemon|generate|validate-config|print-config`.
   - `scd sfc`: Subscription Filter Control. Filters subscriptions and serves public base64 payloads: `scd sfc serve|refresh|validate-config|print-config`.
-  - `scd gtl`: Gen Test Load. A deterministic HTTP load payload generator: `scd gtl serve|validate-config|print-config`.
+  - `scd gtl`: Gen Test Load. An HTTP random load payload generator: `scd gtl serve|validate-config|print-config`.
 - Layout:
   - `cmd/scd/`: entry point. `main.version` is set by ldflags.
   - `internal/cli/`: root cobra command and `--version` (root only). Mounts the three services.
@@ -84,6 +84,6 @@ The live and visual tests skip without their environment variables.
 - `serve`: one initial refresh before listening, then `refreshSchedule`. Overruns are skipped.
 
 ## gtl Notes
-- `GET /healthz`, `GET <load.path>/<sizeKb>` → always `200` for a valid size, `application/octet-stream`, `content-length = sizeKb*1024`, `x-gtl-*` headers. Bad size or a size above `maxSizeKb` → `400`; other paths → `404`; non-GET → `405`.
-- Payload (`internal/gtl/payload`): 64 KiB chunks, each from xorshift32 (`<<13, >>17, <<5`, low byte), reseeded at every chunk start with `0x9e3779b9 ^ uint32(offset)`. The golden SHA-256 vectors live in `testdata/reference/gtl/payload-vectors.json`.
+- `GET /healthz`, `GET <load.path>/<sizeKb>` → always `200` for a valid size, `application/octet-stream`, `content-length = sizeKb*1024`, no custom headers. Bad size or a size above `maxSizeKb` → `400`; other paths → `404`; non-GET → `405`.
+- Payload (`internal/gtl/payload`): AES-128-CTR keystream, streamed in 64 KiB chunks from one reused buffer. The key is random per process (memory only, never logged), the IV random per request, so no two bodies repeat and middleboxes see no fingerprintable content. Nothing decrypts it.
 - `load.path` is required: starts with `/`, is not `/`, has no trailing `/`, query or hash. Unknown config keys are errors.

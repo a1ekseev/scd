@@ -11,7 +11,6 @@ cd "$root"
 project=scd-smoke
 compose=(docker compose -p "$project" -f docker-compose.yml -f docker/compose.smoke.yml)
 timeout_s=60
-gtl_sha256=8ab783947bae918d01b74448625dfd0fef119e16e97d6fc9fdf15e310c87cb01
 fixed_names=(xray-test scd sfc gtl)
 host_ports=(8080 9090 9091 9092)
 
@@ -85,8 +84,9 @@ poll() {
   log "ok: $what"
 }
 
-gtl_load_sha() {
-  [[ "$(curl -fsS http://127.0.0.1:9092/load/1 | sha256sum | cut -d' ' -f1)" == "$gtl_sha256" ]]
+# The body is random per request, so check the length only.
+gtl_load_len() {
+  [[ "$(curl -fsS http://127.0.0.1:9092/load/1 | wc -c | tr -d ' ')" == 1024 ]]
 }
 
 sfc_test_all_lines() {
@@ -114,7 +114,7 @@ scd_balancer_selection() {
     jq -e '.subscriptions[0].targets[0].balancerSelection.state != null'
 }
 
-poll "gtl /load/1 sha256" gtl_load_sha
+poll "gtl /load/1 is 1024 bytes" gtl_load_len
 poll "sfc /s/test-all decodes to 8 lines" sfc_test_all_lines
 poll "scd /api/instance-status version 1" scd_instance_status
 poll "scd runtime-state: outbounds applied to Xray" scd_runtime_state
