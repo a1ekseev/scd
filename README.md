@@ -10,10 +10,8 @@
 
 There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.21**.
 
-Upgrading from the pre-Go version: config keys changed. Read
-[`docs/CONFIG-MIGRATION.md`](docs/CONFIG-MIGRATION.md) (in Russian). It has
-before/after examples for every changed key and walks through real-shape
-configs step by step.
+Upgrading from the pre-Go version: config keys changed. See
+[Migration notes](#migration-notes).
 
 - [Build](#build)
 - [Commands](#commands)
@@ -566,8 +564,7 @@ as is). The same parser validates configs and drives the scheduler.
 - Event names are stable, for example scd `config_loaded`, `sync_started`,
   `subscription_fetched`, `manifest_built`, `apply_finished`, `daemon_tick`,
   `tunnel_repaired`, `tunnel_rejoined_balancer`, `sync_failed`, and sfc
-  `refresh_tick`, `subscription_refreshed`. Events new in the Go version are
-  listed in [`docs/CONFIG-MIGRATION.md`](docs/CONFIG-MIGRATION.md) («Логи»).
+  `refresh_tick`, `subscription_refreshed`.
 
 ## Known limitations
 
@@ -593,8 +590,6 @@ Of scd:
   not coordinate separate processes.
 
 ## Migration notes
-
-Full guide: [`docs/CONFIG-MIGRATION.md`](docs/CONFIG-MIGRATION.md).
 
 - One binary and one image. The `ghcr.io/a1ekseev/sfc` and
   `ghcr.io/a1ekseev/gtl` images are no longer published; their last tags are

@@ -96,7 +96,7 @@ func TestParseRejects(t *testing.T) {
 			}
 		})
 	}
-	// Further cron-parser forms listed in docs/CONFIG-MIGRATION.md as rejected.
+	// Further cron-parser forms that are rejected.
 	for _, expr := range []string{"@secondly", "@weekends", "0 0 * * 5L"} {
 		if _, err := Parse(expr); err == nil {
 			t.Errorf("Parse(%q) accepted", expr)

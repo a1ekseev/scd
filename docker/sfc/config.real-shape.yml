@@ -1,6 +1,6 @@
 # Форма боевого конфига sfc владельца (2026-10-17). Секреты заменены:
 # input → example.com, pathRoute и id выходов → фейковые UUID (в боевом это часть публичной ссылки).
-# Go-версия обязана выражать эти фильтры без lookahead — см. 07-decisions.md D29.
+# Go-версия обязана выражать эти фильтры без lookahead (D29).
 subscriptions:
   - id: main
     input: https://sub.example.com/api/sub/REDACTED

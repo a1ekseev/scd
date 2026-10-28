@@ -3,8 +3,7 @@
 # top-level docs, Docker files, CI and scripts do not mention the Node tool
 # chain (D20). The browser script of the status dashboard
 # (internal/scd/status/web/dashboard.js) is not Node code and is excluded.
-# Go sources are not grepped (the dashboard CSS class `node-card` is fine);
-# docs/go-migration holds the historical migration notes and is not checked.
+# Go sources are not grepped (the dashboard CSS class `node-card` is fine).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

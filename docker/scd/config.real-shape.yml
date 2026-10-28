@@ -1,6 +1,6 @@
 # Форма боевого конфига владельца (2026-10-17). URL заменены на example.com — секретов нет.
 # Используется как эталон: Go-версия обязана принимать этот конфиг (после замены
-# labelIncludeRegex с lookahead на labelExcludeRegex, см. 07-decisions.md D29).
+# labelIncludeRegex с lookahead на labelExcludeRegex, D29).
 subscriptions:
   - id: blanc-en
     input: https://sub.example.com/api/sub/REDACTED

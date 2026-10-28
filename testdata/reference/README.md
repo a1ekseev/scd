@@ -178,7 +178,7 @@ v26 protobuf). The TS default-config keys in `config.*` follow the TS schema; Go
 ### Корпус D26 (task 0.5)
 
 `scd/corpus/d26-links.txt` + `scd/corpus/d26-expect.json`: one VLESS share link per line and, at the same index, its
-expected result in Go. The expectations come from `docs/go-migration/11-xray-vless-matrix.md` (§3 matrix rows, §4
+expected result in Go. The expectations come from the Xray v26.10.10 VLESS outbound matrix (profile rows,
 parameter mapping and Xray error texts, with the D28/O16 and D33 amendments) and the plan tasks 1.7/4.3–4.7. They are
 **not** TS outputs (TS skips most of these links). Each line was checked against `infra/conf` and a live API-only
 Xray 26.10.10 (`AddOutbound` → `ListOutbounds` → `proto.Equal` + a per-parameter field check); see the task 0.5 report.

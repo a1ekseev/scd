@@ -1,5 +1,5 @@
 # Every key of the TS scd config schema (scd/src/types.ts, scd/src/config/load-config.ts).
-# Fake hosts only. Used to capture config-keys.json and as input of TestConfigMigrationDocCoversKeys.
+# Fake hosts only. Used to capture config-keys.json.
 subscriptions:
   - id: full
     input: ./sub.txt

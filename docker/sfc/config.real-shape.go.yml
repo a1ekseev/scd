@@ -1,7 +1,6 @@
 # Go-форма боевого конфига sfc владельца (2026-10-17) для `scd sfc`. Секреты заменены так же,
 # как в config.real-shape.yml: input → example.com, pathRoute и id выходов → фейковые UUID.
-# Отличия от TS-формы — только фильтры меток без lookahead (D29, D31); разбор шагов —
-# docs/CONFIG-MIGRATION.md, раздел «Разобранные примеры».
+# Отличия от TS-формы — только фильтры меток без lookahead (D29, D31).
 subscriptions:
   - id: main
     input: https://sub.example.com/api/sub/REDACTED

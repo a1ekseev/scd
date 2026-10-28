@@ -222,8 +222,8 @@ func TestResolveInput(t *testing.T) {
 	}
 }
 
-// TestLoadLeadingZeroIsOctal pins the yaml.v3 behaviour documented in
-// CONFIG-MIGRATION.md: an integer with a leading 0 is octal (TS yaml@2: 17).
+// TestLoadLeadingZeroIsOctal pins the yaml.v3 behaviour: an integer with a
+// leading 0 is octal (TS yaml@2: 17).
 func TestLoadLeadingZeroIsOctal(t *testing.T) {
 	d, err := Load(writeConfig(t, "a: 017\nb: 17\n"), EnvNone, nil)
 	if err != nil {

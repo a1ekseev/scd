@@ -33,7 +33,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 | `scd/config.example.yml` | `scd` в режиме `daemon`, цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
-| `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go), см. `docs/CONFIG-MIGRATION.md` |
+| `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go) |
 | `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` (для scd — временную копию с sync раз в 5 секунд из `SCD_SMOKE_SCD_CONFIG`) |
 | `fixtures/subscription.txt` | 8 фейковых VLESS-ссылок: `tcp+tls`, `ws+tls`, `tcp+reality+vision` (DE/NL/FI/US) |
 | `fixtures/subscription.b64` | та же подписка в base64 |

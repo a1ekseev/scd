@@ -14,8 +14,7 @@
   - `testdata/reference/`: frozen reference outputs of the previous implementation, used by Go tests (D20).
   - `docker/`: example and real-shape configs, fixtures, test Xray config.
   - `scripts/`: CI checks and compose smoke.
-  - `docs/`: `CONFIG-MIGRATION.md`, the owner's guide for rewriting old configs, and `go-migration/`, the historical migration specs and plan.
-- User docs: `README.md`. Config migration guide: `docs/CONFIG-MIGRATION.md`.
+- User docs: `README.md`.
 
 ## Common Rules
 - Go `1.27` (`go 1.27.0`, `toolchain go1.27.3`). Use the latest dependency versions, except xray-core.
@@ -24,8 +23,7 @@
 - Behaviour follows Go conventions (D9): Go error texts, `log/slog` to stderr, `regexp` (RE2), `net/url`, stdlib base64, `strings.Compare` ordering. Kept as a contract: log `event` names and fields, the status JSON API (additive only, `version: 1`), the dashboard look (visual regression), and Xray API behaviour (RPC set and order, fixed resources, rollback, error texts).
 - Lint: `golangci-lint` v2.15.0 with `.golangci.yml` (gofumpt and goimports formatters, revive). Every package and exported identifier needs a doc comment. Do not add `//nolint` without a reason.
 - Tests use stdlib `testing`, table-driven where it fits, with real in-process servers (`httptest`, bufconn fake Xray `internal/scd/xrayapi/xrayfake`) instead of mocks.
-- A change to config keys, defaults or config-visible behaviour also updates `docs/CONFIG-MIGRATION.md` in the same commit (D32). `internal/cli/configdoc_test.go` checks that every key that differs from the old schema is mentioned there.
-- `**/config.yml` is ignored by git. Local `docker/<svc>/config.yml` files can hold the owner's real configs: never create, modify or assume them. Tracked configs are `docker/<svc>/config.example.yml`, `config.real-shape.yml` (old form, for the migration guide) and `config.real-shape.go.yml` (Go form).
+- `**/config.yml` is ignored by git. Local `docker/<svc>/config.yml` files can hold the owner's real configs: never create, modify or assume them. Tracked configs are `docker/<svc>/config.example.yml`, `config.real-shape.yml` (old form) and `config.real-shape.go.yml` (Go form).
 - Never commit real subscription URLs, hosts, UUIDs, keys, paths or sfc output ids. Use the sanitized fixtures in `docker/fixtures/` (`real-shapes/` included).
 - The tree is Go-only (`scripts/check-no-node.sh`); the only `.js` file is the browser script `internal/scd/status/web/dashboard.js` of the dashboard.
 

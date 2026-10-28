@@ -1,5 +1,5 @@
 # Go-форма боевого конфига владельца: docker/scd/config.real-shape.yml после перевода
-# на новую схему (docs/CONFIG-MIGRATION.md, раздел «Разобранные примеры»).
+# на новую схему.
 # URL заменены на example.com — секретов нет. Изменены только фильтры меток (D29):
 # lookahead-регулярка заменена на labelExcludeRegex; остальные ключи не менялись,
 # новые ключи (allowInsecure, fetchUserAgent, fetchHeaders, balancerSelection) — по умолчанию.
