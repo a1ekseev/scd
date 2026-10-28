@@ -89,7 +89,7 @@ func TestBuildTagRealShapes(t *testing.T) {
 	tests := []struct{ label, profile, want string }{
 		{"🇩🇪DE-1-X", "xhttp-tls", "vless-de-de-1-x-xhttp-tls-"},
 		{"🇺🇸 United States, Miami", "tcp-tls", "vless-us-united-states-tcp-tls-"},
-		{"🇳🇬 Nigeria, Lagos", "tcp-tls", "vless-xx-nigeria-tcp-tls-"},
+		{"🇳🇬 Nigeria, Lagos", "tcp-tls", "vless-ng-nigeria-tcp-tls-"},
 		{"🇨🇴 Colombia, Bogotá", "tcp-tls", "vless-co-colombia-tcp-tls-"},
 		{"🇩🇪 Germany, Berlin ^~2~^", "tcp-tls", "vless-de-germany-tcp-tls-"},
 		{"🇩🇪 Berlin ^~2~^", "tcp-tls", "vless-de-berlin-2-tcp-tls-"},
