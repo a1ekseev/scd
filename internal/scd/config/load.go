@@ -66,10 +66,32 @@ func intRange(lo, hi int, req bool) schema.IntOpt {
 }
 
 func parseSubscription(n *schema.Node, dir string) SubscriptionConfig {
-	n.Strict("id", "input", "enabled", "format", "fetchTimeoutMs", "allowInsecure",
-		"fetchUserAgent", "fetchHeaders", "filters", "target")
+	n.Strict("id", "enabled", "sources", "target")
 	var s SubscriptionConfig
 	s.ID, _ = n.String("id", required)
+	s.Enabled = n.Bool("enabled", true)
+	for _, sn := range n.Array("sources", true, 1) {
+		if sn != nil {
+			s.Sources = append(s.Sources, parseSource(sn, dir))
+		}
+	}
+	s.Target = parseTarget(n.Object("target", true))
+	return s
+}
+
+// Input size limits of a source (sources[].maxInputBytes).
+const (
+	minInputBytes     = 1 << 10
+	defaultInputBytes = 64 << 20
+)
+
+// parseSource reads one sources[] object.
+func parseSource(n *schema.Node, dir string) SourceConfig {
+	n.Strict("id", "type", "input", "enabled", "format", "fetchTimeoutMs", "allowInsecure",
+		"fetchUserAgent", "fetchHeaders", "maxInputBytes", "portRange", "filters")
+	var s SourceConfig
+	s.ID, _ = n.String("id", required)
+	s.Type = n.Enum("type", []string{SourceVLESS}, "")
 	if input, ok := n.String("input", required); ok {
 		s.Input = configload.ResolveInput(dir, input)
 	}
@@ -84,17 +106,27 @@ func parseSubscription(n *schema.Node, dir string) SubscriptionConfig {
 		}
 		s.FetchHeaders = inputsrc.Headers(h)
 	}
+	limit := defaultInputBytes
+	s.MaxInputBytes = int64(n.Int("maxInputBytes", schema.IntOpt{Default: &limit, Min: new(minInputBytes), Max: new(defaultInputBytes)}))
+	if pn := n.Object("portRange", false); pn != nil {
+		s.PortRange = parsePortRange(pn)
+	}
 	if fn := n.Object("filters", false); fn != nil {
 		s.Filters = parseFilters(fn)
 	}
-	s.Target = parseTarget(n.Object("target", true))
 	return s
 }
 
+func parsePortRange(n *schema.Node) *PortRange {
+	n.Strict("start", "end")
+	port := intRange(1, 65535, true)
+	return &PortRange{Start: n.Int("start", port), End: n.Int("end", port)}
+}
+
 // parseFilters reads the filters object.
-func parseFilters(n *schema.Node) *SubscriptionFiltersConfig {
+func parseFilters(n *schema.Node) *SourceFiltersConfig {
 	n.Strict("countryAllowlist", "labelIncludeRegex", "labelExcludeRegex")
-	f := &SubscriptionFiltersConfig{Label: labelfilter.Parse(n)}
+	f := &SourceFiltersConfig{Label: labelfilter.Parse(n)}
 	for _, e := range n.StringListElems("countryAllowlist", schema.StrOpt{Trim: true, AllowEmptyList: true}) {
 		code := strings.ToUpper(e.Value)
 		switch {
@@ -139,14 +171,9 @@ func tagList(n *schema.Node, key string) []string {
 }
 
 func parseInboundSocks(n *schema.Node) *InboundSocksConfig {
-	n.Strict("listen", "portRange")
+	n.Strict("listen")
 	s := &InboundSocksConfig{}
 	s.Listen, _ = n.String("listen", required)
-	pr := n.Object("portRange", true)
-	pr.Strict("start", "end")
-	port := intRange(1, 65535, true)
-	s.PortRange.Start = pr.Int("start", port)
-	s.PortRange.End = pr.Int("end", port)
 	return s
 }
 

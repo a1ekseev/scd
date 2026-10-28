@@ -5,20 +5,20 @@ package topology
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
 )
 
-// ErrPortRangeExhausted is returned (wrapped) when the target's
-// inboundSocks.portRange has fewer ports than there are tunnels (D21, D23).
-var ErrPortRangeExhausted = errors.New("inboundSocks.portRange is too small")
+// CodePortRangeExhausted is the skip reason code of a line that gets no port
+// because the source's portRange is full.
+const CodePortRangeExhausted = "port_range_exhausted"
 
 // PreparedOutbound is an outbound ready for one target under one tag.
 type PreparedOutbound struct {
@@ -29,6 +29,8 @@ type PreparedOutbound struct {
 
 // Tunnel is one SOCKS inbound routed to one outbound of a target.
 type Tunnel struct {
+	// SourceID is the id of the source the tunnel comes from.
+	SourceID string
 	// BaseTunnelID and BaseOutboundTag are the entry tag.
 	BaseTunnelID    string
 	DisplayName     string
@@ -48,33 +50,45 @@ type Tunnel struct {
 	OutboundWithoutPrefix PreparedOutbound
 }
 
-// Topology is the tunnel list of one target, ordered by tag.
+// Topology is the tunnel list of one source on its target, ordered by tag.
 type Topology struct {
 	Tunnels []Tunnel
 }
 
-// Build allocates tunnels for every manifest entry. Entries are ordered by
-// tag (then line), so ports follow tag order and not line order; port =
-// portRange.start + index. Only the outbound tag gets the observatory
-// prefix. A target without inboundSocks has an empty topology.
-func Build(m manifest.Manifest, t config.SubscriptionTargetConfig) (Topology, error) {
-	if t.InboundSocks == nil {
+// BuildSource allocates tunnels for every manifest entry of source src.
+// Entries are ordered by tag (then line), so ports follow tag order and not
+// line order; port = src.portRange.start + index, listen =
+// target.inboundSocks.listen. Only the outbound tag gets the observatory
+// prefix. The entries beyond the portRange capacity (the last ones in tag
+// order) get no tunnel and are returned as port_range_exhausted skips.
+// Without inboundSocks or portRange the topology is empty.
+func BuildSource(m manifest.Manifest, src config.SourceConfig, t config.SubscriptionTargetConfig) (Topology, []vless.Skip) {
+	if t.InboundSocks == nil || src.PortRange == nil {
 		return Topology{}, nil
 	}
-	in := t.InboundSocks
+	pr := *src.PortRange
 	entries := slices.Clone(m.Entries)
 	slices.SortStableFunc(entries, func(a, b manifest.Entry) int {
 		return cmp.Or(strings.Compare(a.Tag, b.Tag), cmp.Compare(a.Line, b.Line), strings.Compare(a.Normalized.Raw, b.Normalized.Raw))
 	})
-	capacity := max(in.PortRange.End-in.PortRange.Start+1, 0)
+	capacity := max(pr.End-pr.Start+1, 0)
+	var skipped []vless.Skip
 	if len(entries) > capacity {
-		return Topology{}, fmt.Errorf("target %q inboundSocks.portRange can allocate only %d ports, but %d tunnels were generated: %w",
-			t.Address, capacity, len(entries), ErrPortRangeExhausted)
+		detail := fmt.Sprintf("portRange %d-%d can allocate only %d ports, but %d tunnels were generated", pr.Start, pr.End, capacity, len(entries))
+		for _, e := range entries[capacity:] {
+			label := e.Label
+			skipped = append(skipped, vless.Skip{
+				Line: e.Line, Raw: e.Normalized.Raw, Label: &label, Code: CodePortRangeExhausted,
+				Reason: "The source portRange has no free port for this line.", Details: []string{detail},
+			})
+		}
+		entries = entries[:capacity]
 	}
 	tunnels := make([]Tunnel, len(entries))
 	for i, e := range entries {
 		initial := t.ObservatorySubjectSelectorPrefix + e.Tag
 		tn := Tunnel{
+			SourceID:              src.ID,
 			BaseTunnelID:          e.Tag,
 			DisplayName:           e.Label,
 			BaseOutboundTag:       e.Tag,
@@ -82,8 +96,8 @@ func Build(m manifest.Manifest, t config.SubscriptionTargetConfig) (Topology, er
 			OutboundTagCurrent:    initial,
 			InboundTag:            "in-" + e.Tag,
 			RouteTag:              "route-" + e.Tag,
-			Listen:                in.Listen,
-			Port:                  in.PortRange.Start + i,
+			Listen:                t.InboundSocks.Listen,
+			Port:                  pr.Start + i,
 			OutboundInitial:       prepare(e, t, initial),
 			OutboundWithoutPrefix: prepare(e, t, e.Tag),
 		}
@@ -92,7 +106,7 @@ func Build(m manifest.Manifest, t config.SubscriptionTargetConfig) (Topology, er
 		}
 		tunnels[i] = tn
 	}
-	return Topology{Tunnels: tunnels}, nil
+	return Topology{Tunnels: tunnels}, skipped
 }
 
 func prepare(e manifest.Entry, t config.SubscriptionTargetConfig, tag string) PreparedOutbound {

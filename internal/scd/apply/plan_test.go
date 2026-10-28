@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -33,7 +32,7 @@ const (
 
 func buildManifest(t *testing.T, lines ...string) manifest.Manifest {
 	t.Helper()
-	m := manifest.Build(strings.Join(lines, "\n"), "inline", normalize.Policy{}, time.Unix(0, 0))
+	m := manifest.Build(strings.Join(lines, "\n"), "inline", normalize.Policy{TagPrefix: "vless"}, time.Unix(0, 0))
 	if len(m.Entries) == 0 {
 		t.Fatalf("no entries, skipped = %+v", m.Skipped)
 	}
@@ -49,19 +48,19 @@ func targetConfig(mut func(*config.SubscriptionTargetConfig)) config.Subscriptio
 }
 
 func withSocks(tc *config.SubscriptionTargetConfig) {
-	tc.InboundSocks = &config.InboundSocksConfig{
-		Listen:    "127.0.0.1",
-		PortRange: config.PortRange{Start: 20000, End: 20010},
-	}
+	tc.InboundSocks = &config.InboundSocksConfig{Listen: "127.0.0.1"}
 }
 
 func withPrefix(tc *config.SubscriptionTargetConfig) {
 	tc.ObservatorySubjectSelectorPrefix = "x-observe-"
 }
 
+// source is the source the test manifests come from (tag prefix "vless").
+var source = config.SourceConfig{ID: "vless", Type: "vless", PortRange: &config.PortRange{Start: 20000, End: 20010}}
+
 func mustPlan(t *testing.T, kind apply.Kind, m manifest.Manifest, tc config.SubscriptionTargetConfig) apply.Plan {
 	t.Helper()
-	p, err := apply.PlanForTarget(kind, m, "source-1", tc)
+	p, err := apply.PlanForSource(kind, m, source, tc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,19 +189,33 @@ func TestPlanRoutingUsesInitialTag(t *testing.T) {
 	}
 }
 
-func TestPlanTopologyOverflowError(t *testing.T) {
+func TestPlanSkipsEntriesBeyondPortRange(t *testing.T) {
 	m := buildManifest(t, vienna, berlin)
-	tc := targetConfig(func(tc *config.SubscriptionTargetConfig) {
-		withSocks(tc)
-		tc.InboundSocks.PortRange.End = tc.InboundSocks.PortRange.Start
-	})
+	tc := targetConfig(withSocks)
+	small := source
+	small.PortRange = &config.PortRange{Start: 20000, End: 20000}
 	for _, kind := range apply.Order {
 		t.Run(string(kind), func(t *testing.T) {
-			_, err := apply.PlanForTarget(kind, m, "source-1", tc)
-			if !errors.Is(err, topology.ErrPortRangeExhausted) {
-				t.Errorf("err = %v, want ErrPortRangeExhausted", err)
+			p, err := apply.PlanForSource(kind, m, small, tc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(p.ManagedIDs) != 1 || len(p.Topology.Tunnels) != 1 {
+				t.Errorf("managedIds = %v", p.ManagedIDs)
+			}
+			if len(p.Skipped) != 1 || p.Skipped[0].Code != topology.CodePortRangeExhausted {
+				t.Errorf("skipped = %+v", p.Skipped)
+			}
+			if p.Summary.PortRangeExhausted != 1 || p.Summary.Skipped != 1 || m.Summary.Skipped != 0 {
+				t.Errorf("summary = %+v, manifest summary = %+v", *p.Summary, m.Summary)
 			}
 		})
+	}
+	// Capacity 0: no resource of any kind, not even an outbound.
+	small.PortRange = &config.PortRange{Start: 20000, End: 19999}
+	p, err := apply.PlanForSource(apply.KindOutbound, m, small, tc)
+	if err != nil || len(p.Outbounds) != 0 || len(p.Skipped) != 2 {
+		t.Errorf("outbounds = %d, skipped = %d, err = %v", len(p.Outbounds), len(p.Skipped), err)
 	}
 }
 
@@ -213,7 +226,7 @@ func TestPlanCarriesManifestMeta(t *testing.T) {
 	}
 	for _, kind := range apply.Order {
 		p := mustPlan(t, kind, m, targetConfig(nil))
-		if p.Kind != kind || p.SourceID != "source-1" {
+		if p.Kind != kind || p.SourceID != "vless" {
 			t.Errorf("%s: kind = %q, sourceId = %q", kind, p.Kind, p.SourceID)
 		}
 		if !reflect.DeepEqual(p.Skipped, m.Skipped) {
@@ -226,7 +239,7 @@ func TestPlanCarriesManifestMeta(t *testing.T) {
 }
 
 func TestPlanUnknownKind(t *testing.T) {
-	if _, err := apply.PlanForTarget("balancer", buildManifest(t, vienna), "source-1", targetConfig(nil)); err == nil {
+	if _, err := apply.PlanForSource("balancer", buildManifest(t, vienna), source, targetConfig(nil)); err == nil {
 		t.Error("no error for an unknown kind")
 	}
 }
@@ -255,7 +268,7 @@ func TestApplyAllKindsAgainstFake(t *testing.T) {
 		if r.Failed != 0 {
 			t.Fatalf("%s failed: %+v", kind, r.Items)
 		}
-		if r.Kind != kind || r.SourceID != "source-1" || r.SubscriptionID != "sub-1" || r.TargetAddress != target {
+		if r.Kind != kind || r.SourceID != "vless" || r.SubscriptionID != "sub-1" || r.TargetAddress != target {
 			t.Errorf("%s header = %+v", kind, r)
 		}
 		if !slices.Equal(r.AppliedIDs, p.ManagedIDs) {

@@ -29,12 +29,11 @@ type Policy struct {
 	// nor vcn (subscriptions[].allowInsecure: allow, D15); otherwise they are
 	// skipped.
 	AllowInsecure bool
-	// TagPrefix is the first part of every tag; empty means DefaultTagPrefix.
+	// TagPrefix is the first part of every tag: the source id. It is
+	// required; Normalize panics on an empty one, so a forgotten source id
+	// never silently yields another source's tags.
 	TagPrefix string
 }
-
-// DefaultTagPrefix is the tag prefix of a Policy without TagPrefix.
-const DefaultTagPrefix = "vless"
 
 // Warning is a non-fatal note about an accepted link.
 type Warning struct {
@@ -235,11 +234,10 @@ func Normalize(l vless.Link, p Policy) (Normalized, []Warning, *vless.Skip) {
 		return Normalized{}, nil, s
 	}
 
-	prefix := p.TagPrefix
-	if prefix == "" {
-		prefix = DefaultTagPrefix
+	if p.TagPrefix == "" {
+		panic("normalize: empty Policy.TagPrefix")
 	}
-	n.Tag = BuildTag(prefix, l.Label, l.Address, n.Profile, l.Raw)
+	n.Tag = BuildTag(p.TagPrefix, l.Label, l.Address, n.Profile, l.Raw)
 	if info, ok := country.FromLabel(l.Label); ok {
 		n.Country = &info
 	}

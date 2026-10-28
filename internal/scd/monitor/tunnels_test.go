@@ -259,7 +259,7 @@ func TestRetryInsideWorkerSlots(t *testing.T) {
 		})
 		mem := state.New()
 		key := state.Key(sub.ID, sub.Target.Address)
-		mem.ReplaceTopology(key, topoOf(t, sub, linkAT, linkBE, linkBG), nil)
+		mem.ReplaceSourceTopology(key, "vless", topoOf(t, sub, linkAT, linkBE, linkBG), nil)
 		var (
 			mu                  sync.Mutex
 			inFlight, maxFlight int

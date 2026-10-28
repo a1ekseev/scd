@@ -11,16 +11,30 @@
 
 subscriptions:
   - id: test-fixture
-    input: ../fixtures/subscription.txt
     enabled: true
-    format: auto
-    fetchTimeoutMs: 5000
-    # Ссылки с allowInsecure=1 без pcs/vcn: deny (по умолчанию) — пропускать, allow — принимать.
-    # allowInsecure: deny
-    # Доп. заголовки HTTP-запроса подписки (значения — секрет: в print-config и логах <redacted>),
-    # например HWID из окружения:
-    #   fetchHeaders:
-    #     x-hwid: "${SCD_HWID}"
+    # Источники подписки: каждый грузится, фильтруется и применяется отдельно.
+    # id источника — префикс тегов (vless-…, in-vless-…, route-vless-…),
+    # уникален в пределах подписки (одного Xray).
+    sources:
+      - id: vless
+        type: vless
+        input: ../fixtures/subscription.txt
+        enabled: true
+        format: auto
+        fetchTimeoutMs: 5000
+        # Ссылки с allowInsecure=1 без pcs/vcn: deny (по умолчанию) — пропускать, allow — принимать.
+        # allowInsecure: deny
+        # Доп. заголовки HTTP-запроса подписки (значения — секрет: в print-config и логах <redacted>),
+        # например HWID из окружения:
+        #   fetchHeaders:
+        #     x-hwid: "${SCD_HWID}"
+        # Предел размера входа (1 KiB..64 MiB, по умолчанию 64 MiB).
+        # maxInputBytes: 67108864
+        # Порты SOCKS-инбаундов источника внутри контейнера xray (наружу не публикуются);
+        # диапазоны источников одной цели не пересекаются.
+        portRange:
+          start: 20000
+          end: 20099
     target:
       # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
       # (docker/xray/config/01_api.json).
@@ -41,12 +55,9 @@ subscriptions:
       # Совпадает с observatory.subjectSelector и balancers[].selector
       # (04_routing.json / 05_observatory.json).
       observatorySubjectSelectorPrefix: x-observe-
-      # Сгенерированные SOCKS-инбаунды внутри контейнера xray (наружу не публикуются).
+      # Адрес сгенерированных SOCKS-инбаундов; порты — в sources[].portRange.
       inboundSocks:
         listen: 0.0.0.0
-        portRange:
-          start: 20000
-          end: 20099
       # Мониторинг выключен: хосты в фикстуре фейковые, проверки всегда падали бы.
       monitor:
         enabled: false

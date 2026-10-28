@@ -89,25 +89,22 @@ func TestRoutingFixedConflictNoRPC(t *testing.T) {
 	}
 }
 
-// O5: a static rule without ruleTag that is not fixed is removed by its
-// empty ruleTag, as in TS; Xray refuses it and the routing apply fails.
-func TestRoutingRemovesEmptyRuleTagLikeTS(t *testing.T) {
+// A static rule without ruleTag lies in no source namespace, so
+// it is kept and RemoveRule("") is never sent.
+func TestRoutingKeepsEmptyRuleTag(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticRules(xrayapi.Rule{Tag: "direct", RuleTag: ""}))
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
+	owns := apply.Namespace{ObsPrefix: "x-observe-", SourceID: "a"}.Owns
 
-	r, err := apply.Routing(context.Background(), c, nil, notFixed(nil), tunnels, meta())
+	r, err := apply.Routing(context.Background(), c, nil, owns, tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := srv.Calls(), []string{"ListRule", "RemoveRule:"}; !slices.Equal(got, want) {
-		t.Errorf("calls = %v, want %v", got, want)
+	if slices.Contains(srv.Calls(), "RemoveRule:") {
+		t.Errorf("calls = %v: RemoveRule with an empty tag", srv.Calls())
 	}
-	assertCounts(t, r, 0, 0, 0, 1)
-	want := []apply.Item{{ID: "route-a", Status: "failed", Message: "app/router: empty tag name!"}}
-	if !slices.Equal(r.Items, want) {
-		t.Errorf("items = %+v, want %+v", r.Items, want)
-	}
-	if got := srv.Rules(); !slices.Equal(got, []xrayapi.Rule{{Tag: "direct"}}) {
+	assertCounts(t, r, 2, 0, 0, 0)
+	if got := srv.Rules(); len(got) != 3 || got[0] != (xrayapi.Rule{Tag: "direct"}) {
 		t.Errorf("rules = %v", got)
 	}
 }

@@ -53,23 +53,25 @@ The live and visual tests skip without their environment variables.
 - Distroless static `:nonroot` image, user `65532:65532`; the sfc cache dir `/app/config/.sfc-cache` is created owned by it. `.dockerignore` is an allow-list (`go.mod`, `go.sum`, `cmd/`, `internal/`). Default `CMD ["scd","daemon","--config","/app/config/config.yml"]`. Compose selects sfc and gtl with `command: ["scd","sfc","serve",…]` and `["scd","gtl","serve",…]`.
 
 ## scd Notes
+- A subscription is `{id, enabled, sources[], target}`; the old subscription keys and `target.inboundSocks.portRange` are unknown keys. A source `id` prefixes its tags (`id: vless` gives the old tags) and owns four namespaces on its target: `<obsPrefix><id>-`, `<id>-` (outbounds), `in-<id>-`, `route-<id>-` (`apply.Namespace`). `target.address` is unique, so a subscription is one Xray: within it source ids are unique and their `<id>-` prefixes and port ranges do not overlap. `normalize.Policy.TagPrefix` is required (empty panics).
 - Pipeline:
-  1. `syncer`: for each enabled subscription, load input (`common/inputsrc`: file, http(s) or stdin; `fetchUserAgent`; redacted `fetchHeaders`).
+  0. `syncer`, per enabled subscription: orphans first (`apply.RemoveOrphans`, under the target mutex): non-fixed resources outside every enabled source's namespace, rule → inbound → outbound, enabled kinds only; rules with an empty `ruleTag` are skipped (`RemoveRule("")` is never sent). An error stops that target for this sync (`orphan_remove_failed`).
+  1. `syncer`: for each enabled source, in id order, load input (`common/inputsrc`: file, http(s) or stdin; `maxInputBytes`; `fetchUserAgent`; redacted `fetchHeaders`).
   2. `common/subscription` + `common/vless`: split lines and parse.
   3. `normalize`: scope (D26), allowInsecure policy, flow, ML-KEM key checks, tags.
   4. `manifest`: build, then filter (country, then label); `outbound` builds the v26 JSON, and `conf.Build` validates it.
-  5. `topology`: tunnels, `in-`/`route-` tags, sequential ports.
+  5. `topology`: tunnels of one source, `in-`/`route-` tags, sequential ports from the source `portRange`; lines beyond it are skipped (`port_range_exhausted`).
   6. `resources`: SOCKS inbounds and routing rules.
-  7. `apply`: outbound → inbound → routing, full replace, fixed resources kept, outbound-only rollback.
-  8. `state`: memory-only hashes, topology and monitor state.
+  7. `apply`, per source: outbound → inbound → routing; remove own, add new; fixed and other sources' resources never touched; outbound-only rollback. One source failing does not touch the others.
+  8. `state`: memory-only hashes and topology per source (`Target.Sources`), tunnels of all sources (source, then tag) with monitor state.
+- Logs and sync reports: `subscriptionId` is the subscription, `sourceId` the source id.
 - `xrayapi` is the only package that talks gRPC to Xray. Mutations: Handler List/Add/Remove Outbound/Inbound and Routing ListRule/AddRule/RemoveRule. Read-only: `GetBalancerInfo` and `GetOutboundStatus`.
 - Sync, repair and rejoin share the per-target mutex in `state`. Monitors and balancer selection read without it.
-- `daemon` runs `common/cronloop` loops: sync; per subscription the tunnel monitor, balancer monitor and balancer selection; per remote instance a status poll. It also runs the status HTTP server. On SIGINT/SIGTERM, loops stop at once, in-flight Xray mutations finish (`context.WithoutCancel`) but no new subscription is loaded and no new target is applied, then pending remote pings, then the HTTP server. There is no hot reload.
+- `daemon` runs `common/cronloop` loops: sync; per subscription the tunnel monitor, balancer monitor and balancer selection; per remote instance a status poll. It also runs the status HTTP server. On SIGINT/SIGTERM, loops stop at once, in-flight Xray mutations finish (`context.WithoutCancel`) but no new source is loaded and no new target or source is applied, then pending remote pings, then the HTTP server. There is no hot reload.
 - `monitor`: tunnel probes through the generated SOCKS inbounds (`socks`). Repair recreates the outbound without the observatory prefix; rejoin restores it. `balancerMonitor` is observe-only, with an optional remote push. Both run only after a sync reached the target.
 - `balancer`: read-only balancer selection view (D22). Never calls `OverrideBalancerTarget`.
 - `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted and `rawBase64` omitted unless `includeSecrets`). `aggregate` holds the remote snapshots.
 - `country`: flag emoji → ISO2. Labels are not interpreted beyond country and city (D33).
-- Known limitation kept on purpose (O5): a non-fixed static routing rule without `ruleTag` makes routing apply fail with `app/router: empty tag name!`.
 
 ## sfc Notes
 - No Xray. Per subscription: fetch (with fetchUserAgent and fetchHeaders) → parse with the shared `common/vless` (same parameter list as scd, no applicability checks) → per-output label filter (`common/labelfilter`) → keep raw lines in original order → base64.

@@ -53,23 +53,22 @@ func freePortRange(t *testing.T, n int) int {
 	return 0
 }
 
-// liveTarget is the target config of the live Xray: the template's fixed
-// resources and per-tunnel SOCKS inbounds on free ports. No observatory
-// prefix, so the observatory never probes the fixture's (unreachable) hosts.
-func liveTarget(t *testing.T, tunnels int) config.SubscriptionTargetConfig {
+// liveTarget is the target config of the live Xray and its source "vless":
+// the template's fixed resources and per-tunnel SOCKS inbounds on free
+// ports. No observatory prefix, so the observatory never probes the
+// fixture's (unreachable) hosts.
+func liveTarget(t *testing.T, tunnels int) (config.SubscriptionTargetConfig, config.SourceConfig) {
 	t.Helper()
 	start := freePortRange(t, tunnels)
+	src := config.SourceConfig{ID: "vless", Type: "vless", Enabled: true, PortRange: &config.PortRange{Start: start, End: start + tunnels - 1}}
 	return config.SubscriptionTargetConfig{
 		Address:        "live-xray",
 		TimeoutMs:      int(rpcTimeout.Milliseconds()),
 		FixedOutbounds: fixedOutbounds,
 		FixedInbounds:  fixedInbounds,
 		FixedRouting:   fixedRouting,
-		InboundSocks: &config.InboundSocksConfig{
-			Listen:    "127.0.0.1",
-			PortRange: config.PortRange{Start: start, End: start + tunnels - 1},
-		},
-	}
+		InboundSocks:   &config.InboundSocksConfig{Listen: "127.0.0.1"},
+	}, src
 }
 
 // fixtureManifest builds the manifest of docker/fixtures/subscription.txt.
@@ -79,7 +78,7 @@ func fixtureManifest(t *testing.T) manifest.Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := manifest.Build(strings.TrimSpace(string(data)), "subscription.txt", normalize.Policy{AllowInsecure: true}, time.Now())
+	m := manifest.Build(strings.TrimSpace(string(data)), "subscription.txt", normalize.Policy{AllowInsecure: true, TagPrefix: "vless"}, time.Now())
 	if len(m.Entries) != 8 || len(m.Skipped) != 0 {
 		t.Fatalf("subscription.txt: %d entries, skipped %+v; want 8 entries", len(m.Entries), m.Skipped)
 	}
@@ -131,12 +130,12 @@ func readState(t *testing.T, c xrayapi.Client) liveState {
 func TestLiveApplyReplacesManagedKeepsFixed(t *testing.T) {
 	c, _, _ := startXray(t)
 	m := fixtureManifest(t)
-	tc := liveTarget(t, len(m.Entries))
+	tc, src := liveTarget(t, len(m.Entries))
 	meta := apply.Meta{SubscriptionID: "live"}
 
 	plans := map[apply.Kind]apply.Plan{}
 	for _, kind := range apply.Order {
-		p, err := apply.PlanForTarget(kind, m, "subscription.txt", tc)
+		p, err := apply.PlanForSource(kind, m, src, tc)
 		if err != nil {
 			t.Fatal(err)
 		}

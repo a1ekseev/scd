@@ -26,7 +26,9 @@ import (
 	"github.com/a1ekseev/scd/internal/common/logging"
 	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/state"
+	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
@@ -136,13 +138,23 @@ func target(addr string) config.SubscriptionTargetConfig {
 	}
 }
 
-func withSocks(t config.SubscriptionTargetConfig, start, end int) config.SubscriptionTargetConfig {
-	t.InboundSocks = &config.InboundSocksConfig{Listen: "127.0.0.1", PortRange: config.PortRange{Start: start, End: end}}
-	return t
+// source is an enabled VLESS source.
+func source(id, input string) config.SourceConfig {
+	return config.SourceConfig{ID: id, Type: "vless", Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny", MaxInputBytes: 64 << 20}
 }
 
+// sub is a subscription with one source "vless" (the old tags).
 func sub(id, input string, t config.SubscriptionTargetConfig) config.SubscriptionConfig {
-	return config.SubscriptionConfig{ID: id, Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny", Target: t}
+	return config.SubscriptionConfig{ID: id, Enabled: true, Sources: []config.SourceConfig{source("vless", input)}, Target: t}
+}
+
+// socksSub is sub with SOCKS inbounds on 127.0.0.1 and the source's ports
+// start..end.
+func socksSub(id, input string, t config.SubscriptionTargetConfig, start, end int) config.SubscriptionConfig {
+	t.InboundSocks = &config.InboundSocksConfig{Listen: "127.0.0.1"}
+	s := sub(id, input, t)
+	s.Sources[0].PortRange = &config.PortRange{Start: start, End: end}
+	return s
 }
 
 func cfg(kinds []apply.Kind, subs ...config.SubscriptionConfig) config.Loaded {
@@ -235,7 +247,11 @@ func (f *fixture) run(t *testing.T) Report {
 func hashes(t *testing.T, m *state.Memory, key string) map[apply.Kind]string {
 	t.Helper()
 	var h map[apply.Kind]string
-	if !m.View(key, func(tg *state.Target) { h = tg.Hashes }) {
+	if !m.View(key, func(tg *state.Target) {
+		if src := tg.Sources["vless"]; src != nil {
+			h = src.Hashes
+		}
+	}) {
 		t.Fatalf("no state for %s", key)
 	}
 	return h
@@ -259,16 +275,17 @@ func TestSkipsXrayWhenUnchanged(t *testing.T) {
 	if len(second.Targets[0].Resources) != 0 {
 		t.Errorf("unchanged target has resources: %v", second.Targets[0].Resources)
 	}
-	// The second sync only reads Xray to confirm nothing was lost.
+	// The second sync only reads Xray: the orphan check and the check that
+	// nothing was lost.
 	calls := f.x.servers[addrA].Calls()
-	if n := count(calls, "ListOutbounds"); n != 2 {
-		t.Errorf("ListOutbounds calls = %d, want 2", n)
+	if n := count(calls, "ListOutbounds"); n != 4 {
+		t.Errorf("ListOutbounds calls = %d, want 4", n)
 	}
 	if n := count(calls, "RemoveOutbound") + count(calls, "AddOutbound"); n != 1 {
 		t.Errorf("outbound mutations = %d, want only the first sync's add", n)
 	}
-	if got := f.x.dials(); len(got) != 2 {
-		t.Errorf("dials = %v, want two", got)
+	if got := f.x.dials(); len(got) != 4 {
+		t.Errorf("dials = %v, want four (orphans and apply or drift check per sync)", got)
 	}
 	if n := len(f.logs.events(t, "skipped_no_changes")); n != 1 {
 		t.Errorf("skipped_no_changes events = %d, want 1", n)
@@ -278,7 +295,7 @@ func TestSkipsXrayWhenUnchanged(t *testing.T) {
 // An Xray restart drops every API-added resource while the manifest stays
 // the same: the next sync must apply again instead of skipping by hash.
 func TestReappliesAfterXrayLostResources(t *testing.T) {
-	f := newFixture(t, cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010))), map[string]string{"/s1": vienna}, addrA)
+	f := newFixture(t, cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010)), map[string]string{"/s1": vienna}, addrA)
 	if r := f.run(t); r.Failed != 0 {
 		t.Fatalf("first sync failed = %d", r.Failed)
 	}
@@ -315,7 +332,7 @@ func TestReappliesAfterXrayLostResources(t *testing.T) {
 // A tunnel repair recreates the outbound without the observatory prefix;
 // that is scd's own state, not a loss, so the sync still skips.
 func TestRepairedOutboundIsNotDrift(t *testing.T) {
-	f := newFixture(t, cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010))), map[string]string{"/s1": vienna}, addrA)
+	f := newFixture(t, cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010)), map[string]string{"/s1": vienna}, addrA)
 	if r := f.run(t); r.Failed != 0 {
 		t.Fatalf("first sync failed = %d", r.Failed)
 	}
@@ -350,7 +367,7 @@ func TestRepairedOutboundIsNotDrift(t *testing.T) {
 }
 
 func TestAppliesSubscriptionsIndependently(t *testing.T) {
-	l := cfg(allKinds, sub("source-b", "/b", withSocks(target(addrB), 21000, 21010)), sub("source-a", "/a", withSocks(target(addrA), 20000, 20010)))
+	l := cfg(allKinds, socksSub("source-b", "/b", target(addrB), 21000, 21010), socksSub("source-a", "/a", target(addrA), 20000, 20010))
 	f := newFixture(t, l, map[string]string{"/a": vienna, "/b": berlin}, addrA, addrB)
 
 	r := f.run(t)
@@ -361,8 +378,8 @@ func TestAppliesSubscriptionsIndependently(t *testing.T) {
 	if len(r.Targets) != 2 || r.Targets[0].TargetAddress != addrA || r.Targets[1].TargetAddress != addrB {
 		t.Fatalf("targets = %+v", r.Targets)
 	}
-	if got := f.x.dials(); !slices.Equal(got, []string{addrA, addrB}) {
-		t.Errorf("dials = %v, want [%s %s]", got, addrA, addrB)
+	if got := f.x.dials(); !slices.Equal(got, []string{addrA, addrA, addrB, addrB}) {
+		t.Errorf("dials = %v, want orphans and apply on %s, then %s", got, addrA, addrB)
 	}
 	for _, a := range []string{addrA, addrB} {
 		if n := len(f.x.servers[a].OutboundTags()); n != 1 {
@@ -490,7 +507,7 @@ func TestOtherSubscriptionsContinueAfterLoadFailure(t *testing.T) {
 		t.Fatalf("targets = %+v", r.Targets)
 	}
 	a := r.Targets[0]
-	if a.Failed != 1 || a.SourceID != "source-a" || len(a.Resources) != 1 || a.Resources[0].Items[0].Message != "Input source timed out" ||
+	if a.Failed != 1 || a.SourceID != "vless" || len(a.Resources) != 1 || a.Resources[0].Items[0].Message != "Input source timed out" ||
 		a.Resources[0].Items[0].ID != "outbound" || a.Resources[0].DurationMs != 0 {
 		t.Errorf("failed target = %+v", a)
 	}
@@ -500,15 +517,24 @@ func TestOtherSubscriptionsContinueAfterLoadFailure(t *testing.T) {
 	if r.Targets[1].Failed != 0 {
 		t.Errorf("second target failed = %d", r.Targets[1].Failed)
 	}
-	if got := f.x.dials(); !slices.Equal(got, []string{addrB}) {
-		t.Errorf("dials = %v, want only %s", got, addrB)
+	// The orphan check still runs on A; it keeps the failed source's resources.
+	if got := f.x.dials(); !slices.Equal(got, []string{addrA, addrB, addrB}) {
+		t.Errorf("dials = %v, want the orphan check on %s, then %s", got, addrA, addrB)
+	}
+	if mutations(f.x.servers[addrA].Calls()) != 0 {
+		t.Errorf("Xray at %s was changed: %v", addrA, f.x.servers[addrA].Calls())
 	}
 	if n := len(f.logs.events(t, "subscription_fetch_failed")); n != 1 {
 		t.Errorf("subscription_fetch_failed events = %d", n)
 	}
 }
 
-func TestNoXrayCallsWhenNoValidEntries(t *testing.T) {
+// mutations counts the Add and Remove RPCs.
+func mutations(calls []string) int {
+	return count(calls, "Add") + count(calls, "Remove")
+}
+
+func TestNoXrayMutationsWhenNoValidEntries(t *testing.T) {
 	l := cfg(outboundOnly, sub("source-a", "/a", target(addrA)), sub("source-b", "/b", target(addrB)))
 	f := newFixture(t, l, map[string]string{"/a": trojan, "/b": vienna}, addrA, addrB)
 
@@ -517,23 +543,23 @@ func TestNoXrayCallsWhenNoValidEntries(t *testing.T) {
 	if len(r.Targets) != 2 || r.Targets[0].Failed != 1 || r.Targets[1].Failed != 0 {
 		t.Fatalf("targets = %+v", r.Targets)
 	}
-	if msg := r.Targets[0].Resources[0].Items[0].Message; !strings.Contains(msg, `Subscription source "source-a" produced no valid outbound entries.`) {
+	if msg := r.Targets[0].Resources[0].Items[0].Message; !strings.Contains(msg, `Subscription source "vless" produced no valid outbound entries.`) {
 		t.Errorf("message = %q", msg)
 	}
-	if got := f.x.dials(); !slices.Equal(got, []string{addrB}) {
-		t.Errorf("dials = %v, want only %s", got, addrB)
+	if got := f.x.dials(); !slices.Equal(got, []string{addrA, addrB, addrB}) {
+		t.Errorf("dials = %v, want the orphan check on %s, then %s", got, addrA, addrB)
 	}
-	if len(f.x.servers[addrA].Calls()) != 0 {
-		t.Errorf("Xray at %s was called", addrA)
+	if mutations(f.x.servers[addrA].Calls()) != 0 {
+		t.Errorf("Xray at %s was changed", addrA)
 	}
 	if n := len(f.logs.events(t, "manifest_validation_failed")); n != 1 {
 		t.Errorf("manifest_validation_failed events = %d", n)
 	}
 }
 
-func TestNoXrayCallsWhenFiltersRemoveAll(t *testing.T) {
+func TestNoXrayMutationsWhenFiltersRemoveAll(t *testing.T) {
 	s := sub("source-1", "/s1", target(addrA))
-	s.Filters = &config.SubscriptionFiltersConfig{CountryAllowlist: []string{"US"}}
+	s.Sources[0].Filters = &config.SourceFiltersConfig{CountryAllowlist: []string{"US"}}
 	f := newFixture(t, cfg(outboundOnly, s), map[string]string{"/s1": vienna}, addrA)
 
 	r := f.run(t)
@@ -541,13 +567,13 @@ func TestNoXrayCallsWhenFiltersRemoveAll(t *testing.T) {
 	if r.Failed != 1 || len(r.Targets) != 1 {
 		t.Fatalf("report = %+v", r)
 	}
-	if got := f.x.dials(); len(got) != 0 {
-		t.Errorf("dials = %v, want none", got)
+	if got := f.x.dials(); len(got) != 1 || mutations(f.x.servers[addrA].Calls()) != 0 {
+		t.Errorf("dials = %v calls = %v, want only the orphan check", got, f.x.servers[addrA].Calls())
 	}
 }
 
 func TestPartialFailureKeepsHashesAndMonitors(t *testing.T) {
-	l := cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010)))
+	l := cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010))
 	f := newFixture(t, l, map[string]string{"/s1": vienna}, addrA)
 	key := state.Key("source-1", addrA)
 	if r := f.run(t); r.Failed != 0 {
@@ -587,7 +613,7 @@ func TestPartialFailureKeepsHashesAndMonitors(t *testing.T) {
 	}
 	calls := srv.Calls()[n:]
 	for _, c := range []string{"ListOutbounds", "ListInbounds", "ListRule"} {
-		if count(calls, c) != 1 {
+		if count(calls, c) != 2 { // orphans, then apply
 			t.Errorf("retry calls %v lack %s", calls, c)
 		}
 	}
@@ -599,7 +625,7 @@ func TestPartialFailureKeepsHashesAndMonitors(t *testing.T) {
 }
 
 func TestFullSuccessResetsMonitorsAndBumpsGeneration(t *testing.T) {
-	l := cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010)))
+	l := cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010))
 	f := newFixture(t, l, map[string]string{"/s1": vienna}, addrA)
 	key := state.Key("source-1", addrA)
 	f.run(t)
@@ -628,45 +654,78 @@ func TestFullSuccessResetsMonitorsAndBumpsGeneration(t *testing.T) {
 		if tg.Balancer.State != state.BalancerHealthy {
 			t.Errorf("balancer state = %q, want kept healthy", tg.Balancer.State)
 		}
-		if len(tg.Hashes) != 3 {
-			t.Errorf("hashes = %v", tg.Hashes)
+		if len(tg.Sources["vless"].Hashes) != 3 {
+			t.Errorf("hashes = %v", tg.Sources["vless"].Hashes)
 		}
 	})
 }
 
-func TestSyncPortRangeOverflowFailsOnlyThatTarget(t *testing.T) {
+func TestSyncPortRangeOverflowAppliesFirstN(t *testing.T) {
 	l := cfg(allKinds,
-		sub("source-a", "/a", withSocks(target(addrA), 20000, 20000)),
-		sub("source-b", "/b", withSocks(target(addrB), 20000, 20010)))
-	f := newFixture(t, l, map[string]string{"/a": vienna + "\n" + berlin, "/b": vienna + "\n" + berlin}, addrA, addrB)
+		socksSub("source-a", "/a", target(addrA), 20000, 20000),
+		socksSub("source-b", "/b", target(addrB), 20000, 20010))
+	f := newFixture(t, l, map[string]string{"/a": berlin + "\n" + vienna, "/b": vienna + "\n" + berlin}, addrA, addrB)
 
-	r, err := f.s.Run(t.Context())
-	if err != nil {
-		t.Fatalf("Run: %v (the overflow must fail only its target, D23)", err)
-	}
-	if len(r.Targets) != 2 {
-		t.Fatalf("targets = %+v", r.Targets)
+	r := f.run(t)
+	if r.Failed != 0 || len(r.Targets) != 2 {
+		t.Fatalf("report = %+v", r)
 	}
 	a, b := r.Targets[0], r.Targets[1]
-	if a.TargetAddress != addrA || a.Failed != 3 || len(a.Resources) != 3 {
-		t.Fatalf("overflow target = %+v", a)
+	if a.TargetAddress != addrA || len(a.Skipped) != 1 || a.Skipped[0].Code != topology.CodePortRangeExhausted || a.Skipped[0].Line != 1 {
+		t.Fatalf("overflow target skipped = %+v", a.Skipped)
 	}
-	for i, res := range a.Resources {
-		if res.Kind != apply.Order[i] || !strings.Contains(res.Items[0].Message, "portRange can allocate only 1 ports, but 2 tunnels were generated") {
-			t.Errorf("resource %d = %+v", i, res)
+	if len(b.Skipped) != 0 || len(r.Skipped) != 1 {
+		t.Errorf("other target skipped = %+v, run skipped = %+v", b.Skipped, r.Skipped)
+	}
+	// Only the first tunnel in tag order (Vienna, "at" < "de") is applied.
+	x := f.x.servers[addrA]
+	if in := x.InboundTags(); len(in) != 1 || !strings.HasPrefix(in[0], "in-vless-at-") {
+		t.Errorf("inbounds = %v", in)
+	}
+	if rules := x.Rules(); len(rules) != 1 || !strings.HasPrefix(rules[0].RuleTag, "route-vless-at-") {
+		t.Errorf("rules = %+v", rules)
+	}
+	var managed []string
+	for _, tag := range x.OutboundTags() {
+		if strings.Contains(tag, "vless-") {
+			managed = append(managed, tag)
 		}
 	}
-	if b.Failed != 0 || len(b.Resources) != 3 {
-		t.Errorf("other target = %+v", b)
+	if len(managed) != 1 || !strings.Contains(managed[0], "vless-at-") {
+		t.Errorf("managed outbounds = %v", managed)
 	}
-	if got := f.x.dials(); !slices.Equal(got, []string{addrB}) {
-		t.Errorf("dials = %v, want only %s", got, addrB)
+	if n := len(f.x.servers[addrB].InboundTags()); n != 2 {
+		t.Errorf("other target inbounds = %d", n)
 	}
-	if n := len(f.logs.events(t, "apply_failed")); n != 3 {
-		t.Errorf("apply_failed events = %d, want 3", n)
+	var warned []map[string]any
+	for _, e := range f.logs.events(t, "manifest_entry_warning") {
+		if e["code"] == topology.CodePortRangeExhausted {
+			warned = append(warned, e)
+		}
 	}
-	if n := len(f.logs.events(t, "sync_failed")); n != 0 {
-		t.Errorf("sync_failed logged")
+	if len(warned) != 1 || warned[0]["level"] != "WARN" || warned[0]["subscriptionId"] != "source-a" || warned[0]["line"] != float64(1) {
+		t.Errorf("warnings = %+v", warned)
+	}
+	warnings := func(addr, sub string) []normalize.Warning {
+		var w []normalize.Warning
+		f.s.Memory.View(state.Key(sub, addr), func(tg *state.Target) { w = tg.Sources["vless"].Warnings })
+		return w
+	}
+	if w := warnings(addrA, "source-a"); len(w) != 1 || w[0].Code != topology.CodePortRangeExhausted {
+		t.Errorf("state warnings = %+v", w)
+	}
+	if w := warnings(addrB, "source-b"); w != nil {
+		t.Errorf("other state warnings = %+v", w)
+	}
+
+	// The skipped line goes away without changing the applied tunnel: no
+	// apply, and the warning is cleared.
+	f.in.set("/a", vienna)
+	if r := f.run(t); r.Failed != 0 || len(r.Targets[0].UnchangedKinds) != 3 {
+		t.Fatalf("second report = %+v", r)
+	}
+	if w := warnings(addrA, "source-a"); w != nil {
+		t.Errorf("state warnings after the fix = %+v", w)
 	}
 }
 
@@ -683,7 +742,7 @@ func TestFailedLoadsFirstInTargets(t *testing.T) {
 }
 
 func TestSkippedNotDuplicated(t *testing.T) {
-	l := cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010)))
+	l := cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010))
 	f := newFixture(t, l, map[string]string{"/s1": vienna + "\n" + trojan}, addrA)
 
 	for run := range 2 {
@@ -765,7 +824,7 @@ func TestSyncLogsDoNotLeakFetchHeaders(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	s := sub("source-1", srv.URL+"/sub", target(addrA))
-	s.FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
+	s.Sources[0].FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
 	f := newFixture(t, cfg(allKinds, s), nil, addrA)
 	f.s.LoadInput = inputsrc.Load
 
@@ -818,7 +877,7 @@ func TestSyncLogsDoNotLeakSubscriptionURL(t *testing.T) {
 }
 
 func TestApplyNotCanceledByContext(t *testing.T) {
-	f := newFixture(t, cfg(allKinds, sub("source-1", "/s1", withSocks(target(addrA), 20000, 20010))), map[string]string{"/s1": vienna}, addrA)
+	f := newFixture(t, cfg(allKinds, socksSub("source-1", "/s1", target(addrA), 20000, 20010)), map[string]string{"/s1": vienna}, addrA)
 	srv := f.x.servers[addrA]
 	srv.Delay("AddOutbound", 300*time.Millisecond)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -865,7 +924,7 @@ func TestReportJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, k := range []string{`"appliedAt":`, `"durationMs":`, `"added":1`, `"replaced":0`, `"removed":0`, `"unchanged":0`, `"failed":0`, `"targets":[{"subscriptionId":"source-1","targetAddress":"127.0.0.1:8080","sourceId":"source-1","unchangedKinds":[],"failed":0,"resources":[{"kind":"outbound"`, `"skipped":[]`} {
+	for _, k := range []string{`"appliedAt":`, `"durationMs":`, `"added":1`, `"replaced":0`, `"removed":0`, `"unchanged":0`, `"failed":0`, `"targets":[{"subscriptionId":"source-1","targetAddress":"127.0.0.1:8080","sourceId":"vless","unchangedKinds":[],"failed":0,"resources":[{"kind":"outbound"`, `"skipped":[]`} {
 		if !strings.Contains(s, k) {
 			t.Errorf("report JSON lacks %s:\n%s", k, s)
 		}
@@ -884,7 +943,7 @@ func TestSyncMarksTargetSeenEvenOnFailedApply(t *testing.T) {
 		t.Fatalf("failed = %d, want 1", r.Failed)
 	}
 	var seen, topo bool
-	if !f.s.Memory.View(state.Key("source-1", addrA), func(tg *state.Target) { seen, topo = tg.SyncSeen, tg.Topology != nil }) {
+	if !f.s.Memory.View(state.Key("source-1", addrA), func(tg *state.Target) { seen, topo = tg.SyncSeen, tg.Sources["vless"] != nil }) {
 		t.Fatal("no target state")
 	}
 	if !seen || topo {
@@ -895,7 +954,7 @@ func TestSyncMarksTargetSeenEvenOnFailedApply(t *testing.T) {
 // Final review I1: a cancellation lets the apply in flight finish but starts
 // no apply on the remaining targets.
 func TestCanceledSyncStartsNoFurtherApply(t *testing.T) {
-	l := cfg(allKinds, sub("source-a", "/a", withSocks(target(addrA), 20000, 20010)), sub("source-b", "/b", withSocks(target(addrB), 21000, 21010)))
+	l := cfg(allKinds, socksSub("source-a", "/a", target(addrA), 20000, 20010), socksSub("source-b", "/b", target(addrB), 21000, 21010))
 	f := newFixture(t, l, map[string]string{"/a": vienna, "/b": berlin}, addrA, addrB)
 	srvA, srvB := f.x.servers[addrA], f.x.servers[addrB]
 	srvA.Delay("AddOutbound", 300*time.Millisecond)
@@ -923,8 +982,8 @@ func TestCanceledSyncStartsNoFurtherApply(t *testing.T) {
 	if calls := srvB.Calls(); len(calls) != 0 {
 		t.Errorf("target B got RPCs after the cancel: %v", calls)
 	}
-	if got := f.x.dials(); !slices.Equal(got, []string{addrA}) {
-		t.Errorf("dials = %v, want only %s", got, addrA)
+	if got := f.x.dials(); !slices.Equal(got, []string{addrA, addrA}) {
+		t.Errorf("dials = %v, want orphans and apply on %s only", got, addrA)
 	}
 	if r.Failed != 0 {
 		t.Errorf("report failed = %d: %+v", r.Failed, r)

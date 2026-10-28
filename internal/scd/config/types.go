@@ -19,9 +19,25 @@ type AppConfig struct {
 	StatusServer  StatusServerConfig   `json:"statusServer"`
 }
 
-// SubscriptionConfig is one subscription and the Xray target it is applied to.
+// SubscriptionConfig is one subscription: its sources and the Xray target
+// they are applied to.
 type SubscriptionConfig struct {
-	ID string `json:"id"`
+	ID      string                   `json:"id"`
+	Enabled bool                     `json:"enabled"`
+	Sources []SourceConfig           `json:"sources"`
+	Target  SubscriptionTargetConfig `json:"target"`
+}
+
+// Source types.
+const (
+	SourceVLESS = "vless"
+)
+
+// SourceConfig is one source of a subscription. Its id prefixes every tag
+// it generates and is unique across the config.
+type SourceConfig struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // vless
 	// Input is "-" (stdin), an http(s) URL or an absolute file path.
 	Input          string `json:"input"`
 	Enabled        bool   `json:"enabled"`
@@ -35,15 +51,19 @@ type SubscriptionConfig struct {
 	FetchUserAgent string `json:"fetchUserAgent,omitempty"`
 	// FetchHeaders are extra request headers (D33); nil when not configured.
 	// Values are printed as "<redacted>".
-	FetchHeaders inputsrc.Headers           `json:"fetchHeaders,omitempty"`
-	Filters      *SubscriptionFiltersConfig `json:"filters,omitempty"`
-	Target       SubscriptionTargetConfig   `json:"target"`
+	FetchHeaders inputsrc.Headers `json:"fetchHeaders,omitempty"`
+	// MaxInputBytes limits the input size (file, http(s) and stdin).
+	MaxInputBytes int64 `json:"maxInputBytes"`
+	// PortRange holds the ports of the source's SOCKS inbounds; nil when not
+	// configured.
+	PortRange *PortRange           `json:"portRange,omitempty"`
+	Filters   *SourceFiltersConfig `json:"filters,omitempty"`
 }
 
-// SubscriptionFiltersConfig selects manifest entries by country and label.
+// SourceFiltersConfig selects manifest entries by country and label.
 // It is printed by MarshalJSON with the label filter keys labelIncludeRegex
 // and labelExcludeRegex in place of Label.
-type SubscriptionFiltersConfig struct {
+type SourceFiltersConfig struct {
 	// CountryAllowlist holds upper-case ISO2 codes; nil or empty means no
 	// country filter.
 	CountryAllowlist []string           `json:"countryAllowlist,omitempty"`
@@ -52,7 +72,7 @@ type SubscriptionFiltersConfig struct {
 
 // MarshalJSON prints the filters in config form: countryAllowlist,
 // labelIncludeRegex, labelExcludeRegex; empty keys are omitted.
-func (f SubscriptionFiltersConfig) MarshalJSON() ([]byte, error) {
+func (f SourceFiltersConfig) MarshalJSON() ([]byte, error) {
 	return jsonout.Marshal(struct {
 		CountryAllowlist []string `json:"countryAllowlist,omitempty"`
 		Include          []string `json:"labelIncludeRegex,omitempty"`
@@ -78,10 +98,10 @@ type SubscriptionTargetConfig struct {
 	ObservatorySubjectSelectorPrefix string `json:"observatorySubjectSelectorPrefix,omitempty"`
 }
 
-// InboundSocksConfig configures the generated per-tunnel SOCKS inbounds.
+// InboundSocksConfig configures the generated per-tunnel SOCKS inbounds;
+// the ports come from each source's portRange.
 type InboundSocksConfig struct {
-	Listen    string    `json:"listen"`
-	PortRange PortRange `json:"portRange"`
+	Listen string `json:"listen"`
 }
 
 // PortRange is an inclusive port range.

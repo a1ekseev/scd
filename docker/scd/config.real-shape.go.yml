@@ -1,17 +1,23 @@
 # Go-форма боевого конфига владельца: docker/scd/config.real-shape.yml после перевода
-# на новую схему.
+# на новую схему (sources). id источника уникален в пределах подписки (одного Xray):
+# у обеих подписок id: vless, теги и порты прежние.
 # URL заменены на example.com — секретов нет. Изменены только фильтры меток (D29):
 # lookahead-регулярка заменена на labelExcludeRegex; остальные ключи не менялись,
 # новые ключи (allowInsecure, fetchUserAgent, fetchHeaders, balancerSelection) — по умолчанию.
 subscriptions:
   - id: blanc-en
-    input: https://sub.example.com/api/sub/REDACTED
     enabled: true
-    format: auto
-    fetchTimeoutMs: 5000
-    filters:
-      countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
-      labelExcludeRegex: '/Extra|WhiteList/i'
+    sources:
+      - id: vless
+        type: vless
+        input: https://sub.example.com/api/sub/REDACTED
+        enabled: true
+        format: auto
+        fetchTimeoutMs: 5000
+        portRange: { start: 20000, end: 21000 }
+        filters:
+          countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
+          labelExcludeRegex: '/Extra|WhiteList/i'
     target:
       address: blanc-xray-en:8080
       timeoutMs: 5000
@@ -22,7 +28,6 @@ subscriptions:
       observatorySubjectSelectorPrefix: x-observe-
       inboundSocks:
         listen: 0.0.0.0
-        portRange: { start: 20000, end: 21000 }
       monitor:
         enabled: true
         schedule: "*/1 * * * *"
@@ -37,13 +42,18 @@ subscriptions:
         request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
         remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
   - id: blanc-ru
-    input: https://sub.example.com/api/sub/REDACTED
     enabled: true
-    format: auto
-    fetchTimeoutMs: 5000
-    filters:
-      countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
-      labelExcludeRegex: '/Extra|WhiteList/i'
+    sources:
+      - id: vless
+        type: vless
+        input: https://sub.example.com/api/sub/REDACTED
+        enabled: true
+        format: auto
+        fetchTimeoutMs: 5000
+        portRange: { start: 20000, end: 21000 }
+        filters:
+          countryAllowlist: [AT, BE, BG, CH, CZ, DE, DK, ES, FI, FR, GB, GR, HR, HU, IE, IT, LT, NL, "NO", PL, PT, RO, SK, TR]
+          labelExcludeRegex: '/Extra|WhiteList/i'
     target:
       address: blanc-xray-ru:8080
       timeoutMs: 5000
@@ -54,7 +64,6 @@ subscriptions:
       observatorySubjectSelectorPrefix: x-observe-
       inboundSocks:
         listen: 0.0.0.0
-        portRange: { start: 20000, end: 21000 }
       monitor:
         enabled: true
         schedule: "*/1 * * * *"

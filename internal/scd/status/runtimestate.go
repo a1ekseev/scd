@@ -138,12 +138,23 @@ type rsBalancerMonitor struct {
 	ConsecutiveFailures int `json:"consecutiveFailures"`
 }
 
+// rsExpected is the union of the expected resources of the enabled
+// sources. Source and Error describe the only source; with several sources
+// they are empty and Sources lists each one (additive, D3).
 type rsExpected struct {
 	Source       string             `json:"source"`
 	Outbounds    []expectedOutbound `json:"outbounds"`
 	Inbounds     []expectedInbound  `json:"inbounds"`
 	RoutingRules []expectedRule     `json:"routingRules"`
 	Error        string             `json:"error,omitempty"`
+	Sources      []expectedSource   `json:"sources,omitempty"`
+}
+
+// expectedSource is the expected-topology origin of one source.
+type expectedSource struct {
+	SourceID string `json:"sourceId"`
+	Source   string `json:"source"`
+	Error    string `json:"error,omitempty"`
 }
 
 type expectedOutbound struct {
@@ -303,66 +314,78 @@ func listRuntime(ctx context.Context, dial xrayapi.Dialer, t config.Subscription
 	return outbounds, inbounds, rules, nil
 }
 
-// buildExpected derives the expected topology from the subscription source
-// (03 §6.4): remote and stdin inputs are not refetched; a file is reloaded
-// and built as sync does (manifest.FromSubscription, topology.Build).
+// buildExpected derives the expected topology from the enabled sources of
+// the subscription (03 §6.4), as the union of the sources in id order.
 func buildExpected(ctx context.Context, sub config.SubscriptionConfig, res config.ResourceConfig, includeSecrets bool, now time.Time) rsExpected {
-	source := sub.Input
-	if !includeSecrets {
-		source = inputsrc.RedactInput(sub.Input)
-	}
-	empty := rsExpected{Source: source, Outbounds: []expectedOutbound{}, Inbounds: []expectedInbound{}, RoutingRules: []expectedRule{}}
-	if sub.Input == "-" || remoteInputRe.MatchString(sub.Input) {
-		empty.Error = msgExpectedNoRefetch
-		return empty
-	}
-
-	fail := func(err error) rsExpected {
-		msg := err.Error()
-		if !includeSecrets {
-			msg = inputsrc.RedactInputIn(msg, sub.Input)
+	exp := rsExpected{Outbounds: []expectedOutbound{}, Inbounds: []expectedInbound{}, RoutingRules: []expectedRule{}}
+	sources := sub.EnabledSources()
+	slices.SortStableFunc(sources, func(a, b config.SourceConfig) int { return strings.Compare(a.ID, b.ID) })
+	for _, src := range sources {
+		origin, tunnels, errMsg := expectedSourceTunnels(ctx, sub, src, includeSecrets, now)
+		es := expectedSource{SourceID: src.ID, Source: origin, Error: errMsg}
+		exp.Sources = append(exp.Sources, es)
+		for _, tn := range tunnels {
+			if res.Outbounds.Enabled {
+				exp.Outbounds = append(exp.Outbounds, expectedOutbound{
+					BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
+					InitialTag: tn.OutboundTagInitial, FallbackTag: tn.OutboundWithoutPrefix.Tag, Flow: tn.OutboundInitial.Normalized.Flow,
+				})
+			}
+			if res.Inbounds.Enabled {
+				exp.Inbounds = append(exp.Inbounds, expectedInbound{
+					BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
+					Tag: tn.InboundTag, Endpoint: tn.Listen + ":" + strconv.Itoa(tn.Port),
+				})
+			}
+			if res.Routing.Enabled {
+				exp.RoutingRules = append(exp.RoutingRules, expectedRule{
+					BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
+					RuleTag: tn.RouteTag, InboundTag: tn.InboundTag,
+					OutboundInitialTag: tn.OutboundTagInitial, OutboundFallbackTag: tn.OutboundWithoutPrefix.Tag,
+				})
+			}
 		}
-		empty.Error = msg
-		return empty
 	}
-	l, err := inputsrc.Load(ctx, sub.Input, inputsrc.Options{
-		Format: sub.Format, FetchTimeout: time.Duration(sub.FetchTimeoutMs) * time.Millisecond,
-	})
-	if err != nil {
-		return fail(err)
-	}
-	m, err := manifest.FromSubscription(manifest.LoadedSubscription{Config: sub, Source: l.Source, Content: l.Content, Encoding: l.Encoding}, now)
-	if err != nil {
-		return fail(err)
-	}
-	topo, err := topology.Build(m, sub.Target)
-	if err != nil {
-		return fail(err)
-	}
-
-	exp := rsExpected{Source: l.Source, Outbounds: []expectedOutbound{}, Inbounds: []expectedInbound{}, RoutingRules: []expectedRule{}}
-	for _, tn := range topo.Tunnels {
-		if res.Outbounds.Enabled {
-			exp.Outbounds = append(exp.Outbounds, expectedOutbound{
-				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
-				InitialTag: tn.OutboundTagInitial, FallbackTag: tn.OutboundWithoutPrefix.Tag, Flow: tn.OutboundInitial.Normalized.Flow,
-			})
-		}
-		if res.Inbounds.Enabled {
-			exp.Inbounds = append(exp.Inbounds, expectedInbound{
-				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
-				Tag: tn.InboundTag, Endpoint: tn.Listen + ":" + strconv.Itoa(tn.Port),
-			})
-		}
-		if res.Routing.Enabled {
-			exp.RoutingRules = append(exp.RoutingRules, expectedRule{
-				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
-				RuleTag: tn.RouteTag, InboundTag: tn.InboundTag,
-				OutboundInitialTag: tn.OutboundTagInitial, OutboundFallbackTag: tn.OutboundWithoutPrefix.Tag,
-			})
-		}
+	// One VLESS source keeps the single-source shape of the TS API.
+	if len(exp.Sources) == 1 {
+		exp.Source, exp.Error = exp.Sources[0].Source, exp.Sources[0].Error
+		exp.Sources = nil
 	}
 	return exp
+}
+
+// expectedSourceTunnels builds the tunnels of source src as sync does: a
+// file is reloaded and built (manifest.FromSource, topology.BuildSource);
+// remote and stdin inputs are not refetched. origin is the loaded source
+// (the redacted input on an early error); errMsg is the error text,
+// redacted unless includeSecrets.
+func expectedSourceTunnels(ctx context.Context, sub config.SubscriptionConfig, src config.SourceConfig, includeSecrets bool, now time.Time) (
+	origin string, tunnels []topology.Tunnel, errMsg string,
+) {
+	origin = src.Input
+	if !includeSecrets {
+		origin = inputsrc.RedactInput(src.Input)
+	}
+	if src.Input == "-" || remoteInputRe.MatchString(src.Input) {
+		return origin, nil, msgExpectedNoRefetch
+	}
+	fail := func(err error) (string, []topology.Tunnel, string) {
+		msg := err.Error()
+		if !includeSecrets {
+			msg = inputsrc.RedactInputIn(msg, src.Input)
+		}
+		return origin, nil, msg
+	}
+	l, err := inputsrc.Load(ctx, src.Input, manifest.LoadOptions(src))
+	if err != nil {
+		return fail(err)
+	}
+	m, err := manifest.FromSource(manifest.LoadedSource{Subscription: sub, Config: src, Source: l.Source, Content: l.Content, Encoding: l.Encoding}, now)
+	if err != nil {
+		return fail(err)
+	}
+	topo, _ := topology.BuildSource(m, src, sub.Target)
+	return l.Source, topo.Tunnels, ""
 }
 
 // redactedConfig is the config section: the subscription (input and

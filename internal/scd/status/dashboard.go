@@ -28,6 +28,7 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"metricClass":            metricClass,
 	"metric":                 func(label, value string) metricView { return metricView{Label: label, Value: value} },
 	"selectionCard":          selectionCard,
+	"sourcesCard":            sourcesCard,
 	"tunnelCards":            tunnelCards,
 	"orIdle":                 func(s string) string { return cmp.Or(s, state.BalancerIdle) },
 	"orDash":                 func(s string) string { return cmp.Or(s, "-") },
@@ -193,6 +194,8 @@ func metricClass(label, value string) string {
 		}
 	case "Error":
 		return " metric-state-degraded"
+	case "Warning":
+		return " metric-state-repairing"
 	case "Remote Push":
 		switch {
 		case strings.Contains(value, "delivered up"):
@@ -344,6 +347,36 @@ func selectionClass(v *BalancerSelectionView, tunnels []StatusTunnel) string {
 		}
 	}
 	return state.TunnelHealthy
+}
+
+// sourcesCardView is the "Sources" card of a target with sources.
+type sourcesCardView struct {
+	// Class is repairing with a source warning, else idle.
+	Class   string
+	Title   string
+	Metrics []metricView
+}
+
+// sourcesCard is the sources card of t, nil without sources: a metric per
+// source ("<id>": "<type>", "· disabled" when off), followed by its
+// warnings (the code as tooltip).
+func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
+	if len(t.Sources) == 0 {
+		return nil
+	}
+	c := &sourcesCardView{Class: state.TunnelIdle, Title: strconv.Itoa(len(t.Sources)) + " source(s)"}
+	for _, s := range t.Sources {
+		v := s.Type
+		if !s.Enabled {
+			v += " · disabled"
+		}
+		c.Metrics = append(c.Metrics, metricView{Label: s.SourceID, Value: v})
+		for _, w := range s.Warnings {
+			c.Class = state.TunnelRepairing
+			c.Metrics = append(c.Metrics, metricView{Label: "Warning", Value: w.Message, Title: s.SourceID + ": " + w.Code})
+		}
+	}
+	return c
 }
 
 // tunnelCard is a tunnel of the dashboard with its balancer selection

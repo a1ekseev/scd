@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -8,26 +9,34 @@ import (
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
+	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 )
 
 // generateCommand is `scd generate` (01 §14.1): it builds the manifest of
-// one input without trimming or filters and under the default policy, and
-// writes the manifest and the parse log. Nothing is written when the input
-// has no valid entries; stdout gets the summary.
+// one input without trimming or filters, under the default policy with the
+// tags of source --source-id, and writes the manifest and the parse log.
+// Nothing is written when the input has no valid entries; stdout gets the
+// summary.
 func generateCommand() *cobra.Command {
-	var input, output, logPath string
+	var input, output, logPath, sourceID, sourceType string
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Build an outbound manifest from a subscription",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if sourceType != config.SourceVLESS {
+				return fmt.Errorf("--type must be %s", config.SourceVLESS)
+			}
+			if !config.ValidSourceID(sourceID) {
+				return fmt.Errorf(`--source-id %q must be 1..16 characters [a-z0-9-] without a leading or trailing "-"`, sourceID)
+			}
 			loaded, err := inputsrc.Load(cmd.Context(), input, inputsrc.Options{Stdin: cmd.InOrStdin()})
 			if err != nil {
 				return err
 			}
-			m := manifest.Build(loaded.Content, loaded.Source, normalize.Policy{TagPrefix: normalize.DefaultTagPrefix}, time.Now())
+			m := manifest.Build(loaded.Content, loaded.Source, normalize.Policy{TagPrefix: sourceID}, time.Now())
 			if err := manifest.Validate(m, loaded.Source); err != nil {
 				return err
 			}
@@ -43,7 +52,9 @@ func generateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&input, "input", "", `Subscription file, http(s) URL or "-" for stdin`)
 	cmd.Flags().StringVar(&output, "output", "", "Manifest JSON file to write")
 	cmd.Flags().StringVar(&logPath, "log", "", "Parse log JSON file to write")
-	for _, f := range []string{"input", "output", "log"} {
+	cmd.Flags().StringVar(&sourceID, "source-id", "", "Source id: the prefix of every generated tag")
+	cmd.Flags().StringVar(&sourceType, "type", config.SourceVLESS, "Source type (vless)")
+	for _, f := range []string{"input", "output", "log", "source-id"} {
 		_ = cmd.MarkFlagRequired(f)
 	}
 	return cmd

@@ -58,7 +58,7 @@ func normalizeLine(t *testing.T, sl subscription.Line) normalize.Normalized {
 	if skip != nil {
 		t.Fatalf("line %d skipped by the parser: %+v", sl.Number, *skip)
 	}
-	n, _, skip := normalize.Normalize(l, normalize.Policy{})
+	n, _, skip := normalize.Normalize(l, normalize.Policy{TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("line %d skipped by normalize: %+v", sl.Number, *skip)
 	}

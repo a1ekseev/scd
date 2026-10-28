@@ -453,7 +453,7 @@ func TestRepairAgainAfterTopologyReplaced(t *testing.T) {
 	}
 
 	e.syncBack(t.Context(), tn)
-	e.mem.ReplaceTopology(e.key, topoOf(t, e.sub, linkAT), map[apply.Kind]string{apply.KindOutbound: "hash-new"})
+	e.mem.ReplaceSourceTopology(e.key, "vless", topoOf(t, e.sub, linkAT), map[apply.Kind]string{apply.KindOutbound: "hash-new"})
 	before := len(e.xray.Calls())
 
 	for range 3 {
@@ -515,7 +515,7 @@ func TestRepairDecidedAfterConcurrentSync(t *testing.T) {
 	e.deps.Probe = func(ctx context.Context, _ socks.Request) (socks.Response, error) {
 		unlock := e.mem.LockTarget(e.key)
 		e.syncBack(ctx, tn)
-		e.mem.ReplaceTopology(e.key, topo, map[apply.Kind]string{apply.KindOutbound: "hash-new"})
+		e.mem.ReplaceSourceTopology(e.key, "vless", topo, map[apply.Kind]string{apply.KindOutbound: "hash-new"})
 		before = len(e.xray.Calls())
 		unlock()
 		return socks.Response{}, errors.New("probe failed")

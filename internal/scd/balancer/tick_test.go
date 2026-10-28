@@ -172,7 +172,7 @@ func TestTickIdleToOK(t *testing.T) {
 			t.Errorf("balancer tags = %v", e.c.tags)
 		}
 		e.mem.View(e.key, func(tg *state.Target) {
-			if tg.Topology != nil || len(tg.Tunnels) != 0 || tg.Balancer.State != state.BalancerIdle {
+			if len(tg.Sources) != 0 || len(tg.Tunnels) != 0 || tg.Balancer.State != state.BalancerIdle {
 				t.Errorf("tick changed more than the selection: %+v", tg)
 			}
 		})
@@ -491,7 +491,7 @@ func TestSelectionSurvivesReplaceTopology(t *testing.T) {
 		e := newEnv(false)
 		e.c.info = single(prefix + "de-1")
 		e.tick(t)
-		e.mem.ReplaceTopology(e.key, topologyOf(), nil)
+		e.mem.ReplaceSourceTopology(e.key, "vless", topologyOf(), nil)
 		if s := e.sel(t); s.SelectedTag != prefix+"de-1" || s.State != state.SelectionOK {
 			t.Errorf("state after ReplaceTopology = %+v", s)
 		}

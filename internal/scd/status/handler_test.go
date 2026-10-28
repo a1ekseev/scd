@@ -208,7 +208,7 @@ func TestRuntimeStateEndpointRedacts(t *testing.T) {
 	srv, _ := startFake(t, xrayfake.WithStaticOutbounds("direct"), xrayfake.WithStaticInbounds("api-in"),
 		xrayfake.WithStaticRules(xrayapi.Rule{Tag: "direct", RuleTag: "api-rule"}))
 	l := loadFixture(t, "healthy-single")
-	l.cfg.Config.Subscriptions[0].Input = "https://subscription.example.test/tokenized/path?secret=abc"
+	l.cfg.Config.Subscriptions[0].Sources[0].Input = "https://subscription.example.test/tokenized/path?secret=abc"
 	d := l.deps()
 	d.Dial = srv.Dialer()
 	code, body := runtimeStateJSON(t, NewHandler(d), "/api/runtime-state?subscriptionId=sub-1&targetAddress=127.0.0.1:8080")
@@ -216,8 +216,8 @@ func TestRuntimeStateEndpointRedacts(t *testing.T) {
 		t.Fatalf("%d %v", code, body)
 	}
 	sub := body["config"].(map[string]any)["subscription"].(map[string]any)
-	if sub["input"] != "https://subscription.example.test/<redacted>" {
-		t.Fatalf("input %v", sub["input"])
+	if in := sub["sources"].([]any)[0].(map[string]any)["input"]; in != "https://subscription.example.test/<redacted>" {
+		t.Fatalf("input %v", in)
 	}
 	if bm := body["serviceState"].(map[string]any)["balancerMonitor"].(map[string]any); bm["state"] != "healthy" || bm["consecutiveFailures"] != 0.0 {
 		t.Fatalf("serviceState %v", bm)

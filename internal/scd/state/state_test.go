@@ -32,7 +32,7 @@ func TestEnsureInitialState(t *testing.T) {
 	m.Ensure("k")
 	m.Ensure("k") // idempotent
 	ok := m.View("k", func(tg *Target) {
-		if tg.Generation != 0 || tg.Topology != nil || len(tg.Tunnels) != 0 || len(tg.Hashes) != 0 {
+		if tg.Generation != 0 || tg.Sources == nil || len(tg.Sources) != 0 || len(tg.Tunnels) != 0 {
 			t.Errorf("target = %+v, want empty", tg)
 		}
 		if tg.Balancer.State != BalancerIdle || tg.Balancer.RemotePingState != RemotePingIdle {
@@ -47,10 +47,10 @@ func TestEnsureInitialState(t *testing.T) {
 	}
 }
 
-func TestReplaceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
+func TestReplaceSourceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 	m := New()
 	m.Ensure("k")
-	m.ReplaceTopology("k", topo("b", "a"), map[apply.Kind]string{apply.KindOutbound: "h1"})
+	m.ReplaceSourceTopology("k", "vless", topo("b", "a"), map[apply.Kind]string{apply.KindOutbound: "h1"})
 	now := time.Now()
 	m.Update("k", func(tg *Target) {
 		tg.Tunnels[0].Monitor = TunnelMonitor{State: TunnelDegraded, LastFailureAt: &now, LastError: "x", ConsecutiveFailures: 3}
@@ -60,17 +60,18 @@ func TestReplaceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 		tg.Balancer.ConsecutiveFailures = 2
 	})
 
-	m.ReplaceTopology("k", topo("c", "b"), map[apply.Kind]string{apply.KindOutbound: "h2", apply.KindRouting: "r2"})
+	m.ReplaceSourceTopology("k", "vless", topo("c", "b"), map[apply.Kind]string{apply.KindOutbound: "h2", apply.KindRouting: "r2"})
 
 	m.View("k", func(tg *Target) {
 		if tg.Generation != 2 {
 			t.Errorf("Generation = %d, want 2", tg.Generation)
 		}
-		if len(tg.Hashes) != 2 || tg.Hashes[apply.KindOutbound] != "h2" || tg.Hashes[apply.KindRouting] != "r2" {
-			t.Errorf("Hashes = %v", tg.Hashes)
+		src := tg.Sources["vless"]
+		if len(src.Hashes) != 2 || src.Hashes[apply.KindOutbound] != "h2" || src.Hashes[apply.KindRouting] != "r2" {
+			t.Errorf("Hashes = %v", src.Hashes)
 		}
-		if tg.Topology == nil || len(tg.Topology.Tunnels) != 2 {
-			t.Fatalf("Topology = %+v", tg.Topology)
+		if src.Topology == nil || len(src.Topology.Tunnels) != 2 || src.Topology.Tunnels[0].SourceID != "vless" {
+			t.Fatalf("Topology = %+v", src.Topology)
 		}
 		if len(tg.Tunnels) != 2 || tg.Tunnels[0].Mapping.BaseTunnelID != "c" || tg.Tunnels[1].Mapping.BaseTunnelID != "b" {
 			t.Fatalf("Tunnels order = %+v, want topology order c, b", tg.Tunnels)
@@ -87,14 +88,14 @@ func TestReplaceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 	})
 }
 
-func TestReplaceTopologyCopiesHashes(t *testing.T) {
+func TestReplaceSourceTopologyCopiesHashes(t *testing.T) {
 	m := New()
 	h := map[apply.Kind]string{apply.KindOutbound: "h1"}
-	m.ReplaceTopology("k", topo("a"), h)
+	m.ReplaceSourceTopology("k", "vless", topo("a"), h)
 	h[apply.KindOutbound] = "changed"
 	m.View("k", func(tg *Target) {
-		if tg.Hashes[apply.KindOutbound] != "h1" {
-			t.Errorf("Hashes aliased the caller's map: %v", tg.Hashes)
+		if tg.Sources["vless"].Hashes[apply.KindOutbound] != "h1" {
+			t.Errorf("Hashes aliased the caller's map: %v", tg.Sources["vless"].Hashes)
 		}
 	})
 }
@@ -174,7 +175,7 @@ func TestTryStartSyncOverlap(t *testing.T) {
 
 // SyncSeen means "a sync reached this target" (03 §1, review 6.6): Ensure
 // (e.g. by the balancer selection tick) does not set it; MarkSynced and
-// ReplaceTopology do.
+// ReplaceSourceTopology do.
 func TestMarkSynced(t *testing.T) {
 	m := New()
 	seen := func(key string) bool {
@@ -200,8 +201,46 @@ func TestMarkSynced(t *testing.T) {
 	if !seen("b") {
 		t.Error("MarkSynced on a new key")
 	}
-	m.ReplaceTopology("c", topo("x"), nil)
+	m.ReplaceSourceTopology("c", "vless", topo("x"), nil)
 	if !seen("c") {
-		t.Error("ReplaceTopology did not set SyncSeen")
+		t.Error("ReplaceSourceTopology did not set SyncSeen")
 	}
+}
+
+// A source replacement keeps the other sources' tunnels and monitor state;
+// tunnels are ordered by source id, then topology order.
+func TestReplaceSourceTopologyKeepsOtherSources(t *testing.T) {
+	m := New()
+	m.ReplaceSourceTopology("k", "b", topo("b2", "b1"), map[apply.Kind]string{apply.KindOutbound: "hb"})
+	m.ReplaceSourceTopology("k", "a", topo("a1"), map[apply.Kind]string{apply.KindOutbound: "ha"})
+	m.Update("k", func(tg *Target) { tg.Tunnels[1].Monitor.State = TunnelDegraded })
+	m.ReplaceSourceTopology("k", "c", topo("c1"), nil)
+	m.ReplaceSourceTopology("k", "a", topo("a2", "a1"), map[apply.Kind]string{apply.KindOutbound: "ha2"})
+	order := func(tg *Target) (out []string) {
+		for _, tn := range tg.Tunnels {
+			out = append(out, tn.Mapping.SourceID+"/"+tn.Mapping.BaseTunnelID)
+		}
+		return out
+	}
+	m.View("k", func(tg *Target) {
+		if got := order(tg); len(got) != 5 || got[0] != "a/a2" || got[1] != "a/a1" || got[2] != "b/b2" || got[3] != "b/b1" || got[4] != "c/c1" {
+			t.Fatalf("order %v", got)
+		}
+		if tg.Tunnels[2].Monitor.State != TunnelDegraded || tg.Generation != 4 {
+			t.Fatalf("source b monitor %+v generation %d", tg.Tunnels[2].Monitor, tg.Generation)
+		}
+		if tg.Sources["b"].Hashes[apply.KindOutbound] != "hb" || tg.Sources["a"].Hashes[apply.KindOutbound] != "ha2" {
+			t.Fatalf("hashes %+v", tg.Sources)
+		}
+	})
+	m.DropSource("k", "b")
+	m.DropSource("k", "zz")
+	m.View("k", func(tg *Target) {
+		if got := order(tg); len(got) != 3 || got[2] != "c/c1" || tg.Sources["b"] != nil || tg.Generation != 5 {
+			t.Fatalf("after drop %v %d", got, tg.Generation)
+		}
+		if ids := tg.SourceIDs(); len(ids) != 2 || ids[0] != "a" || ids[1] != "c" {
+			t.Fatalf("SourceIDs %v", ids)
+		}
+	})
 }

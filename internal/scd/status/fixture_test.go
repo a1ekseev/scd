@@ -1,6 +1,7 @@
 package status
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -34,6 +36,13 @@ type fixture struct {
 			Prefix  string `json:"observatorySubjectSelectorPrefix"`
 			// BalancerSelection extends the 0.4 contract (task 6.6).
 			BalancerSelection config.BalancerSelectionConfig `json:"balancerSelection"`
+			// Sources extends the 0.4 contract (sources-*); empty = one
+			// source "vless".
+			Sources []struct {
+				ID      string `json:"id"`
+				Type    string `json:"type"`
+				Enabled bool   `json:"enabled"`
+			} `json:"sources"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
 			ID       string `json:"id"`
@@ -48,7 +57,14 @@ type fixture struct {
 		BalancerMonitor fixtureBalancer `json:"balancerMonitor"`
 		// BalancerSelection extends the 0.4 contract (task 6.6).
 		BalancerSelection *fixtureSelection `json:"balancerSelection"`
-		Tunnels           []struct {
+		// Sources extends the 0.4 contract (sources-*): the source warnings.
+		Sources []struct {
+			SourceID string              `json:"sourceId"`
+			Warnings []normalize.Warning `json:"warnings"`
+		} `json:"sources"`
+		Tunnels []struct {
+			// SourceID extends the 0.4 contract (sources-*); "" = "vless".
+			SourceID                 string         `json:"sourceId"`
 			BaseTunnelID             string         `json:"baseTunnelId"`
 			DisplayName              string         `json:"displayName"`
 			CountryISO2              string         `json:"countryIso2"`
@@ -165,10 +181,16 @@ type loaded struct {
 // have no TS reference: the feature does not exist in TS (D22).
 const selectionPrefix = "selection-"
 
+// sourcesPrefix names the fixtures of several sources per subscription; they
+// have no TS reference either.
+const sourcesPrefix = "sources-"
+
 // fixtureNames lists the 0.4 fixtures (with a TS reference).
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
-	return globFixtures(t, func(name string) bool { return !strings.HasPrefix(name, selectionPrefix) })
+	return globFixtures(t, func(name string) bool {
+		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix)
+	})
 }
 
 // selectionFixtureNames lists the balancer selection fixtures.
@@ -211,8 +233,17 @@ func loadFixture(t *testing.T, name string) loaded {
 
 	var cfg config.AppConfig
 	for _, s := range f.Config.Subscriptions {
+		sources := []config.SourceConfig{testSource("/fixture/sub.txt")}
+		if len(s.Sources) > 0 {
+			sources = nil
+			for _, fs := range s.Sources {
+				src := testSource("/fixture/" + fs.ID + ".txt")
+				src.ID, src.Type, src.Enabled = fs.ID, fs.Type, fs.Enabled
+				sources = append(sources, src)
+			}
+		}
 		cfg.Subscriptions = append(cfg.Subscriptions, config.SubscriptionConfig{
-			ID: s.ID, Input: "/fixture/sub.txt", Enabled: s.Enabled, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+			ID: s.ID, Enabled: s.Enabled, Sources: sources,
 			Target: config.SubscriptionTargetConfig{
 				Address: s.Address, TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: s.Prefix,
 				FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
@@ -232,9 +263,15 @@ func loadFixture(t *testing.T, name string) loaded {
 	mem := state.New()
 	for _, tg := range f.Targets {
 		key := state.Key(tg.SubscriptionID, tg.TargetAddress)
-		var topo topology.Topology
+		topos := map[string]*topology.Topology{}
+		monitors := map[string]state.TunnelMonitor{}
 		for _, tn := range tg.Tunnels {
-			topo.Tunnels = append(topo.Tunnels, topology.Tunnel{
+			id := cmp.Or(tn.SourceID, "vless")
+			if topos[id] == nil {
+				topos[id] = &topology.Topology{}
+			}
+			monitors[tn.OutboundTagInitial] = state.TunnelMonitor(tn.Monitor)
+			topos[id].Tunnels = append(topos[id].Tunnels, topology.Tunnel{
 				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
 				BaseOutboundTag:    tn.OutboundWithoutPrefixTag,
 				OutboundTagInitial: tn.OutboundTagInitial, OutboundTagCurrent: tn.OutboundTagCurrent,
@@ -244,14 +281,22 @@ func loadFixture(t *testing.T, name string) loaded {
 				OutboundWithoutPrefix: topology.PreparedOutbound{Tag: tn.OutboundWithoutPrefixTag},
 			})
 		}
-		mem.ReplaceTopology(key, topo, nil)
+		if len(topos) == 0 {
+			topos["vless"] = &topology.Topology{}
+		}
+		for id, topo := range topos {
+			mem.ReplaceSourceTopology(key, id, *topo, nil)
+		}
 		mem.Update(key, func(st *state.Target) {
 			st.Balancer = state.BalancerMonitor(tg.BalancerMonitor)
 			if tg.BalancerSelection != nil {
 				st.BalancerSelection = tg.BalancerSelection.selectionState()
 			}
-			for i, tn := range tg.Tunnels {
-				st.Tunnels[i].Monitor = state.TunnelMonitor(tn.Monitor)
+			for _, tn := range st.Tunnels {
+				tn.Monitor = monitors[tn.Mapping.OutboundTagInitial]
+			}
+			for _, s := range tg.Sources {
+				st.Sources[s.SourceID].Warnings = s.Warnings
 			}
 		})
 	}

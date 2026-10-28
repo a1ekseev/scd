@@ -5,3 +5,4 @@ vpn
 coverage/
 .cache/
 /.test_config/
+internal/scd/status/testdata/visual/

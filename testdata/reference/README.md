@@ -5,7 +5,7 @@ checked against them. These files are frozen Go test data (D20): the TS services
 capture scripts (`tools/golden/`) are gone from the tree, so the references cannot be
 regenerated. The TS references were captured by commits `ae1fde2`..`975287a`
 (tooling and TS sources as of `975287a`: `git show 975287a:tools/golden/README.md`);
-later commits only add Go-side fixtures (`scd/status/fixtures/selection-*.json`).
+later commits only add Go-side fixtures (`scd/status/fixtures/{selection,sources}-*.json`, `scd/print-config/minimal.sources.{yml,json}`).
 Script names below (`tools/golden/*.mjs`) refer to that commit.
 
 Exception (2026-10-27): the REALITY key, short ids and one SNI in the fixtures came from a
@@ -157,6 +157,22 @@ The Go tests that compare with TS (`TestJSONMatchesTSReference`, `TestDashboardT
 Fixtures: `selection-single`, `selection-override`, `selection-pool` (strategy `random`, one dead candidate),
 `selection-none`, `selection-error` (stale selection), `selection-observatory-unavailable`, `selection-repaired`
 (repaired `nl-1` with a stale prefixed observatory entry, rejoined `at-1` awaiting observation, stale `x-observe-gone`).
+
+#### Sources extension
+
+`fixtures/sources-*.json` extend the contract with several sources per subscription; they have **no TS reference**
+and are skipped by the TS comparisons, like `selection-*`. Their Go reference screenshots
+`internal/scd/status/testdata/visual/sources-*-{1280,390}.png` are local and gitignored, never committed; create
+them with `SCD_CHROME=… go test -tags visual ./internal/scd/status -run TestDashboardSourcesVisual -update`.
+
+| Key | Meaning |
+|---|---|
+| `config.subscriptions[].sources` | `[{id, type, enabled}]`; absent = one source `vless` |
+| `targets[].sources` | `[{sourceId, warnings}]`: `state.Source.Warnings` |
+| `targets[].tunnels[].sourceId` | the tunnel's source; absent = `vless` |
+
+Fixture: `sources-two` (sources `main` and `spare`, `spare` with `port_range_exhausted`; remote `edge-old` holds the
+TS snapshot of `healthy-single`).
 
 #### runtime-state (`scd/status/runtime-state/`)
 

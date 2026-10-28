@@ -16,7 +16,7 @@ func TestGenerateRejectsNoValidEntries(t *testing.T) { // P25
 		t.Fatal(err)
 	}
 	out, log := filepath.Join(dir, "m.json"), filepath.Join(dir, "l.json")
-	code, stdout, stderr := run("generate", "--input", in, "--output", out, "--log", log)
+	code, stdout, stderr := run("generate", "--source-id", "vless", "--input", in, "--output", out, "--log", log)
 	if code != 1 || stdout != "" || !strings.Contains(stderr, "produced no valid outbound entries") ||
 		!strings.Contains(stderr, `"`+in+`"`) {
 		t.Fatalf("code %d stdout %q stderr %q", code, stdout, stderr)
@@ -33,13 +33,42 @@ func TestGenerateRequiresFlags(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr, "required flag") {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
+	code, _, stderr = run("generate", "--input", "x", "--output", "m", "--log", "l")
+	if code != 1 || !strings.Contains(stderr, `required flag(s) "source-id" not set`) {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	for _, args := range [][]string{{"--source-id", "-bad"}, {"--source-id", "vless", "--type", "wireguard"}} {
+		code, _, stderr = run(append([]string{"generate", "--input", "x", "--output", "m", "--log", "l"}, args...)...)
+		if code != 1 || !strings.Contains(stderr, "--") {
+			t.Fatalf("%v: code %d stderr %q", args, code, stderr)
+		}
+	}
+}
+
+// --source-id is the tag prefix.
+func TestGenerateSourceIDPrefixesTags(t *testing.T) {
+	dir := t.TempDir()
+	out, log := filepath.Join(dir, "m.json"), filepath.Join(dir, "l.json")
+	code, _, stderr := run("generate", "--source-id", "sub2", "--input", "../../../docker/fixtures/subscription.txt", "--output", out, "--log", log)
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+	ref := readJSON(t, "../../../testdata/reference/scd/generate/docker-fixture.manifest.json")
+	got := readJSON(t, out)
+	for i, e := range got["entries"].([]any) {
+		tag := e.(map[string]any)["tag"].(string)
+		want := ref["entries"].([]any)[i].(map[string]any)["tag"].(string)
+		if tag != "sub2-"+strings.TrimPrefix(want, "vless-") {
+			t.Errorf("tag %s, reference %s", tag, want)
+		}
+	}
 }
 
 func TestGenerateDockerFixture(t *testing.T) {
 	dir := t.TempDir()
 	out, log := filepath.Join(dir, "m.json"), filepath.Join(dir, "l.json")
 	in := "../../../docker/fixtures/subscription.txt"
-	code, stdout, stderr := run("generate", "--input", in, "--output", out, "--log", log)
+	code, stdout, stderr := run("generate", "--source-id", "vless", "--input", in, "--output", out, "--log", log)
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
@@ -74,7 +103,7 @@ func TestGenerateKeepsHTMLCharacters(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, log := filepath.Join(dir, "m.json"), filepath.Join(dir, "l.json")
-	if code, _, stderr := run("generate", "--input", in, "--output", out, "--log", log); code != 0 {
+	if code, _, stderr := run("generate", "--source-id", "vless", "--input", in, "--output", out, "--log", log); code != 0 {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
 	b, err := os.ReadFile(out)

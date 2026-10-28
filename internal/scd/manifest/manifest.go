@@ -56,6 +56,9 @@ type Summary struct {
 	InvalidURI           int `json:"invalidUri"`
 	MissingRequiredField int `json:"missingRequiredField"`
 	DuplicateTag         int `json:"duplicateTag"`
+	// PortRangeExhausted counts the entries left without a port by the
+	// source's portRange (set by the plan, not by Build); also in Skipped.
+	PortRangeExhausted int `json:"portRangeExhausted,omitzero"`
 }
 
 // Manifest is the outbound manifest of one subscription.

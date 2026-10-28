@@ -12,7 +12,7 @@ import (
 // label filter (an include not matched or an exclude matched) are counted
 // in FilteredByLabelRegex. Parsed becomes the number of remaining entries;
 // skipped lines are not changed. Without filters m is returned as is.
-func ApplyFilters(m Manifest, f *config.SubscriptionFiltersConfig) Manifest {
+func ApplyFilters(m Manifest, f *config.SourceFiltersConfig) Manifest {
 	if f == nil || (len(f.CountryAllowlist) == 0 && f.Label.Empty()) {
 		return m
 	}

@@ -51,9 +51,9 @@ output goes to stdout and logs go to stderr.
 |---|---|
 | `scd validate-config --config f` | Validate. Prints `{"configPath": "<abs>", "valid": true}`. Warnings go to stderr as `warning: <path>: <text>`, exit code 0. |
 | `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
-| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
+| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`; orphans are checked first, so an unreachable Xray fails the sync even when no manifest changed. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
-| `scd generate --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one subscription without touching Xray. |
+| `scd generate --source-id <id> [--type vless] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. |
 | `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input`, `fetchHeaders` and output ids redacted unless `--include-secrets`; an output id is the secret part of its public URL, so the `refresh` report and logs name outputs by `name` instead). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
 
@@ -111,18 +111,24 @@ Complete example: [`docker/scd/config.example.yml`](docker/scd/config.example.ym
 ```yaml
 subscriptions:
   - id: main
-    input: https://panel.example.com/sub/<token>   # file path, http(s) URL or "-" (stdin)
     enabled: true
-    format: auto                 # auto | plain | base64
-    fetchTimeoutMs: 5000
-    allowInsecure: deny          # deny | allow (links with allowInsecure=1)
-    # fetchUserAgent: scd/1.0    # default scd/<version>; read the warning below
-    # fetchHeaders:
-    #   x-hwid: "${SCD_HWID}"    # values are secrets
-    filters:
-      countryAllowlist: [DE, NL]
-      labelIncludeRegex: '/,\s*Extra\s*$/i'
-      labelExcludeRegex: '/WhiteList/i'
+    sources:                     # each source is loaded, filtered and applied on its own
+      - id: vless                # tag prefix: vless-…, in-vless-…, route-vless-…
+        type: vless
+        input: https://panel.example.com/sub/<token>   # file path, http(s) URL or "-" (stdin)
+        enabled: true
+        format: auto             # auto | plain | base64
+        fetchTimeoutMs: 5000
+        allowInsecure: deny      # deny | allow (links with allowInsecure=1)
+        # fetchUserAgent: scd/1.0  # default scd/<version>; read the warning below
+        # fetchHeaders:
+        #   x-hwid: "${SCD_HWID}"  # values are secrets
+        maxInputBytes: 67108864  # 1 KiB..64 MiB
+        portRange: {start: 20000, end: 20099}
+        filters:
+          countryAllowlist: [DE, NL]
+          labelIncludeRegex: '/,\s*Extra\s*$/i'
+          labelExcludeRegex: '/WhiteList/i'
     target:
       address: 127.0.0.1:8080    # Xray gRPC API
       timeoutMs: 5000
@@ -133,7 +139,6 @@ subscriptions:
       observatorySubjectSelectorPrefix: x-observe-
       inboundSocks:
         listen: 127.0.0.1
-        portRange: {start: 20000, end: 20099}
       monitor:
         enabled: true
         schedule: "*/2 * * * *"
@@ -173,20 +178,25 @@ statusServer:
 
 | Key | Meaning | Default |
 |---|---|---|
-| `subscriptions[]` | Subscription sources. At least one must be enabled. Every `target.address` must be unique. | — |
-| `.id` | Source id used in logs, reports and the dashboard. | required |
-| `.input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. | required |
-| `.enabled` / `.format` / `.fetchTimeoutMs` | On/off; decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). | `true` / `auto` / `5000` |
-| `.allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
-| `.fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
-| `.filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. | no filter |
-| `.filters.labelIncludeRegex`, `.filters.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
+| `subscriptions[]` | Subscriptions: a list of sources and one Xray target. At least one must be enabled. `target.address` is unique, so a subscription is one Xray; a source `id` is unique within its subscription. An enabled subscription without an enabled source gets a warning: sync removes every non-fixed resource of its target. | — |
+| `.id` / `.enabled` | Subscription id used in logs (`subscriptionId`), reports and the dashboard; on/off. | required / `true` |
+| `.sources[]` | At least one source. Each is loaded, filtered and applied separately; its tunnels join the same target. | required |
+| `.sources[].id` | Source id: `[a-z0-9-]`, 1..16 characters, no `-` at either end. It prefixes every generated tag and is `sourceId` in logs and reports. `target.address` is unique; a source `id` is unique within its subscription (one Xray), and there no `<id>-` may start another id or overlap `observatorySubjectSelectorPrefix`. | required |
+| `.sources[].type` | `vless`. | required |
+| `.sources[].input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. | required |
+| `.sources[].enabled` / `.format` / `.fetchTimeoutMs` | On/off (a disabled source's resources are removed as orphans); decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). | `true` / `auto` / `5000` |
+| `.sources[].allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
+| `.sources[].fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
+| `.sources[].maxInputBytes` | Size limit of the input (file, `http(s)` and stdin), `1024..67108864`. | 64 MiB |
+| `.sources[].portRange.start/end` | Inclusive port range (`1..65535`) of the source's SOCKS inbounds. Required when inbounds or routing are enabled. The ranges of one subscription must not overlap. | — |
+| `.sources[].filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. | no filter |
+| `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
-| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. | `[]` |
+| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. A fixed tag must not lie in a source namespace (`<id>-…`, `in-<id>-…`, `route-<id>-…`). | `[]` |
 | `.target.visionUdp443Override` | Rewrite REALITY `xtls-rprx-vision` to `xtls-rprx-vision-udp443` on this target. | `false` |
 | `.target.observatorySubjectSelectorPrefix` | Prefix added to every applied outbound tag, so that the static `observatory.subjectSelector` / `balancers[].selector` match them. | none |
-| `.target.inboundSocks.listen`, `.portRange.start/end` | IP address or `localhost` for the generated SOCKS inbounds, and an inclusive port range (`1..65535`). Required when inbounds or routing are enabled or the monitor is on. | — |
+| `.target.inboundSocks.listen` | IP address or `localhost` for the generated SOCKS inbounds; the ports come from `sources[].portRange`. Required when inbounds or routing are enabled or the monitor is on. | — |
 | `.target.monitor` | Per-tunnel HTTP check through each generated SOCKS inbound: `enabled`, `schedule`, `maxParallel`, `retry.{attempts,delayMs}`, `request.{url,method GET\|HEAD\|POST,expectedStatus,timeoutMs}`. Requires all three resource kinds. | off; `10`; `1`/`250`; `GET`, `5000` |
 | `.target.balancerMonitor` | Observe-only check of the Xray balancer through an external SOCKS5: `enabled`, `schedule`, `socks5.{host,port}`, `request`, `retry`, `remotePing.{enabled,url,timeoutMs,viaSocks}`. | off |
 | `.target.balancerSelection` | Dashboard view of the outbound the Xray balancer selects, see [Balancer selection](#balancer-selection). | `{enabled: false, observatory: true}` |
@@ -200,32 +210,51 @@ statusServer:
 Values can reference environment variables with `${NAME}`. Only values are
 expanded, not keys or comments, and an undefined variable is an error. Unknown
 keys are errors in every object, so a typo such as `statusServer: {enable: true}`
-is reported instead of silently ignored.
+is reported instead of silently ignored. The subscription form without
+`sources` is gone: `input`, `format`, `filters`, `fetchTimeoutMs`,
+`fetchUserAgent`, `fetchHeaders` and `allowInsecure` directly in a
+subscription, and `target.inboundSocks.portRange`, are unknown keys.
 Validation errors list every problem with its field path, for example:
 `subscriptions.0.target.inboundSocks.listen: must be an IP address or "localhost" (Xray cannot listen on a domain)`.
 
 ### Sync
 
-- scd owns every non-fixed outbound, inbound and routing rule on a target.
-  Apply order is outbound → inbound → routing. Each kind is fully replaced.
-  Fixed resources are kept. If an add fails, the outbound kind is rolled back
-  best-effort. Resource hashes are stored only when all kinds succeed.
-- When the manifest hash is unchanged, sync still lists the target's
-  outbounds, inbounds and rules (read-only). If a managed resource is missing,
-  for example after an Xray restart, it logs warning `xray_state_drift` with
-  per-kind counts and applies again. A repaired outbound (without the
-  observatory prefix) is not a loss.
+- Every source owns four tag namespaces on its target:
+  `<observatorySubjectSelectorPrefix><id>-…` and `<id>-…` (outbounds, in and
+  out of the balancer), `in-<id>-…` (SOCKS inbounds) and `route-<id>-…`
+  (routing rules). Tags are `<id>-<cc>-<city>-<profile>-<sha8>`; a source with
+  `id: vless` keeps the tags of earlier scd versions.
+- Every sync first removes **orphans** on each target: non-fixed resources
+  outside the namespace of every enabled source (tags of a removed or
+  disabled source, tags from before a source id change), in the order
+  routing rules → inbounds → outbounds, for the enabled resource kinds.
+  Routing rules without a `ruleTag` are never touched. If an orphan cannot be
+  removed (or Xray cannot be reached), scd logs `orphan_remove_failed` and
+  applies nothing to that target on this sync; removed orphans are logged as
+  `orphans_removed`. Because of this check, `scd sync` exits with an error
+  when Xray is unreachable, even if no manifest changed.
+- Then each enabled source is applied on its own, in id order: outbound →
+  inbound → routing. In each kind scd removes only that source's resources,
+  then adds the new ones. Fixed resources and other sources' resources are
+  never touched. If an add fails, the source's outbounds are rolled back
+  best-effort. A source's hashes are stored only when all its kinds succeed.
+- When a source's manifest hash is unchanged, sync still lists the target's
+  outbounds, inbounds and rules (read-only). If a resource of that source is
+  missing, for example after an Xray restart, it logs warning
+  `xray_state_drift` with per-kind counts and applies the source again. A
+  repaired outbound (without the observatory prefix) is not a loss.
 - Topology: one outbound per filtered entry. With inbounds and routing
   enabled, each outbound also gets one SOCKS inbound (`in-…`) and one routing
-  rule (`route-…`). Ports are allocated sequentially from `portRange`. If the
-  range is too small, only that target fails, with a message naming the
-  capacity.
-- A target whose manifest did not change during this process lifetime is
-  skipped with no Xray calls. This state is memory-only, so the first sync
-  after a restart always talks to Xray.
+  rule (`route-…`). Ports are allocated sequentially from the source's
+  `portRange` in tag order. If the range is too small, the first entries in
+  tag order get the ports and the rest are skipped with reason code
+  `port_range_exhausted` (in the sync report, plus warning
+  `manifest_entry_warning` per line); the source itself is applied.
+- Hashes are memory-only, so the first sync after a restart always applies
+  every source.
 - Empty input, or input with no parsed lines, fails closed for that source:
-  its target is marked failed and gets no API calls. Failures stay local to
-  one target.
+  it is marked failed, its resources in Xray stay as they are and it gets no
+  mutating API calls. A failed source does not touch the other sources.
 - Filters run once per source after parsing, in this order: `countryAllowlist`,
   `labelIncludeRegex`, `labelExcludeRegex`. The report counts `filtered`
   separately from `skipped` (parse/validation).
@@ -274,12 +303,19 @@ Validation errors list every problem with its field path, for example:
 | `/api/status` | `{tunnels}` |
 | `/api/instance-status` | Local snapshot `{version: 1, instanceId, capturedAt, subscriptions, tunnels, …}`, which remote collectors poll. |
 | `/api/instances` | Local snapshot plus the last successful snapshot of each remote instance (`lastError` on failure). |
-| `/api/runtime-state?subscriptionId=…&targetAddress=…` | Diagnostic view from the loaded config and live Xray API data. |
+| `/api/runtime-state?subscriptionId=…&targetAddress=…` | Diagnostic view from the loaded config and live Xray API data. `expected` is the union of the enabled sources; with several sources `expected.sources[]` gives `{sourceId, source, error?}` per source. |
 
 Routing looks only at the path, so `/api/status?x=1` returns JSON. The JSON
 schemas are a contract and grow only by adding fields; `version` stays `1`. A
 panic in a handler returns 500 and logs `http_handler_panic`. The dashboard is
 read-only and has no links to the JSON endpoints.
+
+A target whose subscription has several sources, or a source with a warning,
+gets `targets[].sources[]` = `{sourceId, type, enabled, warnings?[]{code, message}}`
+in source id order, and its tunnels get `sourceId`. The dashboard then shows a
+Sources card with the warnings (for example `port_range_exhausted`) and the
+source next to each tunnel endpoint. A subscription with one source and no
+warning has neither key, as before.
 
 `/api/runtime-state` hides secrets unless `includeSecrets: true`. Hidden values
 include subscription and monitor/push URLs (shown as `<scheme>://<host>/<redacted>`),
@@ -291,7 +327,7 @@ unredacted.
 ## Label filters
 
 Filters use Go `regexp` (RE2: linear time, no lookaround). They apply the same
-way in scd (`subscriptions[].filters`) and sfc (`outputs[]`):
+way in scd (`subscriptions[].sources[].filters`) and sfc (`outputs[]`):
 
 - `labelIncludeRegex` is a string or a list. A label is kept only if it
   matches **all** of them.
@@ -395,7 +431,7 @@ URL-decoded):
 
 ## Fetching subscriptions
 
-`subscriptions[].fetchUserAgent` (scd and sfc) sets the `User-Agent` for
+`fetchUserAgent` (scd `subscriptions[].sources[]`, sfc `subscriptions[]`) sets the `User-Agent` for
 downloads from `http(s)` URLs. The default is `scd/<version>`.
 
 > **Warning:** some panels choose the response format by User-Agent. With
@@ -405,7 +441,7 @@ downloads from `http(s)` URLs. The default is `scd/<version>`.
 > city and the tag. `clash*`, `mihomo`, `stash` and `sfa…`/`singbox` get
 > YAML or JSON instead of share links, and the source then yields no entries.
 
-`subscriptions[].fetchHeaders` (scd and sfc) adds request headers. An example
+`fetchHeaders` (scd `subscriptions[].sources[]`, sfc `subscriptions[]`) adds request headers. An example
 is `x-hwid` for a Remnawave HWID device limit. `User-Agent` (use
 `fetchUserAgent`), `Host`, `Content-Length`, `Transfer-Encoding` and
 `Connection` are not allowed. **Values are secrets**: `print-config` (unless
@@ -563,7 +599,8 @@ as is). The same parser validates configs and drives the scheduler.
   values as JSON strings.
 - Levels: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`.
 - Event names are stable, for example scd `config_loaded`, `sync_started`,
-  `subscription_fetched`, `manifest_built`, `apply_finished`, `daemon_tick`,
+  `subscription_fetched`, `orphans_removed`, `orphan_remove_failed`,
+  `manifest_built`, `apply_finished`, `daemon_tick`,
   `tunnel_repaired`, `tunnel_rejoined_balancer`, `sync_failed`, and sfc
   `refresh_tick`, `subscription_refreshed`.
 
@@ -582,11 +619,6 @@ Of Xray v26.10.21, documented rather than worked around in code:
 
 Of scd:
 
-- A static routing rule **without** `ruleTag` cannot be listed in
-  `fixedRouting`, so scd tries `RemoveRule("")` on it. Xray rejects that with
-  `app/router: empty tag name!` and routing apply for that target fails. This
-  behaviour is kept on purpose. Give every static rule a `ruleTag` and list it
-  in `fixedRouting`.
 - Ownership, hash and monitor state is memory-only. Overlap protection does
   not coordinate separate processes.
 
@@ -596,6 +628,16 @@ Of scd:
   `ghcr.io/a1ekseev/gtl` images are no longer published; their last tags are
   the old version. Use `ghcr.io/a1ekseev/scd` with the `command:` values from
   [Docker](#docker).
+- Subscriptions now have `sources` (breaking, no compatibility layer): move
+  `input`, `format`, `fetchTimeoutMs`, `fetchUserAgent`, `fetchHeaders`,
+  `allowInsecure` and `filters` into `sources[0]` with `id: vless` and
+  `type: vless`, and `target.inboundSocks.portRange` into
+  `sources[0].portRange`. With `id: vless` the tags and ports stay the same;
+  with another id the old resources are removed as orphans by the first sync.
+  The source input is now limited to 64 MiB for files and stdin too
+  (`maxInputBytes`). `scd generate` needs `--source-id`. In logs and sync
+  reports `sourceId` is now the source id (the subscription id stays in
+  `subscriptionId`).
 - Config changes: label filters use RE2 with `labelExcludeRegex` (rewrite
   lookahead filters). New keys are `allowInsecure` (default `deny`),
   `fetchUserAgent` (default UA is now `scd/<version>`), `fetchHeaders` and
@@ -605,7 +647,8 @@ Of scd:
   Manifest `jsonOutbound` now uses the Xray v26.10.21 form, so hashes change.
   Tags of the old profiles stay the same.
 - Tunnel SOCKS ports may be reassigned. They are internal to scd. Make sure
-  `portRange` is big enough, otherwise that target fails with a clear message.
+  `portRange` is big enough, otherwise the entries beyond it are skipped
+  (`port_range_exhausted`).
 - Cron: see [Cron schedules](#cron-schedules). The formats that changed
   compared with the previous parser are `@minutely`, dow `7`, `L`/`#`/`H`, and
   an empty sfc schedule.
@@ -630,6 +673,11 @@ SCD_XRAY_BIN=/path/to/xray go test -tags xraylive -count=1 ./internal/scd/livete
 # Dashboard visual regression (headless Chromium)
 SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/...
 ```
+
+Dashboard blocks without a reference of the previous implementation are
+compared with local screenshots in `internal/scd/status/testdata/visual/`
+(gitignored, never committed); add `-update` to the visual test command to
+create them. A test without its screenshot is skipped.
 
 Without the environment variable, the tagged tests skip. Reference outputs of
 the previous implementation are in [`testdata/reference/`](testdata/reference/README.md).

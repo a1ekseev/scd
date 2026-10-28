@@ -80,6 +80,18 @@
         {{- end}}
       </div>
     </div>
+  </article>{{end}}{{with sourcesCard .}}
+  <article class="balancer-card state-{{.Class}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Sources</div>
+      <div class="node-title">{{.Title}}</div>
+      <div class="node-metrics">
+        {{- range .Metrics}}
+        {{template "metric" .}}
+        {{- end}}
+      </div>
+    </div>
   </article>{{end}}
   <div class="nodes-grid">
     {{range $i, $tn := tunnelCards .}}{{if $i}}
@@ -91,7 +103,7 @@
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
     <div class="node-title">{{with .Badge}}<span class="node-badge">{{.}}</span>{{end}}{{.DisplayName}}</div>
-    <div class="node-meta">{{orDash .CountryISO2}} · {{.Endpoint}}</div>
+    <div class="node-meta">{{orDash .CountryISO2}} · {{.Endpoint}}{{with .SourceID}} · {{.}}{{end}}</div>
     <div class="node-metrics">
       {{template "metric" (metric "State" .State)}}
       {{template "metric" (metric "Last Check" (formatLastCheck .LastLatencyMs .LastError))}}

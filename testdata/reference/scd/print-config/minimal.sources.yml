@@ -1,0 +1,11 @@
+subscriptions:
+  - id: s1
+    sources:
+      - id: vless
+        type: vless
+        input: ./sub.txt
+    target:
+      address: 127.0.0.1:8080
+runtime: {}
+logging: {}
+resources: {}

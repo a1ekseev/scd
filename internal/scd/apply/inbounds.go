@@ -10,7 +10,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// Inbounds replaces every non-fixed inbound of the target with the SOCKS
+// Inbounds replaces the inbounds that owns reports with the SOCKS
 // inbounds of tunnels (02 §2.3, D2):
 //
 //  1. a tunnel inbound tag listed in fixed fails the report without any RPC;

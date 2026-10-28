@@ -11,7 +11,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// Outbounds replaces every non-fixed outbound of the target with entries
+// Outbounds replaces the outbounds that owns reports with entries
 // (02 §2.2, D2), in the order given (the applicator sorts them):
 //
 //  1. an entry tag listed in fixed fails the report without any RPC;

@@ -30,7 +30,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 
 | Файл | Назначение |
 | --- | --- |
-| `scd/config.example.yml` | `scd` в режиме `daemon`, цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
+| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с одним источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go) |
@@ -42,8 +42,15 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 В `scd/config.example.yml` `fixedOutbounds` / `fixedInbounds` / `fixedRouting`
 перечисляют статические теги из `xray/config/*.json` (`direct`, `blocked`,
 `socks-proxy`, `wg-proxy`, `api`, ruleTag `direct` и `x-balancer`), чтобы sync
-их не удалял. `observatorySubjectSelectorPrefix: x-observe-` совпадает с
+их не удалял: каждый sync сначала удаляет «сирот» — не fixed-ресурсы вне
+пространств имён включённых источников (`x-observe-vless-…`, `vless-…`,
+`in-vless-…`, `route-vless-…`); правила без `ruleTag` не трогаются.
+`observatorySubjectSelectorPrefix: x-observe-` совпадает с
 селектором балансировщика и observatory. Мониторинг выключен — хосты фейковые.
+Подписка задаётся только списком `sources`: старые ключи подписки (`input`,
+`format`, `filters`, `fetch*`, `allowInsecure`) и `target.inboundSocks.portRange`
+`validate-config` отклоняет как неизвестные; `config.real-shape.yml` —
+старая форма, `config.real-shape.go.yml` — текущая.
 
 `balancerSelection` (карточка «Xray selection» на дашборде) опрашивает Xray
 read-only RPC `RoutingService.GetBalancerInfo` и

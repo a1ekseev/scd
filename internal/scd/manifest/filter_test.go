@@ -23,12 +23,12 @@ func compile(t *testing.T, exprs ...string) ([]*regexp.Regexp, []string) {
 	return res, exprs
 }
 
-func filters(t *testing.T, allow []string, include, exclude []string) *config.SubscriptionFiltersConfig {
+func filters(t *testing.T, allow []string, include, exclude []string) *config.SourceFiltersConfig {
 	t.Helper()
 	var f labelfilter.Filter
 	f.Include, f.IncludeSrc = compile(t, include...)
 	f.Exclude, f.ExcludeSrc = compile(t, exclude...)
-	return &config.SubscriptionFiltersConfig{CountryAllowlist: allow, Label: f}
+	return &config.SourceFiltersConfig{CountryAllowlist: allow, Label: f}
 }
 
 func labels(m Manifest) []string {
@@ -78,7 +78,7 @@ func TestFilterDropsEntriesWithoutCountry(t *testing.T) {
 
 func TestEmptyAllowlistDisablesFilter(t *testing.T) {
 	m := links(t, "no flag", "🇩🇪 Berlin")
-	for _, f := range []*config.SubscriptionFiltersConfig{nil, {}, filters(t, []string{}, nil, nil)} {
+	for _, f := range []*config.SourceFiltersConfig{nil, {}, filters(t, []string{}, nil, nil)} {
 		if got := ApplyFilters(m, f); !reflect.DeepEqual(got, m) {
 			t.Fatalf("filters %+v changed the manifest: %+v", f, got.Summary)
 		}

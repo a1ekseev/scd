@@ -157,7 +157,7 @@ func TestProfileMatrix(t *testing.T) {
 			if strings.EqualFold(tc.security, "reality") {
 				q = append(q, "pbk="+testPbk) // the only required REALITY parameter (4.4)
 			}
-			n, w := mustEntry(t, strings.Join(q, "&"), Policy{})
+			n, w := mustEntry(t, strings.Join(q, "&"), Policy{TagPrefix: "vless"})
 			if n.Profile != tc.profile || n.Network != tc.network || n.Flow != tc.wantFlow {
 				t.Fatalf("got profile %s network %s flow %q, want %s %s %q",
 					n.Profile, n.Network, n.Flow, tc.profile, tc.network, tc.wantFlow)
@@ -212,22 +212,22 @@ func TestUnsupportedCombos(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mustSkip(t, tc.query, Policy{AllowInsecure: true}, vless.CodeUnsupportedCombo, wantCombo, tc.details...)
+			mustSkip(t, tc.query, Policy{AllowInsecure: true, TagPrefix: "vless"}, vless.CodeUnsupportedCombo, wantCombo, tc.details...)
 		})
 	}
 }
 
 func TestEncryptionValues(t *testing.T) {
-	mustSkip(t, "type=tcp&security=tls&encryption=None", Policy{}, vless.CodeUnsupportedValue, wantEncryption, "encryption=None")
-	mustSkip(t, "type=tcp&security=tls&encryption=aes-128-gcm", Policy{}, vless.CodeUnsupportedValue, wantEncryption, "encryption=aes-128-gcm")
+	mustSkip(t, "type=tcp&security=tls&encryption=None", Policy{TagPrefix: "vless"}, vless.CodeUnsupportedValue, wantEncryption, "encryption=None")
+	mustSkip(t, "type=tcp&security=tls&encryption=aes-128-gcm", Policy{TagPrefix: "vless"}, vless.CodeUnsupportedValue, wantEncryption, "encryption=aes-128-gcm")
 	for _, enc := range []string{"", "encryption=", "encryption=none"} {
-		n, _ := mustEntry(t, "type=tcp&security=tls&"+enc, Policy{})
+		n, _ := mustEntry(t, "type=tcp&security=tls&"+enc, Policy{TagPrefix: "vless"})
 		if n.Encryption != "none" {
 			t.Fatalf("%q: encryption %q", enc, n.Encryption)
 		}
 	}
 	m := mlkemEnc(t)
-	n, _ := mustEntry(t, "type=tcp&security=none&encryption="+m, Policy{})
+	n, _ := mustEntry(t, "type=tcp&security=none&encryption="+m, Policy{TagPrefix: "vless"})
 	if n.Profile != "tcp-mlkem" || n.Encryption != m {
 		t.Fatalf("got %s %q", n.Profile, n.Encryption)
 	}
@@ -283,7 +283,7 @@ func TestMLKEMInvalidKeySkipped(t *testing.T) {
 			if err := validateMLKEM(enc); err == nil {
 				t.Fatal("validateMLKEM accepted an invalid key")
 			}
-			mustSkip(t, "type=tcp&security=none&encryption="+enc, Policy{},
+			mustSkip(t, "type=tcp&security=none&encryption="+enc, Policy{TagPrefix: "vless"},
 				vless.CodeUnsupportedValue, wantKey, "encryption="+enc[:40]+"…")
 		})
 	}
@@ -296,7 +296,7 @@ func TestMLKEMValidPaddingAccepted(t *testing.T) {
 		if err := validateMLKEM(enc); err != nil {
 			t.Fatalf("%s: %v", padding, err)
 		}
-		n, w := mustEntry(t, "type=tcp&encryption="+enc, Policy{})
+		n, w := mustEntry(t, "type=tcp&encryption="+enc, Policy{TagPrefix: "vless"})
 		if n.Encryption != enc || w != nil {
 			t.Fatalf("got %q %v", n.Encryption, w)
 		}
@@ -330,39 +330,39 @@ func TestMLKEMNative0RTTRealShapeKey(t *testing.T) {
 
 func TestFlow(t *testing.T) {
 	t.Run("VisionClearedOnWSTLS", func(t *testing.T) {
-		n, w := mustEntry(t, "type=ws&security=tls&flow=xtls-rprx-vision&path=/ws", Policy{})
+		n, w := mustEntry(t, "type=ws&security=tls&flow=xtls-rprx-vision&path=/ws", Policy{TagPrefix: "vless"})
 		want := []Warning{{"flow_cleared", "flow xtls-rprx-vision is not supported on ws+tls; flow cleared."}}
 		if n.Flow != "" || n.Profile != "ws-tls" || !slices.Equal(w, want) {
 			t.Fatalf("got %q %s %v", n.Flow, n.Profile, w)
 		}
 	})
 	t.Run("VisionClearedOnXHTTPReality", func(t *testing.T) {
-		n, w := mustEntry(t, "type=xhttp&security=reality&flow=xtls-rprx-vision-udp443&pbk="+testPbk, Policy{})
+		n, w := mustEntry(t, "type=xhttp&security=reality&flow=xtls-rprx-vision-udp443&pbk="+testPbk, Policy{TagPrefix: "vless"})
 		want := []Warning{{"flow_cleared", "flow xtls-rprx-vision-udp443 is not supported on xhttp+reality; flow cleared."}}
 		if n.Flow != "" || n.Profile != "xhttp-reality" || !slices.Equal(w, want) {
 			t.Fatalf("got %q %s %v", n.Flow, n.Profile, w)
 		}
 	})
 	t.Run("VisionKeptWithMLKEMOnWS", func(t *testing.T) {
-		n, w := mustEntry(t, "type=ws&security=none&flow=xtls-rprx-vision&encryption="+mlkemEnc(t), Policy{})
+		n, w := mustEntry(t, "type=ws&security=none&flow=xtls-rprx-vision&encryption="+mlkemEnc(t), Policy{TagPrefix: "vless"})
 		if n.Flow != "xtls-rprx-vision" || n.Profile != "ws-mlkem" || w != nil {
 			t.Fatalf("got %q %s %v", n.Flow, n.Profile, w)
 		}
 	})
 	t.Run("VisionUdp443Kept", func(t *testing.T) {
-		n, w := mustEntry(t, "type=tcp&security=reality&flow=xtls-rprx-vision-udp443&pbk="+testPbk, Policy{})
+		n, w := mustEntry(t, "type=tcp&security=reality&flow=xtls-rprx-vision-udp443&pbk="+testPbk, Policy{TagPrefix: "vless"})
 		if n.Flow != "xtls-rprx-vision-udp443" || n.Profile != "tcp-reality-vision" || w != nil {
 			t.Fatalf("got %q %s %v", n.Flow, n.Profile, w)
 		}
 	})
 	t.Run("Bogus", func(t *testing.T) {
-		mustSkip(t, "type=tcp&security=tls&flow=xtls-rprx-bogus", Policy{},
+		mustSkip(t, "type=tcp&security=tls&flow=xtls-rprx-bogus", Policy{TagPrefix: "vless"},
 			vless.CodeUnsupportedValue, wantFlow, "flow=xtls-rprx-bogus")
-		mustSkip(t, "type=ws&security=tls&flow=XTLS-RPRX-VISION", Policy{},
+		mustSkip(t, "type=ws&security=tls&flow=XTLS-RPRX-VISION", Policy{TagPrefix: "vless"},
 			vless.CodeUnsupportedValue, wantFlow, "flow=XTLS-RPRX-VISION")
 	})
 	t.Run("EmptyFlow", func(t *testing.T) {
-		n, w := mustEntry(t, "type=ws&security=tls&flow=", Policy{})
+		n, w := mustEntry(t, "type=ws&security=tls&flow=", Policy{TagPrefix: "vless"})
 		if n.Flow != "" || w != nil {
 			t.Fatalf("got %q %v", n.Flow, w)
 		}
@@ -374,16 +374,16 @@ func TestUserID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _, skip := Normalize(parseLine(t, vlessURL("my-user", "type=tcp&security=tls"), 1), Policy{})
+	n, _, skip := Normalize(parseLine(t, vlessURL("my-user", "type=tcp&security=tls"), 1), Policy{TagPrefix: "vless"})
 	if skip != nil || n.UUID != want.String() || !strings.HasPrefix(n.UUID, "db93355e-") {
 		t.Fatalf("my-user: got %q (%v), want %s", n.UUID, skip, want.String())
 	}
-	n, _, skip = Normalize(parseLine(t, vlessURL(strings.ToUpper(testID), "type=tcp&security=tls"), 1), Policy{})
+	n, _, skip = Normalize(parseLine(t, vlessURL(strings.ToUpper(testID), "type=tcp&security=tls"), 1), Policy{TagPrefix: "vless"})
 	if skip != nil || n.UUID != testID {
 		t.Fatalf("uppercase: got %q (%v)", n.UUID, skip)
 	}
 	for _, id := range []string{"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", strings.Repeat("a", 31), strings.Repeat("a", 37)} {
-		_, _, skip = Normalize(parseLine(t, vlessURL(id, "type=tcp&security=tls"), 1), Policy{})
+		_, _, skip = Normalize(parseLine(t, vlessURL(id, "type=tcp&security=tls"), 1), Policy{TagPrefix: "vless"})
 		if skip == nil || skip.Code != vless.CodeUnsupportedValue || skip.Reason != wantID {
 			t.Fatalf("%s: got %+v", id, skip)
 		}
@@ -393,37 +393,37 @@ func TestUserID(t *testing.T) {
 func TestAllowInsecure(t *testing.T) {
 	const pcs = "2D:AA:13:89:E3:E6:0F:82:11:59:DE:ED:A7:5E:55:BD:ED:FA:90:B7:31:A4:02:82:36:98:36:A7:2A:5B:4B:A1"
 	for _, v := range []string{"", "yes", "2"} {
-		for _, p := range []Policy{{}, {AllowInsecure: true}} {
+		for _, p := range []Policy{{TagPrefix: "vless"}, {AllowInsecure: true, TagPrefix: "vless"}} {
 			mustSkip(t, "type=tcp&security=tls&allowInsecure="+v, p,
 				vless.CodeUnsupportedValue, wantInsecure, "allowInsecure="+v)
 		}
 	}
-	mustSkip(t, "type=tcp&security=tls&allowInsecure=1", Policy{}, vless.CodeUnsupportedValue, wantInsecureNo)
-	mustSkip(t, "type=ws&security=tls&allowInsecure=TRUE&pcs=", Policy{}, vless.CodeUnsupportedValue, wantInsecureNo)
+	mustSkip(t, "type=tcp&security=tls&allowInsecure=1", Policy{TagPrefix: "vless"}, vless.CodeUnsupportedValue, wantInsecureNo)
+	mustSkip(t, "type=ws&security=tls&allowInsecure=TRUE&pcs=", Policy{TagPrefix: "vless"}, vless.CodeUnsupportedValue, wantInsecureNo)
 
-	n, w := mustEntry(t, "type=tcp&security=tls&allowInsecure=1", Policy{AllowInsecure: true})
+	n, w := mustEntry(t, "type=tcp&security=tls&allowInsecure=1", Policy{AllowInsecure: true, TagPrefix: "vless"})
 	want := []Warning{{"allow_insecure_ignored", "allowInsecure is not supported by Xray v26.10.21; the outbound will verify certificates (use pcs/vcn)."}}
 	if !slices.Equal(w, want) || n.AllowInsecure == nil || !*n.AllowInsecure {
 		t.Fatalf("allow: got %v %v", w, n.AllowInsecure)
 	}
 	for _, q := range []string{"allowInsecure=1&vcn=a.example.test", "allowInsecure=True&pcs=" + pcs, "allowInsecure=0", "allowInsecure=FALSE"} {
-		_, w := mustEntry(t, "type=tcp&security=tls&"+q, Policy{})
+		_, w := mustEntry(t, "type=tcp&security=tls&"+q, Policy{TagPrefix: "vless"})
 		if w != nil {
 			t.Fatalf("%s: warnings %v", q, w)
 		}
 	}
-	n, _ = mustEntry(t, "type=tcp&security=tls&allowInsecure=0", Policy{})
+	n, _ = mustEntry(t, "type=tcp&security=tls&allowInsecure=0", Policy{TagPrefix: "vless"})
 	if n.AllowInsecure == nil || *n.AllowInsecure {
 		t.Fatalf("allowInsecure=0: got %v", n.AllowInsecure)
 	}
-	n, _ = mustEntry(t, "type=tcp&security=tls", Policy{})
+	n, _ = mustEntry(t, "type=tcp&security=tls", Policy{TagPrefix: "vless"})
 	if n.AllowInsecure != nil {
 		t.Fatal("absent allowInsecure must stay nil")
 	}
 	// allowInsecure is a TLS parameter: with reality or ML-KEM over none it
 	// does not apply and is dropped silently (O16).
 	for _, q := range []string{"type=tcp&security=reality&pbk=" + testPbk + "&allowInsecure=1", "type=tcp&encryption=" + x25519Enc(t) + "&allowInsecure=yes"} {
-		n, w := mustEntry(t, q, Policy{})
+		n, w := mustEntry(t, q, Policy{TagPrefix: "vless"})
 		if w != nil || n.AllowInsecure != nil {
 			t.Fatalf("%s: got %v %v", q, w, n.AllowInsecure)
 		}
@@ -435,7 +435,7 @@ func TestIrrelevantParamsIgnored(t *testing.T) {
 	q := "type=tcp&security=reality&sni=www.example.test&fp=chrome&pbk=" + testPbk +
 		"&sid=ab&alpn=h2&ech=AAAA&pcs=" + pcs + "&cs=TLS_AES_128_GCM_SHA256&support-x25519mlkem768=true" +
 		"&serviceName=svc&seed=s&x_padding_bytes=100-1000&host=h.example.test&path=%2F"
-	n, w := mustEntry(t, q, Policy{})
+	n, w := mustEntry(t, q, Policy{TagPrefix: "vless"})
 	if w != nil {
 		t.Fatalf("warnings %v", w)
 	}
@@ -465,7 +465,7 @@ func TestIrrelevantParamsIgnored(t *testing.T) {
 		if skip != nil {
 			t.Fatalf("line %d: %+v", sl.Number, *skip)
 		}
-		n, w, skip := Normalize(l, Policy{})
+		n, w, skip := Normalize(l, Policy{TagPrefix: "vless"})
 		if skip != nil || w != nil || n.Path != "" || n.Profile != "tcp-tls" {
 			t.Fatalf("line %d: got %+v %v %v", sl.Number, skip, w, n.Path)
 		}
@@ -473,7 +473,7 @@ func TestIrrelevantParamsIgnored(t *testing.T) {
 }
 
 func TestUnknownParamWarning(t *testing.T) {
-	n, w := mustEntry(t, "type=tcp&foo=1&security=tls&bar=2&foo=3", Policy{})
+	n, w := mustEntry(t, "type=tcp&foo=1&security=tls&bar=2&foo=3", Policy{TagPrefix: "vless"})
 	want := []Warning{{"param_ignored", "Ignored unknown VLESS parameter(s): foo, bar."}}
 	if !slices.Equal(w, want) {
 		t.Fatalf("warnings %v, want %v", w, want)
@@ -486,7 +486,7 @@ func TestUnknownParamWarning(t *testing.T) {
 }
 
 func TestWarningOrder(t *testing.T) {
-	_, w := mustEntry(t, "type=ws&security=tls&flow=xtls-rprx-vision&allowInsecure=1&zz=1", Policy{AllowInsecure: true})
+	_, w := mustEntry(t, "type=ws&security=tls&flow=xtls-rprx-vision&allowInsecure=1&zz=1", Policy{AllowInsecure: true, TagPrefix: "vless"})
 	if got := warningCodes(w); !slices.Equal(got, []string{"flow_cleared", "allow_insecure_ignored", "param_ignored"}) {
 		t.Fatalf("got %v", got)
 	}
@@ -496,26 +496,26 @@ func TestCheckOrder(t *testing.T) {
 	// combo before encryption, encryption before id, id before flow, flow
 	// before allowInsecure.
 	l := parseLine(t, vlessURL("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "type=grpc&security=tls&encryption=None&flow=bogus&allowInsecure=x"), 1)
-	if _, _, s := Normalize(l, Policy{}); s == nil || s.Reason != wantCombo {
+	if _, _, s := Normalize(l, Policy{TagPrefix: "vless"}); s == nil || s.Reason != wantCombo {
 		t.Fatalf("got %+v", s)
 	}
 	l = parseLine(t, vlessURL("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "security=tls&encryption=None&flow=bogus&allowInsecure=x"), 1)
-	if _, _, s := Normalize(l, Policy{}); s == nil || s.Reason != wantEncryption {
+	if _, _, s := Normalize(l, Policy{TagPrefix: "vless"}); s == nil || s.Reason != wantEncryption {
 		t.Fatalf("got %+v", s)
 	}
 	l = parseLine(t, vlessURL("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "security=tls&flow=bogus&allowInsecure=x"), 1)
-	if _, _, s := Normalize(l, Policy{}); s == nil || s.Reason != wantID {
+	if _, _, s := Normalize(l, Policy{TagPrefix: "vless"}); s == nil || s.Reason != wantID {
 		t.Fatalf("got %+v", s)
 	}
 	l = parseLine(t, vlessURL(testID, "security=tls&flow=bogus&allowInsecure=x"), 1)
-	if _, _, s := Normalize(l, Policy{}); s == nil || s.Reason != wantFlow {
+	if _, _, s := Normalize(l, Policy{TagPrefix: "vless"}); s == nil || s.Reason != wantFlow {
 		t.Fatalf("got %+v", s)
 	}
 }
 
 func TestNormalizedFields(t *testing.T) {
 	raw := "vless://" + testID + "@h.example.test:8443?type=tcp&security=tls#🇩🇪 Berlin, Germany"
-	n, w, skip := Normalize(parseLine(t, raw, 7), Policy{})
+	n, w, skip := Normalize(parseLine(t, raw, 7), Policy{TagPrefix: "vless"})
 	if skip != nil || w != nil {
 		t.Fatalf("got %v %v", skip, w)
 	}
@@ -578,7 +578,7 @@ func TestD26Corpus(t *testing.T) {
 			t.Errorf("line %d: parser skipped: %+v", r.Line, *pskip)
 			continue
 		}
-		n, w, skip := Normalize(l, Policy{})
+		n, w, skip := Normalize(l, Policy{TagPrefix: "vless"})
 		switch {
 		case r.Expect == "entry" || r.Stage == "xray":
 			// xray-stage rows are rejected later by conf.Build/live Xray.
@@ -635,7 +635,7 @@ func TestNormalizeMatchesTSEntries(t *testing.T) {
 		if pskip != nil || strings.Contains(l.Label, "\t") {
 			continue // parser divergences, covered by TestBuildTagMatchesTSCorpus
 		}
-		n, _, skip := Normalize(l, Policy{AllowInsecure: true})
+		n, _, skip := Normalize(l, Policy{AllowInsecure: true, TagPrefix: "vless"})
 		if skip != nil {
 			t.Errorf("line %d: TS entry skipped: %+v", c.Line, *skip)
 			continue

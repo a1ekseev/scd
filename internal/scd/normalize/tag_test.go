@@ -207,9 +207,19 @@ func TestBuildTagPrefix(t *testing.T) {
 		t.Fatalf("got %s, vless %s", s, v)
 	}
 	l := parseLine(t, vlessURL(testID, "type=tcp&security=tls"), 1)
-	nv, _, _ := Normalize(l, Policy{})
+	nv, _, _ := Normalize(l, Policy{TagPrefix: "vless"})
 	ns, _, _ := Normalize(l, Policy{TagPrefix: "sub2"})
 	if !strings.HasPrefix(nv.Tag, "vless-") || ns.Tag != "sub2-"+strings.TrimPrefix(nv.Tag, "vless-") {
 		t.Fatalf("Normalize tags %s %s", nv.Tag, ns.Tag)
 	}
+}
+
+// A forgotten source id must not silently produce another source's tags.
+func TestNormalizeEmptyTagPrefixPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("no panic on an empty TagPrefix")
+		}
+	}()
+	Normalize(parseLine(t, vlessURL(testID, "type=tcp&security=tls"), 1), Policy{})
 }

@@ -1,6 +1,6 @@
 // Package state is the in-memory runtime state of scd (03 §1): per target
-// the saved manifest hashes, the tunnel topology with the monitor state of
-// every tunnel and the balancer monitor state, plus the sync overlap guard
+// and source the saved manifest hashes and the tunnel topology, the monitor
+// state of every tunnel and the balancer monitor state, plus the sync overlap guard
 // and the per-target mutation lock shared by sync apply, repair and rejoin
 // (03 §1.1).
 //
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/scd/apply"
+	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
@@ -144,6 +145,18 @@ type Tunnel struct {
 	Monitor TunnelMonitor
 }
 
+// Source is the state of one source of a target.
+type Source struct {
+	// Hashes are the manifest hashes of the source's last fully successful
+	// apply.
+	Hashes map[apply.Kind]string
+	// Topology is the source's topology of that apply.
+	Topology *topology.Topology
+	// Warnings are the source-level warnings of the last successful sync
+	// (port_range_exhausted); nil when there are none.
+	Warnings []normalize.Warning
+}
+
 // Target is the state of one subscription target.
 type Target struct {
 	// SyncSeen reports that a sync reached this target (03 §1: in TS the
@@ -151,13 +164,14 @@ type Target struct {
 	// balancer monitor waits for it; the balancer selection tick may create
 	// the target earlier (10 §6.3) without setting it.
 	SyncSeen bool
-	// Hashes are the manifest hashes of the last fully successful apply.
-	Hashes map[apply.Kind]string
-	// Generation is incremented on every topology replacement.
+	// Sources holds, by source id, every source with a fully successful
+	// apply.
+	Sources map[string]*Source
+	// Generation is incremented on every source topology replacement or
+	// drop.
 	Generation int
-	// Topology is nil until the first fully successful apply.
-	Topology *topology.Topology
-	// Tunnels are in topology order (the monitor relies on it).
+	// Tunnels are the tunnels of every source, ordered by source id, then
+	// in topology (tag) order (the monitor relies on it).
 	Tunnels []*Tunnel
 	// Balancer survives topology replacements.
 	Balancer BalancerMonitor
@@ -189,7 +203,7 @@ func Key(subscriptionID, targetAddress string) string {
 // newTarget is the initial state of a target (03 §1).
 func newTarget() *Target {
 	return &Target{
-		Hashes:   map[apply.Kind]string{},
+		Sources:  map[string]*Source{},
 		Balancer: BalancerMonitor{State: BalancerIdle, RemotePingState: RemotePingIdle},
 	}
 }
@@ -240,12 +254,14 @@ func (m *Memory) MarkSynced(key string) {
 	t.SyncSeen = true
 }
 
-// ReplaceTopology installs topo and hashes after a fully successful apply
-// (03 §2.3): SyncSeen is set, Generation++, Hashes become a copy of hashes, Tunnels are
-// rebuilt in topology order with idle monitors. The balancer monitor and
-// the balancer selection are kept. The target is created if it does not exist; the *Target stays the
+// ReplaceSourceTopology installs topo and hashes of source sourceID after
+// its fully successful apply (03 §2.3): SyncSeen is set, Generation++, the
+// source's Hashes become a copy of hashes and its tunnels are rebuilt in
+// topology order with idle monitors (Mapping.SourceID = sourceID). The tunnels of the other sources (with
+// their monitor state), the balancer monitor and the balancer selection are
+// kept. The target is created if it does not exist; the *Target stays the
 // same object.
-func (m *Memory) ReplaceTopology(key string, topo topology.Topology, hashes map[apply.Kind]string) {
+func (m *Memory) ReplaceSourceTopology(key, sourceID string, topo topology.Topology, hashes map[apply.Kind]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t, ok := m.targets[key]
@@ -254,17 +270,64 @@ func (m *Memory) ReplaceTopology(key string, topo topology.Topology, hashes map[
 		m.targets[key] = t
 	}
 	t.SyncSeen = true
-	t.Generation++
-	t.Hashes = maps.Clone(hashes)
-	if t.Hashes == nil {
-		t.Hashes = map[apply.Kind]string{}
+	src := &Source{Hashes: maps.Clone(hashes)}
+	if src.Hashes == nil {
+		src.Hashes = map[apply.Kind]string{}
 	}
 	topo.Tunnels = slices.Clone(topo.Tunnels)
-	t.Topology = &topo
-	t.Tunnels = make([]*Tunnel, 0, len(topo.Tunnels))
-	for _, tn := range topo.Tunnels {
-		t.Tunnels = append(t.Tunnels, &Tunnel{Mapping: tn, Monitor: TunnelMonitor{State: TunnelIdle}})
+	for i := range topo.Tunnels {
+		topo.Tunnels[i].SourceID = sourceID
 	}
+	src.Topology = &topo
+	t.Sources[sourceID] = src
+	fresh := make([]*Tunnel, 0, len(topo.Tunnels))
+	for _, tn := range topo.Tunnels {
+		fresh = append(fresh, &Tunnel{Mapping: tn, Monitor: TunnelMonitor{State: TunnelIdle}})
+	}
+	t.replaceTunnels(sourceID, fresh)
+}
+
+// DropSource forgets source sourceID of key (its resources are gone from
+// Xray): its hashes, topology and tunnels. Generation++ when it existed.
+func (m *Memory) DropSource(key, sourceID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.targets[key]
+	if !ok {
+		return
+	}
+	if _, ok := t.Sources[sourceID]; !ok {
+		return
+	}
+	delete(t.Sources, sourceID)
+	t.replaceTunnels(sourceID, nil)
+}
+
+// replaceTunnels replaces the tunnels of sourceID with fresh and keeps the
+// order by source id; Generation++.
+func (t *Target) replaceTunnels(sourceID string, fresh []*Tunnel) {
+	t.Generation++
+	out := make([]*Tunnel, 0, len(t.Tunnels)+len(fresh))
+	inserted := false
+	for _, tn := range t.Tunnels {
+		id := tn.Mapping.SourceID
+		if id == sourceID {
+			continue
+		}
+		if !inserted && id > sourceID {
+			out, inserted = append(out, fresh...), true
+		}
+		out = append(out, tn)
+	}
+	if !inserted {
+		out = append(out, fresh...)
+	}
+	t.Tunnels = out
+}
+
+// SourceIDs returns the ids of the sources in t, sorted.
+func (t *Target) SourceIDs() []string {
+	return slices.Sorted(maps.Keys(t.Sources))
 }
 
 // Keys returns the target keys, sorted.

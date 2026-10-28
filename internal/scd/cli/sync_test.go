@@ -81,10 +81,10 @@ func TestSyncCommandStopsOnSignal(t *testing.T) {
 	defer srv.Close()
 	body := `subscriptions:
   - id: s1
-    input: ` + srv.URL + `/sub
+    sources: [{id: vless, type: vless, input: ` + srv.URL + `/sub}]
     target: {address: 127.0.0.1:1}
   - id: s2
-    input: ` + srv.URL + `/sub2
+    sources: [{id: vless, type: vless, input: ` + srv.URL + `/sub2}]
     target: {address: 127.0.0.1:2}
 runtime: {}
 logging: {}
@@ -175,10 +175,10 @@ func TestSyncCommandStopsOnSignalBetweenTargets(t *testing.T) {
 	}()
 	body := `subscriptions:
   - id: s1
-    input: ` + sub + `
+    sources: [{id: vless, type: vless, input: ` + sub + `}]
     target: {address: "` + lnA.Addr().String() + `", timeoutMs: 1000}
   - id: s2
-    input: ` + sub + `
+    sources: [{id: vless, type: vless, input: ` + sub + `}]
     target: {address: "` + lnB.Addr().String() + `", timeoutMs: 1000}
 runtime: {}
 logging: {}

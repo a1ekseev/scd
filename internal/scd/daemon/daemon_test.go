@@ -96,13 +96,17 @@ func target(addr string) config.SubscriptionTargetConfig {
 		Address: addr, TimeoutMs: 5000,
 		FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
 		ObservatorySubjectSelectorPrefix: "x-observe-",
-		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1", PortRange: config.PortRange{Start: 20000, End: 20010}},
+		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1"},
 		BalancerSelection:                config.BalancerSelectionConfig{Observatory: true},
 	}
 }
 
 func sub(id, input string, t config.SubscriptionTargetConfig) config.SubscriptionConfig {
-	return config.SubscriptionConfig{ID: id, Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny", Target: t}
+	src := config.SourceConfig{
+		ID: "vless", Type: "vless", Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+		MaxInputBytes: 64 << 20, PortRange: &config.PortRange{Start: 20000, End: 20010},
+	}
+	return config.SubscriptionConfig{ID: id, Enabled: true, Sources: []config.SourceConfig{src}, Target: t}
 }
 
 func daemonConfig(subs ...config.SubscriptionConfig) config.Loaded {

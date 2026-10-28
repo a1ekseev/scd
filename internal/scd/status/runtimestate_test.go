@@ -73,7 +73,7 @@ func newRSEnv(t *testing.T, sub config.SubscriptionConfig, text string, opts con
 		if err := os.WriteFile(env.input, []byte(text+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		sub.Input = env.input
+		sub.Sources[0].Input = env.input
 		env.topo = buildTopology(t, sub, text)
 	}
 	env.fake, _ = startFake(t, fakeOpts...)
@@ -94,7 +94,7 @@ func newRSEnv(t *testing.T, sub config.SubscriptionConfig, text string, opts con
 }
 
 func newRSSub(input string) config.SubscriptionConfig {
-	return config.SubscriptionConfig{ID: "source-1", Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny", Target: testTarget()}
+	return config.SubscriptionConfig{ID: "source-1", Enabled: true, Sources: []config.SourceConfig{testSource(input)}, Target: testTarget()}
 }
 
 func (e *rsEnv) addOutbound(t *testing.T, tn topology.Tunnel, withoutPrefix bool) {
@@ -288,6 +288,7 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := decode(t, []byte(strings.ReplaceAll(string(refData), "<input>", env.input))).(map[string]any)
+			sourcesForm(t, want)
 
 			for _, k := range []string{"subscriptionId", "targetAddress", "capturedAt", "serviceState", "expected", "diff"} {
 				if !jsonEqual(t, got[k], want[k]) {
@@ -298,7 +299,6 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 			assertKeysSubset(t, "config", got["config"], want["config"])
 			jsonEqual(t, dig(got, "config", "resources"), dig(want, "config", "resources"))
 			for _, p := range [][]string{
-				{"config", "subscription", "input"},
 				{"config", "target", "monitor", "request", "url"},
 				{"config", "target", "balancerMonitor", "request", "url"},
 				{"config", "target", "balancerMonitor", "remotePing", "url"},
@@ -308,6 +308,12 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 				if !reflect.DeepEqual(dig(got, p...), dig(want, p...)) {
 					t.Errorf("%v: got %v want %v", p, dig(got, p...), dig(want, p...))
 				}
+			}
+			srcInput := func(v map[string]any) any {
+				return dig(v, "config", "subscription").(map[string]any)["sources"].([]any)[0].(map[string]any)["input"]
+			}
+			if srcInput(got) != srcInput(want) {
+				t.Errorf("input: got %v want %v", srcInput(got), srcInput(want))
 			}
 			// Go also redacts the copy of the target inside the subscription
 			// (TS printed it unredacted).
@@ -325,11 +331,39 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 	}
 }
 
+// sourceKeys are the TS subscription keys that moved to the source.
+var sourceKeys = []string{"input", "format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "filters"}
+
+// sourcesForm converts the config section of a TS runtime-state reference
+// to the sources form: the subscription's source keys and
+// target.inboundSocks.portRange (in the subscription's and in the
+// top-level target) move to one source {id: vless, type: vless} with the
+// Go defaults (allowInsecure deny, maxInputBytes 64 MiB).
+func sourcesForm(t *testing.T, want map[string]any) {
+	t.Helper()
+	cfg := want["config"].(map[string]any)
+	sub := cfg["subscription"].(map[string]any)
+	src := map[string]any{"id": "vless", "type": "vless", "enabled": true, "allowInsecure": "deny", "maxInputBytes": float64(64 << 20)}
+	for _, k := range sourceKeys {
+		if v, ok := sub[k]; ok {
+			src[k] = v
+			delete(sub, k)
+		}
+	}
+	for _, tg := range []any{sub["target"], cfg["target"]} {
+		if socks, ok := tg.(map[string]any)["inboundSocks"].(map[string]any); ok {
+			src["portRange"] = socks["portRange"]
+			delete(socks, "portRange")
+		}
+	}
+	sub["sources"] = []any{src}
+}
+
 // D33: fetchHeaders values are secrets.
 func TestRuntimeStateRedactsFetchHeaders(t *testing.T) {
 	for _, include := range []bool{false, true} {
 		sub := newRSSub("https://subscription.example.test/sub")
-		sub.FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
+		sub.Sources[0].FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
 		env := newRSEnv(t, sub, "", config.RuntimeStateConfig{IncludeSecrets: include})
 		_, body := env.build(t)
 		compact := strings.Join(strings.Fields(body), "")
@@ -345,10 +379,10 @@ func TestRuntimeStateRedactsFetchHeaders(t *testing.T) {
 	}
 	// The config itself is not changed.
 	sub := newRSSub("https://subscription.example.test/sub")
-	sub.FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
+	sub.Sources[0].FetchHeaders = inputsrc.Headers{"x-hwid": "s3cr3t"}
 	env := newRSEnv(t, sub, "", config.RuntimeStateConfig{})
 	_, _ = env.build(t)
-	if env.deps.Config.Config.Subscriptions[0].FetchHeaders["x-hwid"] != "s3cr3t" {
+	if env.deps.Config.Config.Subscriptions[0].Sources[0].FetchHeaders["x-hwid"] != "s3cr3t" {
 		t.Fatal("config mutated")
 	}
 }
@@ -364,7 +398,7 @@ func TestRuntimeStateRedactsXHTTPPath(t *testing.T) {
 	if skip != nil {
 		t.Fatalf("skip %+v", *skip)
 	}
-	n, _, skip := normalize.Normalize(l, normalize.Policy{})
+	n, _, skip := normalize.Normalize(l, normalize.Policy{TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("skip %+v", *skip)
 	}
@@ -403,12 +437,12 @@ func TestRuntimeStateExpectedUsesAllowInsecurePolicy(t *testing.T) {
 	}{{"allow", 1, false}, {"deny", 0, true}} {
 		t.Run(tc.policy, func(t *testing.T) {
 			sub := newRSSub("")
-			sub.AllowInsecure = tc.policy
+			sub.Sources[0].AllowInsecure = tc.policy
 			path := filepath.Join(t.TempDir(), "sub.txt")
 			if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			sub.Input = path
+			sub.Sources[0].Input = path
 			env := newRSEnv(t, sub, "", config.RuntimeStateConfig{})
 			got, _ := env.build(t)
 			outs := dig(got, "expected", "outbounds").([]any)
@@ -426,7 +460,7 @@ func TestRuntimeStateExpectedErrors(t *testing.T) {
 		env := newRSEnv(t, sub, "", config.RuntimeStateConfig{})
 		got, _ := env.build(t)
 		exp := got["expected"].(map[string]any)
-		if exp["error"] == nil || exp["source"] != sub.Input || len(exp["outbounds"].([]any)) != 0 {
+		if exp["error"] == nil || exp["source"] != sub.Sources[0].Input || len(exp["outbounds"].([]any)) != 0 {
 			t.Fatalf("%v", exp)
 		}
 	})
@@ -510,5 +544,37 @@ func TestRedactURLGoRules(t *testing.T) {
 		if got := inputsrc.RedactURL(in); got != want {
 			t.Errorf("%q: got %q want %q", in, got, want)
 		}
+	}
+}
+
+// Several sources: expected is the union in source order and
+// expected.sources[] lists each source; source/error stay empty.
+func TestRuntimeStateExpectedSeveralSources(t *testing.T) {
+	sub := newRSSub("")
+	b := testSource("https://subscription.example.test/b")
+	b.ID, b.PortRange = "b", &config.PortRange{Start: 20100, End: 20110}
+	off := testSource("/absent")
+	off.ID, off.Enabled = "off", false
+	sub.Sources = append(sub.Sources, b, off)
+	env := newRSEnv(t, sub, linkAT, config.RuntimeStateConfig{})
+	got, _ := env.build(t)
+	exp := got["expected"].(map[string]any)
+	if exp["source"] != "" || exp["error"] != nil {
+		t.Fatalf("source/error %v", exp)
+	}
+	want := []any{
+		map[string]any{"sourceId": "b", "source": "https://subscription.example.test/<redacted>", "error": msgExpectedNoRefetch},
+		map[string]any{"sourceId": "vless", "source": env.input},
+	}
+	if !reflect.DeepEqual(exp["sources"], want) {
+		t.Fatalf("sources %v", exp["sources"])
+	}
+	if outs := exp["outbounds"].([]any); len(outs) != 1 || !strings.HasPrefix(outs[0].(map[string]any)["fallbackTag"].(string), "vless-") {
+		t.Fatalf("outbounds %v", outs)
+	}
+	// One source keeps the single-source shape.
+	one, _ := newRSEnv(t, newRSSub(""), linkAT, config.RuntimeStateConfig{}).build(t)
+	if _, ok := one["expected"].(map[string]any)["sources"]; ok {
+		t.Fatalf("sources with one source: %v", one["expected"])
 	}
 }
