@@ -3,6 +3,8 @@
 package livetest
 
 import (
+	"context"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -12,10 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xtls/xray-core/core"
+
 	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
+	"github.com/a1ekseev/scd/internal/scd/monitor"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
@@ -190,5 +196,113 @@ func TestLiveApplyReplacesManagedKeepsFixed(t *testing.T) {
 				t.Errorf("rules = %v, want %v", s.rules, wantRules)
 			}
 		})
+	}
+}
+
+// sharedClient hands the live client to the monitor, which closes every
+// client it dials, and fails the test if an outbound of the tunnel is added
+// while another copy of it is still in Xray.
+type sharedClient struct {
+	xrayapi.Client
+	t    *testing.T
+	tags []string // the tunnel's prefixed and unprefixed outbound tags
+}
+
+func (c sharedClient) Close() error { return nil }
+
+func (c sharedClient) AddOutbound(ctx context.Context, h *core.OutboundHandlerConfig) error {
+	outs, err := c.ListOutbounds(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range outs {
+		if slices.Contains(c.tags, o.Tag) {
+			c.t.Errorf("AddOutbound(%s) while %s is in Xray", h.Tag, o.Tag)
+		}
+	}
+	return c.Client.AddOutbound(ctx, h)
+}
+
+// TestLiveRepairRejoinRemovesBeforeAdd: repair and rejoin against live Xray
+// replace the tunnel's outbound remove before add, so Xray never holds both
+// copies, and end with exactly one outbound and one rule for the tunnel. The
+// prefix is not the template's observatory selector, so the observatory
+// never probes the fixture's (unreachable) hosts.
+func TestLiveRepairRejoinRemovesBeforeAdd(t *testing.T) {
+	c, _, _ := startXray(t)
+	m := fixtureManifest(t)
+	tc, src := liveTarget(t, len(m.Entries))
+	tc.ObservatorySubjectSelectorPrefix = "x-live-"
+	sub := config.SubscriptionConfig{ID: "live", Enabled: true, Sources: []config.SourceConfig{src}, Target: tc}
+
+	var plan apply.Plan
+	for _, kind := range apply.Order {
+		p, err := apply.PlanForSource(kind, m, src, tc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := apply.Apply(t.Context(), c, p, tc, apply.Meta{SubscriptionID: sub.ID}); r.Failed != 0 {
+			t.Fatalf("%s failed: %+v", kind, r.Items)
+		}
+		plan = p
+	}
+	mem := state.New()
+	key := state.Key(sub.ID, tc.Address)
+	mem.ReplaceSourceTopology(key, src.ID, *plan.Topology, nil)
+	tn := plan.Topology.Tunnels[0]
+	unprefixed := tn.OutboundWithoutPrefix.Tag
+	if tn.OutboundTagInitial == unprefixed {
+		t.Fatalf("tunnel %s has no prefix", tn.BaseTunnelID)
+	}
+	tags := []string{tn.OutboundTagInitial, unprefixed}
+	d := monitor.Deps{
+		Memory: mem,
+		Log:    slog.New(slog.DiscardHandler),
+		Dial: func(string, time.Duration) (xrayapi.Client, error) {
+			return sharedClient{Client: c, t: t, tags: tags}, nil
+		},
+	}
+
+	for _, step := range []struct {
+		name string
+		run  func(context.Context, monitor.Deps, config.SubscriptionConfig, string) error
+		want string
+	}{
+		{"repair", monitor.Repair, unprefixed},
+		{"rejoin", monitor.Rejoin, tn.OutboundTagInitial},
+	} {
+		if err := step.run(t.Context(), d, sub, tn.BaseTunnelID); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		var cur state.Tunnel
+		mem.View(key, func(tg *state.Target) {
+			for _, x := range tg.Tunnels {
+				if x.Mapping.BaseTunnelID == tn.BaseTunnelID {
+					cur = *x
+				}
+			}
+		})
+		if cur.Mapping.OutboundTagCurrent != step.want {
+			t.Errorf("%s: tunnel = %q / %+v", step.name, cur.Mapping.OutboundTagCurrent, cur.Monitor)
+		}
+		s := readState(t, c)
+		var got []string
+		for _, tag := range s.outbounds {
+			if slices.Contains(tags, tag) {
+				got = append(got, tag)
+			}
+		}
+		if !slices.Equal(got, []string{step.want}) {
+			t.Errorf("%s: tunnel outbounds = %v, want [%s]", step.name, got, step.want)
+		}
+		var rules []xrayapi.Rule
+		for _, r := range s.rules {
+			if r.RuleTag == tn.RouteTag {
+				rules = append(rules, r)
+			}
+		}
+		if want := []xrayapi.Rule{{Tag: step.want, RuleTag: tn.RouteTag}}; !slices.Equal(rules, want) {
+			t.Errorf("%s: tunnel rules = %v, want %v", step.name, rules, want)
+		}
 	}
 }

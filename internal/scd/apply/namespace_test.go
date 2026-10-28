@@ -139,7 +139,9 @@ func TestRemoveOrphansStopsOnError(t *testing.T) {
 	}
 }
 
-// Applying one source never sends an RPC for another source's resources.
+// Applying one source never sends an RPC for another source's resources,
+// and each kind removes the source's old resources before it adds the new
+// ones.
 func TestApplyTouchesOnlyItsSource(t *testing.T) {
 	srv, c := orphanFake(t)
 	m := manifest.Build(vienna+"\n"+berlin, "a", normalize.Policy{TagPrefix: "a"}, time.Unix(0, 0))
@@ -165,5 +167,18 @@ func TestApplyTouchesOnlyItsSource(t *testing.T) {
 		if strings.Contains(tag, "b-1") || strings.Contains(tag, "old-1") || tag == "direct" || tag == "api" || tag == "keep" {
 			t.Errorf("RPC on a foreign resource: %s", call)
 		}
+	}
+	calls := srv.Calls()
+	slices.Sort(calls[1:3]) // the fake lists outbounds in random order
+	at, de := "a-at-3ed0e2a1-tcp-tls-cf29de98", "a-de-51bd674f-tcp-tls-675db9e5"
+	want := []string{
+		"ListOutbounds", "RemoveOutbound:a-2", "RemoveOutbound:x-observe-a-1",
+		"AddOutbound:x-observe-" + at, "AddOutbound:x-observe-" + de,
+		"ListInbounds", "RemoveInbound:in-a-1", "AddInbound:in-" + at, "AddInbound:in-" + de,
+		"ListRule", "RemoveRule:route-a-1",
+		"AddRule:route-" + at + "->x-observe-" + at, "AddRule:route-" + de + "->x-observe-" + de,
+	}
+	if !slices.Equal(calls, want) {
+		t.Errorf("calls = %q\nwant    %q", calls, want)
 	}
 }

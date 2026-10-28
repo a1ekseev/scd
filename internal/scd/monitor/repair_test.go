@@ -176,8 +176,8 @@ func TestRejoinFailureKeepsHealthy(t *testing.T) {
 	}
 }
 
-// 03 §10.6 p.10: addOutbound(initial) → removeRule → addRule(route → initial)
-// → removeOutbound(unprefixed).
+// Remove before add: removeRule → removeOutbound(unprefixed) →
+// addOutbound(initial) → addRule(route → initial).
 func TestRejoinSequence(t *testing.T) {
 	e := newEnv(t, newSub(prefixed), linkAT)
 	e.repairTunnel(0)
@@ -190,10 +190,10 @@ func TestRejoinSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"AddOutbound:" + tn.OutboundTagInitial,
 		"RemoveRule:" + tn.RouteTag,
-		"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
 		"RemoveOutbound:" + tn.OutboundWithoutPrefix.Tag,
+		"AddOutbound:" + tn.OutboundTagInitial,
+		"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
 	}
 	if got := e.callsSince(before); !slices.Equal(got, want) {
 		t.Errorf("calls = %q\nwant    %q", got, want)
@@ -241,45 +241,59 @@ func TestRejoinSkippedWithoutPrefix(t *testing.T) {
 	}
 }
 
-// 03 §10.6 p.12.
-func TestRejoinRollbackOnAddRuleFailure(t *testing.T) {
-	e := newEnv(t, newSub(prefixed), linkAT)
-	e.repairTunnel(0)
-	tn := e.tunnel(0).Mapping
-	before := len(e.xray.Calls())
-	e.deps.Probe = ok(200, 25)
-	e.xray.FailNext("AddRule", status.Error(codes.Unknown, "addRule prefixed failed"))
+// 03 §10.6 p.12: a failed add is rolled back to the unprefixed outbound,
+// remove before add: removeOutbound(initial) → addOutbound(unprefixed) →
+// addRule(route → unprefixed).
+func TestRejoinRollback(t *testing.T) {
+	for _, method := range []string{"AddOutbound", "AddRule"} {
+		t.Run(method, func(t *testing.T) {
+			e := newEnv(t, newSub(prefixed), linkAT)
+			e.repairTunnel(0)
+			tn := e.tunnel(0).Mapping
+			before := len(e.xray.Calls())
+			e.deps.Probe = ok(200, 25)
+			e.xray.FailNext(method, status.Error(codes.Unknown, "rejoin add failed"))
 
-	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
-		t.Fatal(err)
-	}
-	unprefixed := tn.OutboundWithoutPrefix.Tag
-	want := []string{
-		"AddOutbound:" + tn.OutboundTagInitial,
-		"RemoveRule:" + tn.RouteTag,
-		"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
-		"RemoveRule:" + tn.RouteTag,
-		"AddRule:" + tn.RouteTag + "->" + unprefixed,
-		"RemoveOutbound:" + tn.OutboundTagInitial,
-	}
-	if got := e.callsSince(before); !slices.Equal(got, want) {
-		t.Errorf("calls = %q\nwant    %q", got, want)
-	}
-	if got := e.xray.Rules(); len(got) != 1 || got[0] != (xrayapi.Rule{Tag: unprefixed, RuleTag: tn.RouteTag}) {
-		t.Errorf("xray rules = %+v", got)
-	}
-	cur := e.tunnel(0)
-	if cur.Monitor.State != state.TunnelHealthy || deref(cur.Monitor.LastLatencyMs) != 25 {
-		t.Errorf("monitor = %+v", cur.Monitor)
-	}
-	if cur.Mapping.OutboundTagCurrent != unprefixed {
-		t.Errorf("current = %q", cur.Mapping.OutboundTagCurrent)
-	}
-	if cur.Monitor.LastError != "Tunnel healthy but balancer rejoin failed: addRule prefixed failed" {
-		t.Errorf("lastError = %q", cur.Monitor.LastError)
-	}
-	if len(e.logs.events(t, "tunnel_rejoin_failed")) != 1 {
-		t.Error("no tunnel_rejoin_failed")
+			if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+				t.Fatal(err)
+			}
+			unprefixed := tn.OutboundWithoutPrefix.Tag
+			want := []string{
+				"RemoveRule:" + tn.RouteTag,
+				"RemoveOutbound:" + unprefixed,
+				"AddOutbound:" + tn.OutboundTagInitial,
+			}
+			if method == "AddRule" {
+				want = append(want, "AddRule:"+tn.RouteTag+"->"+tn.OutboundTagInitial)
+			}
+			want = append(want,
+				"RemoveOutbound:"+tn.OutboundTagInitial,
+				"AddOutbound:"+unprefixed,
+				"AddRule:"+tn.RouteTag+"->"+unprefixed,
+			)
+			if got := e.callsSince(before); !slices.Equal(got, want) {
+				t.Errorf("calls = %q\nwant    %q", got, want)
+			}
+			if got := e.xray.OutboundTags(); !slices.Equal(got, []string{unprefixed}) {
+				t.Errorf("xray outbounds = %v", got)
+			}
+			if got := e.xray.Rules(); len(got) != 1 || got[0] != (xrayapi.Rule{Tag: unprefixed, RuleTag: tn.RouteTag}) {
+				t.Errorf("xray rules = %+v", got)
+			}
+			cur := e.tunnel(0)
+			if cur.Monitor.State != state.TunnelHealthy || deref(cur.Monitor.LastLatencyMs) != 25 {
+				t.Errorf("monitor = %+v", cur.Monitor)
+			}
+			if cur.Mapping.OutboundTagCurrent != unprefixed {
+				t.Errorf("current = %q", cur.Mapping.OutboundTagCurrent)
+			}
+			if cur.Monitor.LastError != "Tunnel healthy but balancer rejoin failed: rejoin add failed" {
+				t.Errorf("lastError = %q", cur.Monitor.LastError)
+			}
+			if len(e.logs.events(t, "tunnel_rejoin_failed")) != 1 {
+				t.Error("no tunnel_rejoin_failed")
+			}
+		})
 	}
 }
 
@@ -401,10 +415,10 @@ func TestRepairOncePerWithdrawal(t *testing.T) {
 			}
 		}
 		want := []string{
-			"AddOutbound:" + tn.OutboundTagInitial,
 			"RemoveRule:" + tn.RouteTag,
-			"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
 			"RemoveOutbound:" + tn.OutboundWithoutPrefix.Tag,
+			"AddOutbound:" + tn.OutboundTagInitial,
+			"AddRule:" + tn.RouteTag + "->" + tn.OutboundTagInitial,
 			"RemoveRule:" + tn.RouteTag,
 			"RemoveOutbound:" + tn.OutboundTagInitial,
 			"AddOutbound:" + tn.OutboundWithoutPrefix.Tag,
@@ -529,5 +543,78 @@ func TestRepairDecidedAfterConcurrentSync(t *testing.T) {
 	}
 	if n := len(e.logs.events(t, "tunnel_repaired")); n != 1 {
 		t.Errorf("tunnel_repaired = %d, want 1", n)
+	}
+}
+
+// A failed RemoveOutbound stops repair and rejoin before any add, so the
+// tunnel never has two outbounds; the route rule is restored to the old
+// outbound and the failure is logged with the existing event.
+func TestRemoveOutboundFailureStopsBeforeAdd(t *testing.T) {
+	for _, rejoin := range []bool{false, true} {
+		t.Run(map[bool]string{false: "repair", true: "rejoin"}[rejoin], func(t *testing.T) {
+			e := newEnv(t, newSub(prefixed), linkAT)
+			event, msg := "tunnel_repair_failed", "remove failed"
+			if rejoin {
+				e.repairTunnel(0)
+				e.deps.Probe = ok(200, 25)
+				event, msg = "tunnel_rejoin_failed", rejoinFailedPrefix+"remove failed"
+			} else {
+				e.install(e.tunnel(0).Mapping)
+				e.deps.Probe = failProbe
+			}
+			tn := e.tunnel(0).Mapping
+			old := tn.OutboundTagCurrent
+			before := len(e.xray.Calls())
+			e.xray.FailNext("RemoveOutbound", status.Error(codes.Unknown, "remove failed"))
+
+			if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"RemoveRule:" + tn.RouteTag, "RemoveOutbound:" + old, "AddRule:" + tn.RouteTag + "->" + old}
+			if got := e.callsSince(before); !slices.Equal(got, want) {
+				t.Errorf("calls = %q\nwant    %q", got, want)
+			}
+			if got := e.xray.OutboundTags(); !slices.Equal(got, []string{old}) {
+				t.Errorf("xray outbounds = %v", got)
+			}
+			if got := e.xray.Rules(); len(got) != 1 || got[0] != (xrayapi.Rule{Tag: old, RuleTag: tn.RouteTag}) {
+				t.Errorf("xray rules = %+v", got)
+			}
+			cur := e.tunnel(0)
+			if cur.Mapping.OutboundTagCurrent != old || cur.Monitor.LastError != msg {
+				t.Errorf("tunnel = %q / %+v", cur.Mapping.OutboundTagCurrent, cur.Monitor)
+			}
+			if len(e.logs.events(t, event)) != 1 {
+				t.Errorf("no %s: %s", event, e.logs.String())
+			}
+		})
+	}
+}
+
+// An outbound already gone from Xray (a repeated repair or rejoin after a
+// crash) is no error: the operation goes on and adds the new outbound.
+func TestRemoveOutboundAbsentContinues(t *testing.T) {
+	for _, rejoin := range []bool{false, true} {
+		t.Run(map[bool]string{false: "repair", true: "rejoin"}[rejoin], func(t *testing.T) {
+			e := newEnv(t, newSub(prefixed), linkAT)
+			tn := e.tunnel(0).Mapping
+			next := tn.OutboundWithoutPrefix.Tag
+			e.deps.Probe = failProbe
+			if rejoin {
+				e.setTunnel(0, func(tn *state.Tunnel) { tn.Mapping.OutboundTagCurrent = tn.Mapping.OutboundWithoutPrefix.Tag })
+				next = tn.OutboundTagInitial
+				e.deps.Probe = ok(200, 25)
+			}
+			// Nothing is installed: the old outbound and rule are absent.
+			if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+				t.Fatal(err)
+			}
+			if got := e.xray.OutboundTags(); !slices.Equal(got, []string{next}) {
+				t.Errorf("xray outbounds = %v, want [%s]", got, next)
+			}
+			if got := e.tunnel(0).Mapping.OutboundTagCurrent; got != next {
+				t.Errorf("current = %q, want %q", got, next)
+			}
+		})
 	}
 }

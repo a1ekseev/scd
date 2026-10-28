@@ -276,6 +276,15 @@ Validation errors list every problem with its field path, for example:
   `observatorySubjectSelectorPrefix`. This takes the tunnel out of the
   balancer. After the next successful check, scd restores the prefixed
   outbound and rule (rejoin).
+- Repair and rejoin, like sync, remove before they add: first the tunnel's
+  rule and outbound, then the new outbound and rule. Xray never holds two
+  copies of a tunnel at once (some providers limit simultaneous connections
+  per key); for that moment the tunnel has no outbound. If the old outbound
+  cannot be removed, scd adds nothing, restores the old rule (best effort)
+  and logs `tunnel_repair_failed` or `tunnel_rejoin_failed`; an outbound
+  that is already gone is not an error. If a rejoin add
+  fails, scd restores the unprefixed outbound and rule (best effort) and
+  logs `tunnel_rejoin_failed`.
 - A tunnel that is already out of the balancer is not repaired again: further
   failed checks only update its monitor state (`degraded`, `lastError` = the
   probe error, the failure counter) and log `tunnel_repair_skipped` at debug.

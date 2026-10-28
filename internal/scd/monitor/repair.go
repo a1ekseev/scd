@@ -40,9 +40,10 @@ func (d Deps) dial(t config.SubscriptionTargetConfig) (xrayapi.Client, error) {
 }
 
 // Repair moves a tunnel whose final probe failed to its unprefixed outbound
-// (03 §4.2, 02 §2.5) under the target lock: RemoveRule(route) and
-// RemoveOutbound(current), both best effort, then AddOutbound(unprefixed)
-// and AddRule(route → unprefixed). Success leaves the tunnel degraded with
+// (03 §4.2, 02 §2.5) under the target lock: RemoveRule(route) (best effort)
+// and RemoveOutbound(current), then AddOutbound(unprefixed) and
+// AddRule(route → unprefixed). A failed RemoveOutbound stops it before the
+// add and restores AddRule(route → current) best effort. Success leaves the tunnel degraded with
 // "Tunnel repaired; …" until the next successful check; an RPC failure is
 // recorded on the tunnel and logged (tunnel_repair_failed). A tunnel that is
 // gone is ignored. A tunnel that already runs on its unprefixed outbound
@@ -126,16 +127,32 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 
 // repairCalls is the RPC sequence of a repair; cur is the tunnel before it.
 func repairCalls(ctx context.Context, c xrayapi.Client, cur, repaired topology.Tunnel) error {
-	_ = c.RemoveRule(ctx, cur.RouteTag)
-	_ = c.RemoveOutbound(ctx, cur.OutboundTagCurrent)
 	h, err := outbound.ToProto(repaired.OutboundWithoutPrefix.JSON)
 	if err != nil {
+		return err
+	}
+	if err := removeTunnel(ctx, c, cur); err != nil {
 		return err
 	}
 	if err := c.AddOutbound(ctx, h); err != nil {
 		return err
 	}
 	return c.AddRule(ctx, resources.Rule(repaired, repaired.OutboundTagCurrent))
+}
+
+// removeTunnel removes the tunnel's rule (best effort) and current outbound
+// before a new one is added: a provider may limit simultaneous connections
+// per key, so the tunnel never runs on two outbounds at once. If the outbound
+// cannot be removed, the rule is restored best effort and the error stops the
+// operation before any add. An unknown tag is no error in Xray, so a repeated
+// repair or rejoin goes ahead.
+func removeTunnel(ctx context.Context, c xrayapi.Client, cur topology.Tunnel) error {
+	_ = c.RemoveRule(ctx, cur.RouteTag)
+	if err := c.RemoveOutbound(ctx, cur.OutboundTagCurrent); err != nil {
+		_ = c.AddRule(ctx, resources.Rule(cur, cur.OutboundTagCurrent))
+		return err
+	}
+	return nil
 }
 
 // shouldRejoin reports whether the tunnel has an observatory prefix and
@@ -147,11 +164,12 @@ func shouldRejoin(m topology.Tunnel) bool {
 // Rejoin returns a repaired tunnel to its prefixed outbound, and so to the
 // Xray balancer, after a successful probe (03 §4.3, 02 §2.5). The check is
 // made before the lock (no client is created for a balanced tunnel) and
-// again under it. Sequence: AddOutbound(initial); then RemoveRule(route)
-// (best effort), AddRule(route → initial), RemoveOutbound(unprefixed) (best
-// effort); if that block fails it is rolled back best effort with
-// RemoveRule(route), AddRule(route → current), RemoveOutbound(initial). Any
-// failure keeps the tunnel healthy with "Tunnel healthy but balancer rejoin
+// again under it. Sequence, remove before add: RemoveRule(route) (best
+// effort) and RemoveOutbound(unprefixed), then AddOutbound(initial) and
+// AddRule(route → initial). A failed RemoveOutbound stops it before the add
+// and restores AddRule(route → unprefixed) best effort; if either add fails it is rolled back best effort
+// with RemoveOutbound(initial), AddOutbound(unprefixed), AddRule(route →
+// unprefixed). Any failure keeps the tunnel healthy with "Tunnel healthy but balancer rejoin
 // failed: <msg>" and is logged (tunnel_rejoin_failed). The only returned
 // error is a failure to create the client.
 func Rejoin(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID string) error {
@@ -199,21 +217,27 @@ func Rejoin(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 // rejoinCalls is the RPC sequence of a rejoin with its rollback; cur is the
 // tunnel before it.
 func rejoinCalls(ctx context.Context, c xrayapi.Client, cur, rejoined topology.Tunnel) error {
-	h, err := outbound.ToProto(rejoined.OutboundInitial.JSON)
+	initial, err := outbound.ToProto(rejoined.OutboundInitial.JSON)
 	if err != nil {
 		return err
 	}
-	if err := c.AddOutbound(ctx, h); err != nil {
+	unprefixed, err := outbound.ToProto(cur.OutboundWithoutPrefix.JSON)
+	if err != nil {
 		return err
 	}
-	_ = c.RemoveRule(ctx, cur.RouteTag)
-	if err := c.AddRule(ctx, resources.Rule(rejoined, rejoined.OutboundTagCurrent)); err != nil {
-		_ = c.RemoveRule(ctx, cur.RouteTag)
-		_ = c.AddRule(ctx, resources.Rule(cur, cur.OutboundTagCurrent))
+	if err := removeTunnel(ctx, c, cur); err != nil {
+		return err
+	}
+	err = c.AddOutbound(ctx, initial)
+	if err == nil {
+		err = c.AddRule(ctx, resources.Rule(rejoined, rejoined.OutboundTagCurrent))
+	}
+	if err != nil {
 		_ = c.RemoveOutbound(ctx, rejoined.OutboundTagCurrent)
+		_ = c.AddOutbound(ctx, unprefixed)
+		_ = c.AddRule(ctx, resources.Rule(cur, cur.OutboundTagCurrent))
 		return err
 	}
-	_ = c.RemoveOutbound(ctx, cur.OutboundTagCurrent)
 	return nil
 }
 
