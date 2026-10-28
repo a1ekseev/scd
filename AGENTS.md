@@ -67,7 +67,7 @@ The live and visual tests skip without their environment variables.
 - `daemon` runs `common/cronloop` loops: sync; per subscription the tunnel monitor, balancer monitor and balancer selection; per remote instance a status poll. It also runs the status HTTP server. On SIGINT/SIGTERM, loops stop at once, in-flight Xray mutations finish (`context.WithoutCancel`) but no new subscription is loaded and no new target is applied, then pending remote pings, then the HTTP server. There is no hot reload.
 - `monitor`: tunnel probes through the generated SOCKS inbounds (`socks`). Repair recreates the outbound without the observatory prefix; rejoin restores it. `balancerMonitor` is observe-only, with an optional remote push. Both run only after a sync reached the target.
 - `balancer`: read-only balancer selection view (D22). Never calls `OverrideBalancerTarget`.
-- `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted unless `includeSecrets`). `aggregate` holds the remote snapshots.
+- `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted and `rawBase64` omitted unless `includeSecrets`). `aggregate` holds the remote snapshots.
 - `country`: flag emoji → ISO2. Labels are not interpreted beyond country and city (D33).
 - Known limitation kept on purpose (O5): a non-fixed static routing rule without `ruleTag` makes routing apply fail with `app/router: empty tag name!`.
 

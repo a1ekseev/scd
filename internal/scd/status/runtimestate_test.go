@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/http"
 	"os"
@@ -466,20 +467,32 @@ func TestRuntimeStateDiffUnexpectedAndMissing(t *testing.T) {
 	}
 }
 
+// rawBase64 holds unredacted secrets: it is written only with both
+// includeRaw and includeSecrets.
 func TestRuntimeStateRawBase64(t *testing.T) {
-	env := newRSEnv(t, newRSSub(""), linkAT, config.RuntimeStateConfig{IncludeRaw: true}, xrayfake.WithStaticInbounds("api-in"))
-	env.addOutbound(t, env.topo.Tunnels[0], false)
-	tn := env.topo.Tunnels[0]
-	env.client(t, func(c xrayapi.Client) error {
-		return c.AddRule(context.Background(), resources.Rule(tn, tn.OutboundTagInitial))
-	})
-	got, _ := env.build(t)
-	for _, kind := range []string{"outbounds", "inbounds", "routingRules"} {
-		for _, it := range dig(got, "runtime", kind).([]any) {
-			if s, _ := it.(map[string]any)["rawBase64"].(string); s == "" {
-				t.Errorf("%s: no rawBase64 in %v", kind, it)
+	for _, c := range []struct{ raw, secrets bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		t.Run(fmt.Sprintf("raw=%v,secrets=%v", c.raw, c.secrets), func(t *testing.T) {
+			env := newRSEnv(t, newRSSub(""), linkAT, config.RuntimeStateConfig{IncludeRaw: c.raw, IncludeSecrets: c.secrets}, xrayfake.WithStaticInbounds("api-in"))
+			env.addOutbound(t, env.topo.Tunnels[0], false)
+			tn := env.topo.Tunnels[0]
+			env.client(t, func(c xrayapi.Client) error {
+				return c.AddRule(context.Background(), resources.Rule(tn, tn.OutboundTagInitial))
+			})
+			got, _ := env.build(t)
+			want := c.raw && c.secrets
+			for _, kind := range []string{"outbounds", "inbounds", "routingRules"} {
+				items := dig(got, "runtime", kind).([]any)
+				if len(items) == 0 {
+					t.Fatalf("%s: no items", kind)
+				}
+				for _, it := range items {
+					s, ok := it.(map[string]any)["rawBase64"].(string)
+					if ok != want || (want && s == "") {
+						t.Errorf("%s: rawBase64 present=%v, want %v: %v", kind, ok, want, it)
+					}
+				}
 			}
-		}
+		})
 	}
 }
 

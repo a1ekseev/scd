@@ -408,7 +408,8 @@ func classifyOutbounds(list []*core.OutboundHandlerConfig, t config.Subscription
 		if p, ok := resources.DescribeOutbound(h, opts.IncludeSecrets); ok {
 			item.Parsed = p
 		}
-		if opts.IncludeRaw {
+		// rawBase64 is the unredacted proto (keys included), so it also needs includeSecrets.
+		if opts.IncludeRaw && opts.IncludeSecrets {
 			item.RawBase64 = resources.RawBase64(h)
 		}
 		items = append(items, item)
@@ -444,7 +445,7 @@ func classifyInbounds(list []*core.InboundHandlerConfig, t config.SubscriptionTa
 		if p, ok := resources.DescribeInbound(h); ok {
 			item.Parsed = p
 		}
-		if opts.IncludeRaw {
+		if opts.IncludeRaw && opts.IncludeSecrets {
 			item.RawBase64 = resources.RawBase64(h)
 		}
 		items = append(items, item)
@@ -473,7 +474,7 @@ func classifyRules(list []xrayapi.Rule, t config.SubscriptionTargetConfig, expec
 	for _, r := range list {
 		present[r.RuleTag] = true
 		item := runtimeRule{RuleTag: r.RuleTag, Classification: classify(r.RuleTag, t.FixedRouting, want, diff), Parsed: resources.DescribeRule(r)}
-		if opts.IncludeRaw {
+		if opts.IncludeRaw && opts.IncludeSecrets {
 			item.RawBase64 = resources.RawBase64(&routercmd.ListRuleItem{Tag: r.Tag, RuleTag: r.RuleTag})
 		}
 		items = append(items, item)

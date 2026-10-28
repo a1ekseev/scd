@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
+	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
 
 const jsonType = "application/json; charset=utf-8"
@@ -204,7 +205,8 @@ func TestRuntimeStateXrayErrors(t *testing.T) {
 
 // 03 §10.4 item 12: the endpoint serves the redacted builder output.
 func TestRuntimeStateEndpointRedacts(t *testing.T) {
-	srv, _ := startFake(t)
+	srv, _ := startFake(t, xrayfake.WithStaticOutbounds("direct"), xrayfake.WithStaticInbounds("api-in"),
+		xrayfake.WithStaticRules(xrayapi.Rule{Tag: "direct", RuleTag: "api-rule"}))
 	l := loadFixture(t, "healthy-single")
 	l.cfg.Config.Subscriptions[0].Input = "https://subscription.example.test/tokenized/path?secret=abc"
 	d := l.deps()
@@ -221,7 +223,11 @@ func TestRuntimeStateEndpointRedacts(t *testing.T) {
 		t.Fatalf("serviceState %v", bm)
 	}
 	for _, kind := range []string{"outbounds", "inbounds", "routingRules"} {
-		for _, it := range body["runtime"].(map[string]any)[kind].([]any) {
+		items := body["runtime"].(map[string]any)[kind].([]any)
+		if len(items) == 0 {
+			t.Fatalf("%s: no items", kind)
+		}
+		for _, it := range items {
 			if _, ok := it.(map[string]any)["rawBase64"]; ok {
 				t.Errorf("rawBase64 in %s", kind)
 			}

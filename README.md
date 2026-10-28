@@ -284,8 +284,9 @@ read-only and has no links to the JSON endpoints.
 `/api/runtime-state` hides secrets unless `includeSecrets: true`. Hidden values
 include subscription and monitor/push URLs (shown as `<scheme>://<host>/<redacted>`),
 `fetchHeaders` values, UUIDs and keys, outbound `path` and the xhttp `host`,
-which are `<redacted>`. **`includeRaw: true` adds `rawBase64` protobuf blobs
-that contain everything unredacted**, whatever `includeSecrets` says.
+which are `<redacted>`. `includeRaw: true` adds `rawBase64` protobuf blobs
+only together with `includeSecrets: true`, because the blobs contain everything
+unredacted.
 
 ## Label filters
 
