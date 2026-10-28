@@ -43,6 +43,9 @@ type Options struct {
 	Stdin io.Reader
 	// HTTPClient overrides http.DefaultClient.
 	HTTPClient *http.Client
+	// MaxBytes caps the raw input size for every source; 0 means 64 MiB for
+	// http(s) and no limit for a file or stdin.
+	MaxBytes int64
 }
 
 // Loaded is a loaded and decoded subscription source.
@@ -76,9 +79,7 @@ func Load(ctx context.Context, input string, o Options) (Loaded, error) {
 	default:
 		source, err = filepath.Abs(input)
 		if err == nil {
-			var b []byte
-			b, err = os.ReadFile(source)
-			raw = string(b)
+			raw, err = readFile(source, o.MaxBytes)
 		}
 	}
 	if err != nil {
@@ -118,11 +119,50 @@ func readStdin(o Options) (string, error) {
 	if r == nil {
 		r = os.Stdin
 	}
+	if o.MaxBytes > 0 {
+		r = io.LimitReader(r, o.MaxBytes+1)
+	}
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", fmt.Errorf("unable to read input from stdin: %w", err)
 	}
+	if o.MaxBytes > 0 && int64(len(b)) > o.MaxBytes {
+		return "", tooLarge("stdin", o.MaxBytes)
+	}
 	return string(b), nil
+}
+
+func readFile(path string, limit int64) (string, error) {
+	if limit <= 0 {
+		b, err := os.ReadFile(path)
+		return string(b), err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return "", err
+	}
+	if int64(len(b)) > limit {
+		return "", tooLarge(path, limit)
+	}
+	return string(b), nil
+}
+
+// tooLarge reports input over limit, printed in MiB, KiB or bytes, whichever
+// divides it exactly.
+func tooLarge(source string, limit int64) error {
+	size := fmt.Sprintf("%d bytes", limit)
+	switch {
+	case limit%(1<<20) == 0:
+		size = fmt.Sprintf("%d MiB", limit>>20)
+	case limit%(1<<10) == 0:
+		size = fmt.Sprintf("%d KiB", limit>>10)
+	}
+	return fmt.Errorf("input from %s exceeds %s", source, size)
 }
 
 func fetch(ctx context.Context, rawURL string, o Options) (string, error) {
@@ -164,17 +204,21 @@ func fetch(ctx context.Context, rawURL string, o Options) (string, error) {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", fmt.Errorf("unable to download input from %s: %s", rawURL, resp.Status)
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	limit := o.MaxBytes
+	if limit <= 0 {
+		limit = maxBody
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return fail(err)
 	}
-	if int64(len(b)) > maxBody {
-		return "", fmt.Errorf("input from %s exceeds %d MiB", rawURL, maxBody>>20)
+	if int64(len(b)) > limit {
+		return "", tooLarge(rawURL, limit)
 	}
 	return string(b), nil
 }
 
-// maxBody caps the size of a downloaded subscription (a var for tests).
+// maxBody caps a download when Options.MaxBytes is 0 (a var for tests).
 var maxBody int64 = 64 << 20
 
 // redirectSafeClient returns a copy of the caller's client (or the default one)

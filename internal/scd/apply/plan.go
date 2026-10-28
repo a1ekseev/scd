@@ -167,12 +167,12 @@ func Apply(ctx context.Context, c xrayapi.Client, p Plan, t config.SubscriptionT
 	)
 	switch p.Kind {
 	case KindOutbound:
-		r, err = Outbounds(ctx, c, t.FixedOutbounds, p.Outbounds, m)
+		r, err = Outbounds(ctx, c, t.FixedOutbounds, notFixed(t.FixedOutbounds), p.Outbounds, m)
 		r.Skipped = skipped
 	case KindInbound:
-		r, err = Inbounds(ctx, c, t.FixedInbounds, tunnels, m)
+		r, err = Inbounds(ctx, c, t.FixedInbounds, notFixed(t.FixedInbounds), tunnels, m)
 	case KindRouting:
-		r, err = Routing(ctx, c, t.FixedRouting, tunnels, m)
+		r, err = Routing(ctx, c, t.FixedRouting, notFixed(t.FixedRouting), tunnels, m)
 	default:
 		err = fmt.Errorf("unknown resource kind %q", p.Kind)
 	}
@@ -180,4 +180,13 @@ func Apply(ctx context.Context, c xrayapi.Client, p Plan, t config.SubscriptionT
 		return FailedReport(p.Kind, m, skipped, err)
 	}
 	return r
+}
+
+// Owner reports whether an apply owns the resource of kind with tag: only
+// owned resources are removed. Fixed resources are never removed either way.
+type Owner func(kind Kind, tag string) bool
+
+// notFixed owns every resource whose tag is not in fixed.
+func notFixed(fixed []string) Owner {
+	return func(_ Kind, tag string) bool { return !slices.Contains(fixed, tag) }
 }

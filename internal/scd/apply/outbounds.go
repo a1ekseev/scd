@@ -17,8 +17,8 @@ import (
 //  1. an entry tag listed in fixed fails the report without any RPC;
 //  2. ListOutbounds; its error is returned as is (the caller turns it into a
 //     FailedReport);
-//  3. every listed outbound that is not fixed — foreign ones included — is
-//     removed, its config kept as a backup;
+//  3. every listed outbound that owns reports for KindOutbound is removed,
+//     its config kept as a backup; fixed ones are never removed;
 //  4. every entry is added: "replaced" when its tag was removed in 3, else
 //     "added".
 //
@@ -26,7 +26,7 @@ import (
 // apply are removed in reverse order, then the backups are re-added in
 // removal order, rollback errors ignored — and ends the report with one
 // failed item. The report's Skipped is empty; the caller sets it.
-func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, entries []outbound.Outbound, m Meta) (Report, error) {
+func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns Owner, entries []outbound.Outbound, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindOutbound, m, startedAt, nil)
 	finish := func() {
@@ -60,7 +60,7 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, entri
 	apply := func() error {
 		for _, h := range existing {
 			tag := h.GetTag()
-			if removed[tag] || slices.Contains(fixed, tag) {
+			if removed[tag] || slices.Contains(fixed, tag) || !owns(KindOutbound, tag) {
 				continue
 			}
 			if err := c.RemoveOutbound(ctx, tag); err != nil {

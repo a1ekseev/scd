@@ -76,7 +76,7 @@ func LoadSubscriptions(
 
 // PolicyFor returns the normalization policy of a subscription (D15).
 func PolicyFor(c config.SubscriptionConfig) normalize.Policy {
-	return normalize.Policy{AllowInsecure: c.AllowInsecure == "allow"}
+	return normalize.Policy{AllowInsecure: c.AllowInsecure == "allow", TagPrefix: normalize.DefaultTagPrefix}
 }
 
 // FromSubscription builds the manifest of a loaded subscription as sync

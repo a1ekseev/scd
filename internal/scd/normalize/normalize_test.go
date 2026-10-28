@@ -521,7 +521,7 @@ func TestNormalizedFields(t *testing.T) {
 	}
 	if n.Kind != "outbound" || n.Protocol != "vless" || n.Line != 7 || n.Raw != raw || n.Address != "h.example.test" ||
 		n.Port != 8443 || n.City != "Berlin" || n.Country == nil || n.Country.ISO2 != "DE" ||
-		n.Tag != BuildTag(n.Label, n.Address, "tcp-tls", raw) || n.ALPN == nil {
+		n.Tag != BuildTag("vless", n.Label, n.Address, "tcp-tls", raw) || n.ALPN == nil {
 		t.Fatalf("got %+v", n)
 	}
 	data, err := json.Marshal(n)

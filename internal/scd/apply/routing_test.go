@@ -23,7 +23,7 @@ func TestRoutingRemovesThenAddsOneRulePerCall(t *testing.T) {
 	))
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
 
-	r, err := apply.Routing(context.Background(), c, []string{"keep"}, tunnels, meta())
+	r, err := apply.Routing(context.Background(), c, []string{"keep"}, notFixed([]string{"keep"}), tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRoutingUsesCurrentOutboundTag(t *testing.T) {
 	tn := tunnel("a", 20000)
 	tn.OutboundTagCurrent = "a" // repaired tunnel
 
-	if _, err := apply.Routing(context.Background(), c, nil, []topology.Tunnel{tn}, meta()); err != nil {
+	if _, err := apply.Routing(context.Background(), c, nil, notFixed(nil), []topology.Tunnel{tn}, meta()); err != nil {
 		t.Fatal(err)
 	}
 	if got := srv.Rules(); !slices.Equal(got, []xrayapi.Rule{{Tag: "a", RuleTag: "route-a"}}) {
@@ -72,7 +72,7 @@ func TestRoutingUsesCurrentOutboundTag(t *testing.T) {
 func TestRoutingFixedConflictNoRPC(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 
-	r, err := apply.Routing(context.Background(), c, []string{"route-a"}, []topology.Tunnel{tunnel("a", 20000)}, meta())
+	r, err := apply.Routing(context.Background(), c, []string{"route-a"}, notFixed([]string{"route-a"}), []topology.Tunnel{tunnel("a", 20000)}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestRoutingRemovesEmptyRuleTagLikeTS(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticRules(xrayapi.Rule{Tag: "direct", RuleTag: ""}))
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
 
-	r, err := apply.Routing(context.Background(), c, nil, tunnels, meta())
+	r, err := apply.Routing(context.Background(), c, nil, notFixed(nil), tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestRoutingAddFailureNoRollback(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticRules(xrayapi.Rule{Tag: "old", RuleTag: "route-old"}))
 	srv.FailNext("AddRule", status.Error(codes.Unknown, "boom"))
 
-	r, err := apply.Routing(context.Background(), c, nil, []topology.Tunnel{tunnel("a", 20000)}, meta())
+	r, err := apply.Routing(context.Background(), c, nil, notFixed(nil), []topology.Tunnel{tunnel("a", 20000)}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestRoutingFailedIDFallsBackToKind(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticRules(xrayapi.Rule{Tag: "old", RuleTag: "route-old"}))
 	srv.FailNext("RemoveRule", status.Error(codes.Unknown, "boom"))
 
-	r, err := apply.Routing(context.Background(), c, nil, nil, meta())
+	r, err := apply.Routing(context.Background(), c, nil, notFixed(nil), nil, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestRoutingListErrorPropagates(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 	srv.FailNext("ListRule", status.Error(codes.Unknown, "boom"))
 
-	_, err := apply.Routing(context.Background(), c, nil, []topology.Tunnel{tunnel("a", 20000)}, meta())
+	_, err := apply.Routing(context.Background(), c, nil, notFixed(nil), []topology.Tunnel{tunnel("a", 20000)}, meta())
 	var xe *xrayapi.Error
 	if !errors.As(err, &xe) || err.Error() != "boom" {
 		t.Fatalf("err = %v", err)

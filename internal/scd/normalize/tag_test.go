@@ -36,7 +36,7 @@ func TestBuildTagTable(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			want := tc.city + "-tcp-tls-" + Sha8(rawFixed)
-			if got := BuildTag(tc.label, tc.address, "tcp-tls", rawFixed); got != want {
+			if got := BuildTag("vless", tc.label, tc.address, "tcp-tls", rawFixed); got != want {
 				t.Fatalf("got %s, want %s", got, want)
 			}
 		})
@@ -50,16 +50,16 @@ func TestSlugifyCutKeepsTrailingDash(t *testing.T) {
 }
 
 func TestSameCountryDifferentCityDifferentTags(t *testing.T) {
-	a := BuildTag("🇦🇹 Вена", "h", "tcp-tls", rawFixed)
-	b := BuildTag("🇦🇹 Зальцбург", "h", "tcp-tls", rawFixed)
+	a := BuildTag("vless", "🇦🇹 Вена", "h", "tcp-tls", rawFixed)
+	b := BuildTag("vless", "🇦🇹 Зальцбург", "h", "tcp-tls", rawFixed)
 	if a == b {
 		t.Fatalf("tags equal: %s", a)
 	}
 }
 
 func TestTagDependsOnRawWhitespace(t *testing.T) {
-	a := BuildTag("🇩🇪 Berlin", "h", "tcp-tls", rawFixed)
-	b := BuildTag("🇩🇪 Berlin", "h", "tcp-tls", " "+rawFixed)
+	a := BuildTag("vless", "🇩🇪 Berlin", "h", "tcp-tls", rawFixed)
+	b := BuildTag("vless", "🇩🇪 Berlin", "h", "tcp-tls", " "+rawFixed)
 	if a == b {
 		t.Fatalf("tags equal: %s", a)
 	}
@@ -96,7 +96,7 @@ func TestBuildTagRealShapes(t *testing.T) {
 	}
 	for _, tc := range tests {
 		want := tc.want + Sha8(rawFixed)
-		if got := BuildTag(tc.label, "h.example.com", tc.profile, rawFixed); got != want {
+		if got := BuildTag("vless", tc.label, "h.example.com", tc.profile, rawFixed); got != want {
 			t.Errorf("%q: got %s, want %s", tc.label, got, want)
 		}
 	}
@@ -150,10 +150,10 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 		case c.Line == 55:
 			// TS stripped the tab (WHATWG URL); keep the tag logic covered.
 			stripped := strings.ReplaceAll(link.Label, "\t", "")
-			if got := BuildTag(stripped, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
+			if got := BuildTag("vless", stripped, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
 				t.Errorf("line 55 (tab stripped): got %s, want %s", got, c.TS.Tag)
 			}
-			if got := BuildTag(link.Label, link.Address, c.TS.Profile, link.Raw); got == c.TS.Tag {
+			if got := BuildTag("vless", link.Label, link.Address, c.TS.Profile, link.Raw); got == c.TS.Tag {
 				t.Errorf("line 55: stale exclusion (%s), Go tag equals TS tag", reason)
 			}
 			continue
@@ -161,7 +161,7 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 			t.Errorf("line %d: stale exclusion (%s), parser accepts it", c.Line, reason)
 			continue
 		}
-		if got := BuildTag(link.Label, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
+		if got := BuildTag("vless", link.Label, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
 			t.Errorf("line %d: got %s, want %s", c.Line, got, c.TS.Tag)
 		}
 		checked++
@@ -194,8 +194,22 @@ func TestBuildTagMatchesTSProvider2(t *testing.T) {
 	}
 	for _, e := range m.Entries {
 		link := parseLine(t, e.Norm.Raw, e.Line)
-		if got := BuildTag(link.Label, link.Address, e.Profile, link.Raw); got != e.Tag {
+		if got := BuildTag("vless", link.Label, link.Address, e.Profile, link.Raw); got != e.Tag {
 			t.Errorf("line %d: got %s, want %s", e.Line, got, e.Tag)
 		}
+	}
+}
+
+func TestBuildTagPrefix(t *testing.T) {
+	v := BuildTag("vless", "🇦🇹 Вена", "h", "tcp-tls", rawFixed)
+	s := BuildTag("sub2", "🇦🇹 Вена", "h", "tcp-tls", rawFixed)
+	if s != "sub2-"+strings.TrimPrefix(v, "vless-") || !strings.HasSuffix(s, "-"+Sha8(rawFixed)) {
+		t.Fatalf("got %s, vless %s", s, v)
+	}
+	l := parseLine(t, vlessURL(testID, "type=tcp&security=tls"), 1)
+	nv, _, _ := Normalize(l, Policy{})
+	ns, _, _ := Normalize(l, Policy{TagPrefix: "sub2"})
+	if !strings.HasPrefix(nv.Tag, "vless-") || ns.Tag != "sub2-"+strings.TrimPrefix(nv.Tag, "vless-") {
+		t.Fatalf("Normalize tags %s %s", nv.Tag, ns.Tag)
 	}
 }

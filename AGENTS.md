@@ -8,7 +8,7 @@
 - Layout:
   - `cmd/scd/`: entry point. `main.version` is set by ldflags.
   - `internal/cli/`: root cobra command and `--version` (root only). Mounts the three services.
-  - `internal/common/`: shared code only. `buildinfo cliutil configload cron cronloop httpserve inputsrc jsonout labelfilter listenaddr logging regexlit schema sigctx subscription vless`.
+  - `internal/common/`: shared code only. `buildinfo cliutil configload cron cronloop httpserve inputsrc jsonout labelfilter listenaddr logging regexlit schema securefile sigctx subscription vless`.
   - `internal/scd/`, `internal/sfc/`, `internal/gtl/`: the services (`config/`, `cli/`, …).
   - `internal/archtest/`: import-boundary test.
   - `testdata/reference/`: frozen reference outputs of the previous implementation, used by Go tests (D20).

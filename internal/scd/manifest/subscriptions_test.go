@@ -184,7 +184,7 @@ func TestFromSubscriptionUsesAllowInsecurePolicy(t *testing.T) {
 	if !errors.Is(err, ErrNoValidEntries) || len(m.Skipped) != 1 || m.Skipped[0].Code != vless.CodeUnsupportedValue {
 		t.Fatalf("deny: %v %+v", err, m.Skipped)
 	}
-	if PolicyFor(a) != (normalize.Policy{AllowInsecure: true}) || PolicyFor(sub("a", "in")) != (normalize.Policy{}) {
+	if PolicyFor(a) != (normalize.Policy{AllowInsecure: true, TagPrefix: "vless"}) || PolicyFor(sub("a", "in")) != (normalize.Policy{TagPrefix: "vless"}) {
 		t.Fatal("PolicyFor")
 	}
 }

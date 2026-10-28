@@ -27,7 +27,7 @@ func generateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			m := manifest.Build(loaded.Content, loaded.Source, normalize.Policy{}, time.Now())
+			m := manifest.Build(loaded.Content, loaded.Source, normalize.Policy{TagPrefix: normalize.DefaultTagPrefix}, time.Now())
 			if err := manifest.Validate(m, loaded.Source); err != nil {
 				return err
 			}

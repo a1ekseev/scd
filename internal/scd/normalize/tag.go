@@ -67,10 +67,10 @@ func Sha8(s string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-// BuildTag returns "vless-<cc|xx>-<city>-<profile>-<sha8(raw)>". The city part
-// is the slug of the label city, else sha8 of it, else the slug of address,
-// else "endpoint".
-func BuildTag(label, address, profile, raw string) string {
+// BuildTag returns "<prefix>-<cc|xx>-<city>-<profile>-<sha8(raw)>". The city
+// part is the slug of the label city, else sha8 of it, else the slug of
+// address, else "endpoint".
+func BuildTag(prefix, label, address, profile, raw string) string {
 	cc := "xx"
 	if info, ok := country.FromLabel(label); ok {
 		cc = strings.ToLower(info.ISO2)
@@ -89,5 +89,5 @@ func BuildTag(label, address, profile, raw string) string {
 	if slug == "" {
 		slug = "endpoint"
 	}
-	return "vless-" + cc + "-" + slug + "-" + profile + "-" + Sha8(raw)
+	return prefix + "-" + cc + "-" + slug + "-" + profile + "-" + Sha8(raw)
 }

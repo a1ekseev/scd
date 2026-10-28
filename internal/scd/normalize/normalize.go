@@ -29,7 +29,12 @@ type Policy struct {
 	// nor vcn (subscriptions[].allowInsecure: allow, D15); otherwise they are
 	// skipped.
 	AllowInsecure bool
+	// TagPrefix is the first part of every tag; empty means DefaultTagPrefix.
+	TagPrefix string
 }
+
+// DefaultTagPrefix is the tag prefix of a Policy without TagPrefix.
+const DefaultTagPrefix = "vless"
 
 // Warning is a non-fatal note about an accepted link.
 type Warning struct {
@@ -230,7 +235,11 @@ func Normalize(l vless.Link, p Policy) (Normalized, []Warning, *vless.Skip) {
 		return Normalized{}, nil, s
 	}
 
-	n.Tag = BuildTag(l.Label, l.Address, n.Profile, l.Raw)
+	prefix := p.TagPrefix
+	if prefix == "" {
+		prefix = DefaultTagPrefix
+	}
+	n.Tag = BuildTag(prefix, l.Label, l.Address, n.Profile, l.Raw)
 	if info, ok := country.FromLabel(l.Label); ok {
 		n.Country = &info
 	}

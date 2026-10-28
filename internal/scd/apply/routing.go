@@ -16,7 +16,8 @@ import (
 //  1. a tunnel route tag listed in fixed fails the report without any RPC;
 //  2. ListRule; its error is returned as is (the caller turns it into a
 //     FailedReport);
-//  3. RemoveRule(ruleTag) for every listed rule whose ruleTag is not fixed —
+//  3. RemoveRule(ruleTag) for every listed rule whose ruleTag is not fixed
+//     and that owns reports for KindRouting —
 //     including a static rule without ruleTag, which sends RemoveRule("")
 //     and fails with Xray's "app/router: empty tag name!" exactly as TS
 //     does (O5: kept on purpose, list such rules in fixedRouting);
@@ -27,7 +28,7 @@ import (
 // A failure in 3 or 4 ends the report with one failed item whose id is the
 // first tunnel's route tag (or "routing"); there is no rollback. The
 // report's Skipped is empty, as in TS.
-func Routing(ctx context.Context, c xrayapi.RoutingAPI, fixed []string, tunnels []topology.Tunnel, m Meta) (Report, error) {
+func Routing(ctx context.Context, c xrayapi.RoutingAPI, fixed []string, owns Owner, tunnels []topology.Tunnel, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindRouting, m, startedAt, nil)
 
@@ -55,7 +56,7 @@ func Routing(ctx context.Context, c xrayapi.RoutingAPI, fixed []string, tunnels 
 
 	apply := func() error {
 		for _, rl := range existing {
-			if slices.Contains(fixed, rl.RuleTag) {
+			if slices.Contains(fixed, rl.RuleTag) || !owns(KindRouting, rl.RuleTag) {
 				continue
 			}
 			if err := c.RemoveRule(ctx, rl.RuleTag); err != nil {
