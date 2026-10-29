@@ -16,7 +16,7 @@ func TestHelpListsServiceCommands(t *testing.T) {
 	if code := Execute([]string{"--help"}, &out, &errb); code != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", code, errb.String())
 	}
-	for _, name := range []string{"sfc", "gtl"} {
+	for _, name := range []string{"sfc", "gtl", "wgp"} {
 		if !strings.Contains(out.String(), name) {
 			t.Errorf("help does not mention %q:\n%s", name, out.String())
 		}

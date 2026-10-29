@@ -1,14 +1,15 @@
 # scd
 
-`scd` is one Go binary with three services:
+`scd` is one Go binary with four services:
 
 | Command | Service | What it does |
 |---|---|---|
 | `scd …` | **scd** — Subscription Control Daemon | Turns VLESS subscriptions into Xray outbounds (plus SOCKS inbounds and routing rules per tunnel), applies them to Xray over the gRPC API, monitors and repairs tunnels, and serves a read-only status dashboard and JSON API. |
 | `scd sfc …` | **sfc** — Subscription Filter Control | Downloads upstream subscriptions, keeps VLESS lines whose label matches per-output filters, repacks them to base64 and serves them by public URL. Does not talk to Xray. |
 | `scd gtl …` | **gtl** — Gen Test Load | HTTP server that streams a random payload of the requested size, for download/load tests. |
+| `scd wgp …` | **wgp** — WireGuard provider | Keeps VPN provider accounts and keys and publishes WireGuard and MASQUE candidate files for scd sources. Does not talk to Xray or scd. |
 
-There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.21**.
+There is one image, `ghcr.io/a1ekseev/scd`, for all four. The target Xray version is **v26.10.21**.
 
 Upgrading from the pre-Go version: config keys changed. See
 [Migration notes](#migration-notes).
@@ -23,6 +24,7 @@ Upgrading from the pre-Go version: config keys changed. See
 - [Balancer selection](#balancer-selection)
 - [scd sfc](#scd-sfc)
 - [scd gtl](#scd-gtl)
+- [scd wgp](#scd-wgp)
 - [Cron schedules](#cron-schedules)
 - [Logging](#logging)
 - [Known limitations](#known-limitations)
@@ -56,6 +58,7 @@ output goes to stdout and logs go to stderr.
 | `scd generate --source-id <id> [--type vless\|wireguard\|masque] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; `--type masque` reads a MASQUE candidate file the same way, without `--endpoint-domain-strategy`. Keys are written as `<redacted>`. |
 | `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input`, `fetchHeaders` and output ids redacted unless `--include-secrets`; an output id is the secret part of its public URL, so the `refresh` report and logs name outputs by `name` instead). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
+| `scd wgp serve\|validate-config\|print-config --config f`, `scd wgp login\|logout --provider <id> --config f` | wgp: serve / validate (like `scd validate-config`) / print (paths of secret files, never their contents) / interactive login and logout of a provider that supports them; other providers fail with `provider "<id>" (type "<type>") does not support login`. See [scd wgp](#scd-wgp). |
 
 None of the services hot-reload the config. Restart after a change.
 `SIGINT`/`SIGTERM` stop all loops right away. Operations already in flight
@@ -76,18 +79,46 @@ service with `command:`:
 | scd | default CMD |
 | sfc | `["scd", "sfc", "serve", "--config", "/app/config/config.yml"]` |
 | gtl | `["scd", "gtl", "serve", "--config", "/app/config/config.yml"]` |
+| wgp | `["scd", "wgp", "serve", "--config", "/app/config/config.yml"]` |
 
 The config only needs to be readable. sfc writes its source cache to
 `/app/config/.sfc-cache`: a new named volume gets the right owner from the
 image, but a bind mount or a volume created by an older root image must be
 owned by `65532:65532` (`chown -R 65532:65532 <dir>`). Otherwise sfc keeps
 serving but logs `subscription_source_cache_write_failed` and has no fallback
-cache. Ports below 1024 are not available to the non-root user.
+cache. wgp writes its state to `/app/state` (mode `0700`) and its candidate
+outputs to `/app/out`; the image creates both owned by `65532:65532`, the same
+rule applies to bind mounts. Ports below 1024 are not available to the
+non-root user.
 
 The root `docker-compose.yml` runs Xray `ghcr.io/xtls/xray-core:26.10.21` and
-all three services on one locally built image. It mounts the git-ignored
+all four services on one locally built image. It mounts the git-ignored
 `docker/<svc>/config.yml` files. To start from the examples, run
 `cp docker/<svc>/config.example.yml docker/<svc>/config.yml`.
+
+wgp and scd share only the named volume `wgp-out`: wgp mounts it read-write
+at `/app/out`, scd read-only at `/app/wgp` (the `input` of its `wireguard` and
+`masque` sources). Both run as `65532`, so the `0600` files wgp writes there
+are readable by scd and by nobody else. wgp is on its own network
+`wgp-egress` (internet only, nothing shared with scd or Xray) and runs with a
+read-only root, no capabilities and `no-new-privileges`. Its status page is
+published on `127.0.0.1:9093`. Before the first start, on the host:
+
+```bash
+mkdir -p secrets docker/wgp/state docker/wgp/static
+head -c 32 /dev/urandom | base64 > secrets/wgp_state_key
+chmod 0400 secrets/wgp_state_key && chmod 0700 docker/wgp/state
+chmod 0600 docker/wgp/static/*.conf
+sudo chown 65532:65532 secrets/wgp_state_key docker/wgp/state docker/wgp/static/*.conf
+```
+
+The state key is the compose secret `wgp_state_key`. Outside swarm, compose
+bind-mounts a secret file with its host owner and mode, so it must be owned
+by `65532` with mode `0400` or `0600`; the same goes for the state directory
+(`0700`) and the static `.conf` files (no access for others). Docker Desktop
+on macOS shows bind-mounted files as owned by the reading user, so there the
+`chown` is not needed. `secrets/`, `docker/wgp/state/` and
+`docker/wgp/static/` (the `.conf` files hold private keys) are git-ignored.
 
 ```bash
 docker compose up -d --build
@@ -96,8 +127,15 @@ docker compose down
 bash scripts/compose-smoke.sh   # self-contained smoke test on the example configs
 ```
 
+wgp is in the compose profile `wgp`: a plain `docker compose up -d` starts
+Xray, scd, sfc and gtl only and needs no wgp config, state or key (scd then
+sees an empty `wgp-out` volume). Start wgp with
+`docker compose --profile wgp up -d` or `COMPOSE_PROFILES=wgp`; the smoke
+enables the profile itself.
+
 Published ports: the scd dashboard at <http://127.0.0.1:9090/>, sfc at
-<http://127.0.0.1:9091/s/test-all>, and gtl at <http://127.0.0.1:9092/load/32>.
+<http://127.0.0.1:9091/s/test-all>, gtl at <http://127.0.0.1:9092/load/32>,
+and the wgp status page at <http://127.0.0.1:9093/>.
 See [`docker/README.md`](docker/README.md) for details. To validate a config
 with the image:
 `docker run --rm -v "$PWD/docker/scd/config.yml":/app/config/config.yml:ro ghcr.io/a1ekseev/scd scd validate-config --config /app/config/config.yml`.
@@ -793,6 +831,142 @@ logging: {level: info, format: json}
   request. Every body is different and incompressible, so nothing in the path
   (e.g. a TLS-terminating CDN) sees repeated content. Streaming stops when the
   client disconnects.
+
+## scd wgp
+
+wgp keeps provider accounts, keys and certificates and publishes
+**candidates**: one file per output with one `wireguard://` or `masque://`
+line per candidate (see [WireGuard sources](#wireguard-sources) and
+[MASQUE sources](#masque-sources)), plus `status.json` in the same
+directory. An scd source of type `wireguard` or `masque` reads the file; scd
+and wgp share only that directory (read-only for scd). wgp holds no tunnels
+and never talks to Xray.
+
+```yaml
+server:
+  listen: 0.0.0.0:8080            # required
+logging: {level: info, format: json}
+state:
+  dir: /app/state                 # required, absolute
+  keyFile: /run/secrets/wgp_state_key  # required, absolute; a Docker secret
+deviceNamePrefix: wgp-a-          # required, [a-z0-9-]+, one per host
+keys:
+  revokeOldAfterMinutes: 30       # optional, >= 1; required by provider types that revoke
+api:                              # optional
+  timeoutMs: 15000
+  retry: {attempts: 3, minDelayMs: 3000, maxDelayMs: 8000}
+identification:                   # identification.<type> for the provider types in use
+  <type>: {…}
+providers:
+  - id: a                         # [a-z0-9]+, unique
+    type: <type>                  # a registered provider type
+    enabled: true                 # default true
+    schedule: "*/15 * * * *"      # required cron
+    # …keys of the provider type
+outputs:
+  - id: a                         # [a-z0-9]+, unique
+    path: /app/out/a          # absolute; every output in one directory
+    provider: a                   # exactly one output per enabled provider
+    candidates: 4                 # required or forbidden, by provider type
+```
+
+- The config is strict: unknown keys are errors and the important keys have
+  no defaults. `${NAME}` is not expanded; the file holds no secrets.
+- The core keys are checked by wgp, the rest of each provider entry and its
+  `identification.<type>` by the provider type. An unknown `type` is an error.
+- Outputs and providers are 1:1: an output names one provider, a provider
+  feeds at most one output, and an enabled provider must have one. An output
+  path must not be named `status.json`.
+- `print-config` prints `state.keyFile` as a path; wgp never prints the key.
+- **State.** `state.dir` holds one encrypted record per provider,
+  `<provider id>.state` (AES-256-GCM, bound to the provider id: a record
+  renamed to another id does not open). `state.keyFile` holds the key: the
+  standard base64 of 32 random bytes, for example
+  `head -c 32 /dev/urandom | base64 > secrets/wgp_state_key`, mode `0600` or
+  stricter. Logs show the key only as `keySha8` (event `state_opened`).
+- `serve`, `login` and `logout` refuse to start unless `state.dir` is a
+  directory (not a symlink) owned by the process uid with no group or other
+  access (`0700`), every file in it is a regular file owned by that uid with
+  no group or other access (`0600`), and the key file has no group or other
+  access. They also open every record first: a wrong key or a damaged record
+  stops the command with an error naming the file. wgp never replaces an
+  unreadable record with a new one; restore the file or the key, or remove
+  the record to start that provider over (its sessions and devices are then
+  lost).
+- `serve`, `login` and `logout` lock `state.dir` (`flock` on `wgp.lock`,
+  which holds the pid of the holder), so `login` runs only while `serve` is
+  stopped. A second command fails at once with `state dir … is in use by
+  another wgp process (pid N in its own pid namespace)`. The kernel drops the
+  lock when the holder exits, even when it is killed, so a leftover
+  `wgp.lock` never blocks a restart and must not be removed by hand.
+- `login`/`logout` need `--provider <id>` of a configured provider.
+- **Schedule.** `serve` runs every enabled provider on its `schedule`: the
+  first tick at start, then on each slot; a slot that arrives while the
+  previous tick of that provider still runs is skipped
+  (`provider_tick_skipped_overrun`). On SIGINT/SIGTERM the loops stop at
+  once, an active tick is cancelled and waited for, then the status page
+  drains (up to 10 s). There is no hot reload.
+- **Outputs.** Every tick writes the provider's lines to its output `path`,
+  one line per candidate, in the order the provider returns them. The write
+  is atomic (temporary file, fsync, rename, mode `0600`), and a file that
+  already holds the same bytes is not rewritten, so its mtime changes only
+  when a candidate changes. Each line is checked with the parser scd uses
+  for the provider's kind (`wireguard://` or `masque://`). An empty result or
+  a bad line fails the output, and the previous file stays (event
+  `provider_tick_failed`; `output_published` when a file changed).
+- **`status.json`.** After every tick wgp rewrites `status.json` in the
+  output directory (atomic, `0600`) with the status of every provider that
+  has ticked: `id`, `output`, `type`, `state` (`ok`, `needs_login` or
+  `error`), `error`, `lastTickAt`, `lastSuccessAt`, `issued`, `limit`,
+  `expiresAt`. A provider or output error goes into `state: error` and
+  `error`; it never stops the service. The file holds no secrets.
+- **Status page.** `server.listen` serves `GET /healthz` (`ok`),
+  `GET /api/status` (the `status.json` document from memory) and `GET /` (the
+  same as an HTML page, refreshed every 30 s). Other paths are `404`, other
+  methods `405`. The page is for the owner on the host: publish the port
+  only on `127.0.0.1`. scd never uses it.
+- `providers` needs at least one entry.
+
+### Provider `static`
+
+Publishes ready WireGuard configs: every `*.conf` file in `dir`, in file name
+order, becomes one `wireguard://` line with `provider=static`. It has no
+login, no state and no `identification`; its output takes no `candidates`
+(the number of active tunnels is the scd source's `maxActive`).
+
+```yaml
+providers:
+  - id: static
+    type: static
+    dir: /app/static              # required, absolute; mount it read-only
+    schedule: "*/5 * * * *"       # required; files are read again on each tick
+    maxFileBytes: 65536           # default 64 KiB
+    defaults:                     # for fields a file leaves out
+      mtu: 1420                   # default 1420, 576..1500
+      allowedIPs: [0.0.0.0/0, "::/0"]  # default 0.0.0.0/0, ::/0
+      dns: []                     # default none: no dns in the line
+outputs:
+  - {id: wg, path: /app/out/wg, provider: static}
+```
+
+- The files use the `wg-quick` format, keys case-insensitive:
+  `[Interface]` with `PrivateKey`, `Address`, `DNS` (IP addresses only),
+  `MTU`, and exactly one `[Peer]` with `PublicKey`, `PresharedKey`,
+  `Endpoint`, `AllowedIPs`, `PersistentKeepalive`. `Address`, `DNS` and
+  `AllowedIPs` may be comma lists or repeated lines.
+- Comments `# Label = 🇳🇱 Amsterdam` (otherwise the file name without
+  `.conf`) and `# Reserved = 1,2,3` set the label and the 3 reserved bytes.
+- `ListenPort`, `Table`, `FwMark`, `SaveConfig`, `PreUp`, `PostUp`,
+  `PreDown` and `PostDown` are ignored with a warning (`provider_warning`) and
+  never run. Any other key, a second `[Interface]` or `[Peer]`, or a missing
+  `[Peer]` rejects the file.
+- A file must be a regular file of at most `maxFileBytes` with no access for
+  others (`0600` or `0640`). The values get the same checks as in scd
+  ([WireGuard sources](#wireguard-sources)).
+- A rejected file is logged (`provider_error`) and shown in `status.json`
+  (`state: error`, `error` names the file and the field, never a value); the
+  other files are still published. With no accepted file the tick fails and
+  the previous output stays.
 
 ## Cron schedules
 

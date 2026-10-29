@@ -13,6 +13,7 @@ import (
 	gtlcli "github.com/a1ekseev/scd/internal/gtl/cli"
 	scdcli "github.com/a1ekseev/scd/internal/scd/cli"
 	sfccli "github.com/a1ekseev/scd/internal/sfc/cli"
+	wgpcli "github.com/a1ekseev/scd/internal/wgp/cli"
 )
 
 // NewRoot builds the root `scd` command with all service commands mounted.
@@ -28,7 +29,7 @@ func NewRoot() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(scdcli.Commands()...)
-	root.AddCommand(sfccli.New(), gtlcli.New())
+	root.AddCommand(sfccli.New(), gtlcli.New(), wgpcli.New())
 	return root
 }
 

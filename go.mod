@@ -6,6 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/chromedp/chromedp v0.21.0
+	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af // = the version xray-core requires; scripts/check-xray-version.sh
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/xtls/xray-core v1.260327.1-0.20261021115930-1b1647cd9ddf // = Xray v26.10.21 (1b1647c), stable; Go tag v1.261021.0 does not exist
@@ -41,7 +42,6 @@ require (
 	github.com/pion/transport/v5 v5.1.4 // indirect
 	github.com/pires/go-proxyproto v0.16.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect

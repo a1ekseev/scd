@@ -1,0 +1,47 @@
+{
+  "server": {
+    "listen": "0.0.0.0:8080"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "state": {
+    "dir": "/app/state",
+    "keyFile": "/run/secrets/wgp_state_key"
+  },
+  "deviceNamePrefix": "wgp-a-",
+  "api": {
+    "timeoutMs": 15000,
+    "retry": {
+      "attempts": 3,
+      "minDelayMs": 3000,
+      "maxDelayMs": 8000
+    }
+  },
+  "providers": [
+    {
+      "id": "static",
+      "type": "static",
+      "enabled": true,
+      "schedule": "*/5 * * * *",
+      "dir": "/app/static",
+      "maxFileBytes": 65536,
+      "defaults": {
+        "mtu": 1420,
+        "allowedIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "dns": []
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "wg",
+      "path": "/app/out/wg",
+      "provider": "static"
+    }
+  ]
+}

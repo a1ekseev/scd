@@ -6,3 +6,6 @@ coverage/
 .cache/
 /.test_config/
 internal/scd/status/testdata/visual/
+secrets/
+docker/wgp/state/
+docker/wgp/static/

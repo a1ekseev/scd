@@ -1,0 +1,59 @@
+# Пример конфига scd wgp (example config, no secrets). Скопируйте в
+# docker/wgp/config.yml (файл в .gitignore).
+#   scd wgp serve|login|logout|validate-config|print-config --config <path>
+#
+# В файле нет секретов: ключ шифрования state — Docker secret (state.keyFile),
+# сессии, устройства и ключи провайдеров — только в зашифрованном state.
+#
+# В этой сборке есть провайдер static (готовые .conf). identification.<type>
+# задаётся только для типов, которым он нужен; у static его нет.
+
+server:
+  # Локальная страница для владельца.
+  listen: 0.0.0.0:8080
+
+logging:
+  level: info     # D=info
+  format: json    # D=json
+
+state:
+  dir: /app/state
+  keyFile: /run/secrets/wgp_state_key
+
+# Свой у wgp каждого хоста. DeviceName: <префикс><output id>-<gen>-<n>.
+deviceNamePrefix: wgp-a-
+
+api:
+  timeoutMs: 15000    # D=15000
+  retry:
+    attempts: 3       # D=3
+    minDelayMs: 3000  # D=3000
+    maxDelayMs: 8000  # D=8000
+
+providers:
+  # ------------------------------------------------------------- готовые .conf
+  # Все *.conf каталога в порядке имён, по строке wireguard://…&provider=static
+  # на файл. Формат wg-quick: один [Interface] и ровно один [Peer]; DNS — только IP.
+  # Комментарии: "# Label = 🇳🇱 Amsterdam" (иначе имя файла без .conf) и
+  # "# Reserved = a,b,c". ListenPort, Table, FwMark, SaveConfig, Pre/PostUp,
+  # Pre/PostDown пропускаются с предупреждением и никогда не исполняются.
+  # Файл — обычный, без прав для «прочих» (0600 или 0640), не больше maxFileBytes.
+  # Ошибка в файле — ошибка в логе и status.json; остальные файлы публикуются.
+  - id: static
+    type: static
+    enabled: true                # D=true
+    dir: /app/static             # монтируется :ro
+    schedule: "*/5 * * * *"      # первый проход — при старте
+    maxFileBytes: 65536          # D=65536
+    defaults:                    # для полей, которых нет в .conf
+      mtu: 1420                  # D=1420
+      allowedIPs: [0.0.0.0/0, "::/0"]  # D=[0.0.0.0/0, ::/0]
+      dns: []                    # D=[]; пусто — dns не пишется
+
+# Выход: один провайдер, один файл; все path в одном каталоге (там же status.json).
+# Файлы 0600, владелец 65532; scd читает каталог через том :ro (input источника).
+# У static ключа candidates нет: публикуются все принятые .conf.
+outputs:
+  - id: wg
+    path: /app/out/wg
+    provider: static

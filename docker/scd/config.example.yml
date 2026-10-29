@@ -38,7 +38,8 @@ subscriptions:
       # Кандидаты WireGuard (по строке wireguard:// на кандидата). input — только
       # абсолютный путь к обычному файлу с правами 0600 (группа и остальные без доступа).
       # В Xray ставятся не больше maxActive кандидатов, выбранных по selection.strategy.
-      # Выключен: файла кандидатов в примере нет.
+      # Выключен: файл пишет wgp (провайдер static, docker/wgp/config.example.yml);
+      # scripts/compose-smoke.sh включает источник в своей копии примера.
       - id: wg
         type: wireguard
         input: /app/wgp/wg

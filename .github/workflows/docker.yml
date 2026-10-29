@@ -86,6 +86,7 @@ jobs:
           ./bin/scd validate-config --config docker/scd/config.example.yml
           ./bin/scd sfc validate-config --config docker/sfc/config.example.yml
           ./bin/scd gtl validate-config --config docker/gtl/config.example.yml
+          ./bin/scd wgp validate-config --config docker/wgp/config.example.yml
 
   smoke:
     needs: verify
@@ -101,10 +102,13 @@ jobs:
 
       - name: Validate compose files
         # compose-smoke.sh sets SCD_SMOKE_SCD_CONFIG to a copy of the example
-        # with a faster schedule; point it at the example for validation.
+        # with a faster schedule and the wgp inputs to temp copies. `config -q`
+        # does not read them: the key is /dev/null, the static dir the fixtures.
         env:
           SCD_SMOKE_SCD_CONFIG: ./docker/scd/config.example.yml
-        run: docker compose -f docker-compose.yml -f docker/compose.smoke.yml config -q
+          SCD_SMOKE_WGP_STATIC: ./docker/fixtures/static
+          SCD_SMOKE_WGP_KEY: /dev/null
+        run: docker compose --profile wgp -f docker-compose.yml -f docker/compose.smoke.yml config -q
 
       - name: Compose smoke
         run: bash scripts/compose-smoke.sh
@@ -140,7 +144,7 @@ jobs:
             type=semver,pattern={{version}}
           labels: |
             org.opencontainers.image.title=scd
-            org.opencontainers.image.description=Subscription Control Daemon (scd, sfc, gtl)
+            org.opencontainers.image.description=Subscription Control Daemon (scd, sfc, gtl, wgp)
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7

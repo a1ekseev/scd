@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -74,8 +75,13 @@ func checkPrivate(path string, info os.FileInfo) error {
 // left by a crashed process are not cleaned up.
 func WriteAtomic(path string, data []byte) (err error) {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	pattern := "." + filepath.Base(path) + ".tmp-*"
+	tmp, err := os.CreateTemp(dir, pattern)
 	if err != nil {
+		if pe, ok := errors.AsType[*fs.PathError](err); ok {
+			// The random name would make every failure text unique.
+			return &fs.PathError{Op: "createtemp", Path: filepath.Join(dir, pattern), Err: pe.Err}
+		}
 		return err
 	}
 	defer func() {

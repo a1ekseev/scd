@@ -1,7 +1,9 @@
 # Override for scripts/compose-smoke.sh: mounts the tracked secret-free
 # docker/<svc>/config.example.yml as /app/config/config.yml, so the ignored
 # docker/<svc>/config.yml (owner's real configs, D12) are never read or touched.
-# The sfc cache goes to a named volume removed by `down -v`.
+# The sfc cache and the wgp state go to named volumes removed by `down -v`.
+# wgp runs provider static on a 0600 copy of docker/fixtures/static/*.conf;
+# its state key is a fresh random key; the script makes both in a temp dir.
 # Relative paths resolve against the project directory (the repo root).
 services:
   scd:
@@ -15,6 +17,16 @@ services:
   gtl:
     volumes:
       - ./docker/gtl/config.example.yml:/app/config/config.yml:ro
+  wgp:
+    volumes:
+      - ./docker/wgp/config.example.yml:/app/config/config.yml:ro
+      - wgp-state:/app/state
+      - ${SCD_SMOKE_WGP_STATIC:?set by scripts/compose-smoke.sh}:/app/static:ro
 
 volumes:
   sfc-cache:
+  wgp-state:
+
+secrets:
+  wgp_state_key:
+    file: ${SCD_SMOKE_WGP_KEY:?set by scripts/compose-smoke.sh}

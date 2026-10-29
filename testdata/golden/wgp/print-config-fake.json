@@ -1,0 +1,55 @@
+{
+  "server": {
+    "listen": "127.0.0.1:8080"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "state": {
+    "dir": "/app/state",
+    "keyFile": "/run/secrets/wgp_state_key"
+  },
+  "identification": {
+    "fake": {
+      "timezone": "Europe/Istanbul"
+    }
+  },
+  "deviceNamePrefix": "wgp-a-",
+  "api": {
+    "timeoutMs": 15000,
+    "retry": {
+      "attempts": 3,
+      "minDelayMs": 3000,
+      "maxDelayMs": 8000
+    }
+  },
+  "providers": [
+    {
+      "id": "one",
+      "type": "fake",
+      "enabled": true,
+      "schedule": "*/15 * * * *",
+      "kind": "masque",
+      "lines": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "two",
+      "type": "fakedir",
+      "enabled": false,
+      "schedule": "@hourly",
+      "dir": "/app/static"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "one",
+      "path": "/app/out/one",
+      "provider": "one",
+      "candidates": 2
+    }
+  ]
+}
