@@ -1,0 +1,12 @@
+POST /auth/refresh HTTP/1.1
+Host: vpn-api.proton.me
+x-pm-appversion: linux-vpn-gui@5.8.11+{{arch}}
+User-Agent: ProtonVPN/5.8.11 (Linux; ubuntu/26.04)
+x-pm-uid: {{uid}}
+Authorization: Bearer {{access_token}}
+Accept: */*
+Accept-Encoding: gzip, deflate, zstd
+Content-Length: {{len}}
+Content-Type: application/json
+
+{"ResponseType": "token", "GrantType": "refresh_token", "RefreshToken": "{{refresh_token}}", "RedirectURI": "http://protonmail.ch"}

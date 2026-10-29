@@ -109,3 +109,23 @@ func TestCrosstestIsTestOnly(t *testing.T) {
 		}
 	}
 }
+
+// Test helper packages are imported only from _test.go files, so they never
+// reach the binary.
+func TestTestHelpersOnlyInTests(t *testing.T) {
+	helpers := []string{modulePrefix + "wgp/provider/proton/srp/srptest", modulePrefix + "wgp/provider/providertest"}
+	for _, dir := range append([]string{"common", "cli"}, services...) {
+		for file, imports := range importsOf(t, dir) {
+			if strings.HasSuffix(file, "_test.go") {
+				continue
+			}
+			for _, p := range imports {
+				for _, h := range helpers {
+					if p == h {
+						t.Errorf("%s imports the test helper %s", file, p)
+					}
+				}
+			}
+		}
+	}
+}

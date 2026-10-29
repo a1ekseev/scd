@@ -74,6 +74,9 @@ type Interactive interface {
 type TTY struct {
 	In  io.Reader
 	Out io.Writer
+	// HVToken is login --hv-token: a human verification token from an
+	// earlier attempt, empty when not given.
+	HVToken string
 }
 
 // Store is the encrypted state record of one provider.

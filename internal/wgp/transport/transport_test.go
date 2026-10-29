@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	utls "github.com/refraction-networking/utls"
 
 	"github.com/a1ekseev/scd/internal/wgp/provider"
@@ -410,6 +412,75 @@ func zl(s string) string {
 	return b.String()
 }
 
+func zs(s string) string {
+	w, _ := zstd.NewWriter(nil, zstd.WithWindowSize(1<<20))
+	defer func() { _ = w.Close() }()
+	return string(w.EncodeAll([]byte(s), nil))
+}
+
+// A zstd body decodes in HTTP mode too: net/http leaves it alone because
+// the request names Accept-Encoding itself.
+func TestHTTPModeZstd(t *testing.T) {
+	const body = `{"Code":1000}`
+	srv, pool := tlsServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Encoding", "zstd")
+		_, _ = io.WriteString(w, zs(body))
+	})
+	c := newClient(t, Config{BaseURL: srv.URL, RootCAs: pool})
+	resp, err := c.Do(t.Context(), Request{Method: "GET", Path: "/", Header: []Header{{"Accept-Encoding", "gzip, deflate, zstd"}}})
+	if err != nil || string(resp.Body) != body {
+		t.Fatalf("%q %v", resp.Body, err)
+	}
+}
+
+// A zstd body above maxBody after decoding, a window above zstdWindow and a
+// broken stream fail, and the error holds no body bytes.
+func TestZstdRejects(t *testing.T) {
+	// A streaming frame (no content size) that declares a 16 MiB window.
+	var stream bytes.Buffer
+	sw, _ := zstd.NewWriter(&stream, zstd.WithWindowSize(16<<20))
+	_, _ = sw.Write(bytes.Repeat([]byte("w"), 2<<20))
+	_ = sw.Close()
+	// A single-segment frame: the window is its 16 MiB content size.
+	big, _ := zstd.NewWriter(nil, zstd.WithWindowSize(16<<20))
+	single := string(big.EncodeAll(bytes.Repeat([]byte("w"), 16<<20), nil))
+	_ = big.Close()
+	good := zs("secret-body-bytes")
+	for _, tc := range []struct {
+		name, body string
+		want       []error // errors.Is one of them; nil = any read error
+	}{
+		{"bomb", zs(strings.Repeat("\x00", maxBody+1)), nil},
+		{"window stream", stream.String(), []error{zstd.ErrWindowSizeExceeded}},
+		{"window single segment", single, []error{zstd.ErrDecoderSizeExceeded}},
+		{"broken", good[:8] + "secret-body-bytes" + good[8:], nil},
+		{"truncated", good[:len(good)-4], []error{io.ErrUnexpectedEOF}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := read(&http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Encoding": {"zstd"}},
+				Body:       io.NopCloser(strings.NewReader(tc.body)),
+			})
+			switch {
+			case err == nil:
+				t.Fatal("no error")
+			case tc.name == "bomb":
+				if err.Error() != "response body exceeds 33554432 bytes" {
+					t.Fatalf("err %v, want the size limit", err)
+				}
+			case !strings.HasPrefix(err.Error(), "read response: "):
+				t.Fatalf("err %v, want a read error", err)
+			case tc.want != nil && !slices.ContainsFunc(tc.want, func(e error) bool { return errors.Is(err, e) }):
+				t.Fatalf("err %v, want one of %v", err, tc.want)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Errorf("error holds body bytes: %v", err)
+			}
+		})
+	}
+}
+
 func TestRawMode(t *testing.T) {
 	const body = `{"Code":1000,"ok":"é"}`
 	chunked := func(s string) string {
@@ -424,6 +495,8 @@ func TestRawMode(t *testing.T) {
 		{"gzip", "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: " + strconv.Itoa(len(gz(body))) + "\r\n\r\n" + gz(body)},
 		{"gzip chunked", "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n" + chunked(gz(body))},
 		{"deflate", "HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: " + strconv.Itoa(len(zl(body))) + "\r\n\r\n" + zl(body)},
+		{"zstd", "HTTP/1.1 200 OK\r\nContent-Encoding: zstd\r\nContent-Length: " + strconv.Itoa(len(zs(body))) + "\r\n\r\n" + zs(body)},
+		{"zstd chunked", "HTTP/1.1 200 OK\r\nContent-Encoding: zstd\r\nTransfer-Encoding: chunked\r\n\r\n" + chunked(zs(body))},
 	}
 	header := []Header{
 		{"Host", "api.example.test"},
@@ -522,5 +595,34 @@ func TestRawRejects(t *testing.T) {
 		if _, err := c.Do(t.Context(), req); err == nil || !strings.HasPrefix(err.Error(), "transport: bad") && !strings.Contains(err.Error(), "Content-Length") {
 			t.Errorf("%+v: err %v", req, err)
 		}
+	}
+}
+
+// Dialed runs once per Raw attempt, not on a failed dial, and HTTP mode
+// refuses it.
+func TestDialed(t *testing.T) {
+	srv := newRawServer(t, func(c *rawConn) {
+		_, _ = c.readRequest()
+		_, _ = io.WriteString(c.tls, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+	})
+	var n int
+	req := Request{Method: "GET", Path: "/", Dialed: func() { n++ }}
+	c := newClient(t, Config{BaseURL: srv.url, Mode: Raw, RootCAs: srv.pool})
+	recordSleep(c)
+	if _, err := c.Do(t.Context(), req); err == nil || n != 3 {
+		t.Errorf("502 x3: calls %d, err %v", n, err)
+	}
+
+	n = 0
+	c = newClient(t, Config{BaseURL: srv.url, Mode: Raw, RootCAs: srv.pool, Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("no route")
+	}})
+	if _, err := c.Do(t.Context(), req); err == nil || n != 0 {
+		t.Errorf("dial error: calls %d, err %v", n, err)
+	}
+
+	c = newClient(t, Config{BaseURL: srv.url, RootCAs: srv.pool})
+	if _, err := c.Do(t.Context(), req); err == nil || !strings.Contains(err.Error(), "Raw mode only") || n != 0 {
+		t.Errorf("HTTP mode: calls %d, err %v", n, err)
 	}
 }

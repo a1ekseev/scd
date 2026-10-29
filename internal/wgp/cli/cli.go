@@ -118,7 +118,7 @@ func openState(cfg config.Config) (*store.Store, func() error, error) {
 }
 
 func interactiveCommand(use, short string) *cobra.Command {
-	var id string
+	var id, hvToken string
 	cmd := configCommand(use, short, func(cmd *cobra.Command, l config.Loaded) error {
 		i, err := interactive(l.Config, id)
 		if err != nil {
@@ -132,12 +132,15 @@ func interactiveCommand(use, short string) *cobra.Command {
 		ctx, stop := sigctx.NotifyContext(cmd.Context())
 		defer stop()
 		if use == "login" {
-			return i.Login(ctx, provider.TTY{In: cmd.InOrStdin(), Out: cmd.OutOrStdout()}, st.Record(id))
+			return i.Login(ctx, provider.TTY{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), HVToken: hvToken}, st.Record(id))
 		}
 		return i.Logout(ctx, st.Record(id))
 	})
 	cmd.Flags().StringVar(&id, "provider", "", "Provider id")
 	_ = cmd.MarkFlagRequired("provider")
+	if use == "login" {
+		cmd.Flags().StringVar(&hvToken, "hv-token", "", "Human verification token from the link of an earlier login attempt")
+	}
 	return cmd
 }
 

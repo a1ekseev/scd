@@ -11,6 +11,11 @@
     "keyFile": "/run/secrets/wgp_state_key"
   },
   "identification": {
+    "proton": {
+      "appVersion": "linux-vpn-gui@5.8.11+x86-64",
+      "userAgent": "ProtonVPN/5.8.11 (Linux; ubuntu/26.04)",
+      "timezone": "Europe/Istanbul"
+    },
     "warp": {
       "userAgent": "1.1.1.1/6.38.9-5641 (Android 16.0.0)",
       "clientVersion": "a-6.38.9-5641",
@@ -21,6 +26,9 @@
     }
   },
   "deviceNamePrefix": "wgp-a-",
+  "keys": {
+    "revokeOldAfterMinutes": 30
+  },
   "api": {
     "timeoutMs": 15000,
     "retry": {
@@ -45,6 +53,51 @@
         ],
         "dns": []
       }
+    },
+    {
+      "id": "proton",
+      "type": "proton",
+      "enabled": false,
+      "schedule": "*/15 * * * *",
+      "tier": "free",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "certificate": {
+        "durationMinutes": 1440,
+        "renewBeforeMinutes": 360,
+        "features": {
+          "netShield": 0,
+          "vpnAccelerator": true,
+          "moderateNat": false
+        }
+      },
+      "servers": {
+        "exitCountries": [
+          "NL",
+          "CH",
+          "JP"
+        ],
+        "entryCountries": [],
+        "cities": [],
+        "requireFeatures": [],
+        "excludeFeatures": [
+          "secureCore",
+          "tor"
+        ],
+        "maxLoad": 80,
+        "maxScore": 999,
+        "switchMarginPercent": 20,
+        "switchConfirmChecks": 2
+      },
+      "wireguard": {
+        "port": 51820,
+        "dns": [
+          "10.2.0.1"
+        ],
+        "mtu": 1420
+      },
+      "label": "{flag} {city}, Proton {name}"
     },
     {
       "id": "warp",
@@ -101,6 +154,12 @@
     }
   ],
   "outputs": [
+    {
+      "id": "proton",
+      "path": "/app/out/proton",
+      "provider": "proton",
+      "candidates": 4
+    },
     {
       "id": "wg",
       "path": "/app/out/wg",

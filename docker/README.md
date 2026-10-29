@@ -49,6 +49,18 @@
   поэтому владелец должен быть 65532, права 0400 или 0600.
 - Провайдер static читает `./docker/wgp/static/*.conf` (`:ro`): файлы без
   прав для «прочих» (0600 или 0640) владельца 65532.
+- Провайдер proton (в примере `enabled: false`) требует входа — один раз на
+  хосте, при остановленном `serve` (lock каталога state); `run` берёт те же
+  тома, сеть и secret:
+
+  ```bash
+  docker compose --profile wgp stop wgp
+  docker compose --profile wgp run --rm -it wgp scd wgp login --provider proton --config /app/config/config.yml
+  docker compose --profile wgp start wgp
+  ```
+
+  Выход и отзыв своих сертификатов — так же, командой
+  `scd wgp logout --provider proton --config /app/config/config.yml`.
 - Подготовка на хосте (Linux):
 
   ```bash
@@ -73,7 +85,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 | `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), выключенными источниками `wireguard` `wg` (порты `20100..20109`) и `masque` `mq` (порты `20110..20119`; файлов кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
-| `wgp/config.example.yml` | `scd wgp`: общие ключи (`server`, `state`, `deviceNamePrefix`, `api`), провайдер `static` (`/app/static`, все ключи с умолчаниями) и выход `wg` → `/app/out/wg.txt`, который читает источник `wg` из `scd/config.example.yml`. Каталоги `secrets/`, `docker/wgp/state/` и `docker/wgp/static/` в `.gitignore` |
+| `wgp/config.example.yml` | `scd wgp`: общие ключи (`server`, `state`, `deviceNamePrefix`, `api`), провайдер `static` (`/app/static`, все ключи с умолчаниями) и выход `wg` → `/app/out/wg`, который читает источник `wg` из `scd/config.example.yml`; выключенные `proton` (`identification.proton`, `keys.revokeOldAfterMinutes`, выход `proton`), `warp` и `warpmq`. Каталоги `secrets/`, `docker/wgp/state/` и `docker/wgp/static/` в `.gitignore` |
 | `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go) |
 | `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` (для scd — временную копию с sync раз в 5 секунд и включённым источником `wg` из `SCD_SMOKE_SCD_CONFIG`); у wgp — state в именованном томе, копия `fixtures/static/*.conf` с правами 0600 (`SCD_SMOKE_WGP_STATIC`) и новый ключ state (`SCD_SMOKE_WGP_KEY`), оба во временном каталоге скрипта |
 | `fixtures/subscription.txt` | 8 фейковых VLESS-ссылок: `tcp+tls`, `ws+tls`, `tcp+reality+vision` (DE/NL/FI/US) |

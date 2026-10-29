@@ -58,7 +58,7 @@ output goes to stdout and logs go to stderr.
 | `scd generate --source-id <id> [--type vless\|wireguard\|masque] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; `--type masque` reads a MASQUE candidate file the same way, without `--endpoint-domain-strategy`. Keys are written as `<redacted>`. |
 | `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input`, `fetchHeaders` and output ids redacted unless `--include-secrets`; an output id is the secret part of its public URL, so the `refresh` report and logs name outputs by `name` instead). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
-| `scd wgp serve\|validate-config\|print-config --config f`, `scd wgp login\|logout --provider <id> --config f` | wgp: serve / validate (like `scd validate-config`) / print (paths of secret files, never their contents) / interactive login and logout of a provider that supports them; other providers fail with `provider "<id>" (type "<type>") does not support login`. See [scd wgp](#scd-wgp). |
+| `scd wgp serve\|validate-config\|print-config --config f`, `scd wgp login\|logout --provider <id> --config f` (`login` also `[--hv-token t]`) | wgp: serve / validate (like `scd validate-config`) / print (paths of secret files, never their contents) / interactive login and logout of a provider that supports them; other providers fail with `provider "<id>" (type "<type>") does not support login`. See [scd wgp](#scd-wgp). |
 
 None of the services hot-reload the config. Restart after a change.
 `SIGINT`/`SIGTERM` stop all loops right away. Operations already in flight
@@ -889,6 +889,10 @@ outputs:
   ClientHello (ECDHE AES-256-GCM suites c02c and c030, fixed extension order,
   no GREASE), HTTP/1.1 and JSON with sorted keys; the app strings
   (`identification.warp`) are those of the 1.1.1.1 Android app.
+  Proton API requests reproduce the ClientHello, headers and JSON of the
+  official Proton VPN Linux client (TLS 1.3 with X25519MLKEM768, HTTP/1.1 with
+  one connection per request, JSON in insertion order with `", "` and `": "`
+  separators and `\uXXXX` escapes).
 - **State.** `state.dir` holds one encrypted record per provider,
   `<provider id>.state` (AES-256-GCM, bound to the provider id: a record
   renamed to another id does not open). `state.keyFile` holds the key: the
@@ -910,7 +914,23 @@ outputs:
   another wgp process (pid N in its own pid namespace)`. The kernel drops the
   lock when the holder exits, even when it is killed, so a leftover
   `wgp.lock` never blocks a restart and must not be removed by hand.
-- `login`/`logout` need `--provider <id>` of a configured provider.
+- `login`/`logout` need `--provider <id>` of a configured provider. `login`
+  prompts on the terminal for what the provider needs (for Proton: username,
+  password and, if the account has one, the TOTP code); the password and the
+  code are read without echo and never stored or logged, only the session
+  goes into the state record. When the provider asks for a CAPTCHA, `login`
+  prints a `https://verify.proton.me/…` link and stops; solve it and run
+  `login` again with `--hv-token <token>`. A provider session is renewed
+  only when the API answers `401` (one renewal for concurrent requests), and
+  the rotated tokens are saved before they are used. `logout` revokes what
+  the provider issued, closes the session (a `401` counts as closed) and
+  removes it from the state record.
+- **`needs_login`.** When the API rejects the session renewal, every tick of
+  that provider fails with `state: needs_login` in `status.json` (and the
+  scd dashboard) and logs `provider_tick_failed`. wgp issues and rotates
+  nothing and leaves the output file as it is, so scd keeps the current
+  candidates until their certificates expire. wgp never signs in again by
+  itself: stop `serve` and run `scd wgp login`.
 - **Schedule.** `serve` runs every enabled provider on its `schedule`: the
   first tick at start, then on each slot; a slot that arrives while the
   previous tick of that provider still runs is skipped
@@ -931,8 +951,9 @@ outputs:
   output directory (atomic, `0600`) with the status of every provider that
   has ticked: `id`, `output`, `type`, `state` (`ok`, `needs_login` or
   `error`), `error`, `lastTickAt`, `lastSuccessAt`, `issued`, `limit`,
-  `expiresAt`. A provider or output error goes into `state: error` and
-  `error`; it never stops the service. The file holds no secrets.
+  `expiresAt`. A provider or output error goes into `state: error` (or
+  `needs_login`, above) and `error`; it never stops the service. The file
+  holds no secrets.
 - **Status page.** `server.listen` serves `GET /healthz` (`ok`),
   `GET /api/status` (the `status.json` document from memory) and `GET /` (the
   same as an HTML page, refreshed every 30 s). Other paths are `404`, other
@@ -980,6 +1001,121 @@ outputs:
   (`state: error`, `error` names the file and the field, never a value); the
   other files are still published. With no accepted file the tick fails and
   the previous output stays.
+
+### Provider `proton`
+
+Issues Proton VPN WireGuard configs and publishes one `wireguard://` line
+with `provider=proton` per candidate. Every candidate has its own key, its
+own persistent certificate and its own logical server: one key works
+reliably on one server at a time. Its output takes `candidates`: the number
+of certificates. Proton cuts tunnels silently above the plan's `MaxConnect`,
+so the `maxActive` of the scd sources of all hosts on one account must add
+up to at most `MaxConnect` (shown as `limit` in `status.json`).
+
+```yaml
+identification:
+  proton:                         # required with a proton provider; all strings required
+    appVersion: "linux-vpn-gui@5.8.11+x86-64"  # the x-pm-appversion header; +aarch64 on arm64
+    userAgent: "ProtonVPN/5.8.11 (Linux; ubuntu/26.04)"
+    timezone: Europe/Istanbul     # IANA name, the x-pm-timezone header
+deviceNamePrefix: wgp-a-          # one per host on the account
+keys:
+  revokeOldAfterMinutes: 30       # required with an enabled proton provider; >= the scd sync interval
+providers:
+  - id: proton
+    type: proton
+    tier: free                    # required: free | plus
+    schedule: "*/15 * * * *"      # required
+    keys:
+      rotateOnStart: true         # required: a new key generation at start
+    certificate:
+      durationMinutes: 1440       # required, 10..525600
+      renewBeforeMinutes: 360     # required, < durationMinutes
+      features:                   # all required
+        netShield: 0              # 0 off | 1 malware | 2 malware, ads and trackers
+        vpnAccelerator: true
+        moderateNat: false
+    servers:
+      exitCountries: [NL, CH]     # default []: all
+      entryCountries: []          # default []: all
+      cities: []                  # default []: all
+      requireFeatures: []         # default []; secureCore | tor | p2p | streaming | ipv6
+      excludeFeatures: [secureCore, tor]  # required, may be []
+      maxLoad: 80                 # required, 0..100
+      maxScore: 999               # default 999, at most 999
+      switchMarginPercent: 20     # required, 0..100
+      switchConfirmChecks: 2      # required, 1..10 ticks
+    wireguard:                    # optional
+      port: 51820                 # default 51820; 443 | 88 | 1224 | 51820 | 500 | 4500
+      dns: [10.2.0.1]             # default 10.2.0.1; IPs only
+      mtu: 1420                   # default 1420, 576..1500
+      allowedIPs: [0.0.0.0/0]     # default 0.0.0.0/0, plus ::/0 on an IPv6 server
+      keepalive: 0                # default 0 (not written)
+    label: "{flag} {city}, Proton {name}"  # default this; must start with {flag}
+outputs:
+  - {id: proton, path: /app/out/proton, provider: proton, candidates: 4}
+```
+
+- **Login.** Sign in once per host, with `serve` stopped (the state lock):
+
+  ```bash
+  docker compose --profile wgp stop wgp
+  docker compose --profile wgp run --rm -it wgp scd wgp login --provider proton --config /app/config/config.yml
+  docker compose --profile wgp start wgp
+  ```
+
+  `run` uses the same volumes, network and secret as the service. When the
+  host's IP gets a CAPTCHA that cannot be solved from it, sign in on another
+  machine with the same image and state key and copy the state record over.
+- **Tick.** Every tick reads the plan (`GET /vpn/v2`: `MaxTier` and
+  `MaxConnect` only; the OpenVPN credentials in that answer are never read)
+  and the server list, then issues, renews and revokes certificates and
+  writes the lines.
+- **Tier.** `free` takes only free servers (`Tier 0`), `plus` only paid ones
+  (`Tier 1..2`); a server above the account's `MaxTier` is never taken, and
+  `plus` on an account without it fails the tick (`state: error`).
+- **Servers.** A logical server qualifies when it is online, its tier fits,
+  its entry country (the Secure Core entry, the Smart Routing host country,
+  else the exit country) and exit country, city and features pass the
+  filters, `Load ≤ maxLoad` and `Score ≤ maxScore`; `Score ≥ 1000` never
+  qualifies. Its physical server is the online one with the smallest `ID`.
+  The best (`Score`, then `Load`, then name) go to the candidates, one
+  server per candidate. A candidate whose server no longer qualifies moves
+  to the best free one at once; a healthy one moves only when a free server
+  has a `Score` lower by `switchMarginPercent` on `switchConfirmChecks`
+  ticks in a row (counted in memory). The key stays, so scd replaces the
+  tunnel. A candidate without a free server is reported and has no line.
+- **Certificates.** Only `persistent` ones, named
+  `<deviceNamePrefix><output id>-<generation>-<candidate number>`, for
+  example `wgp-a-proton-3-1`. A new key gets a new certificate; it is renewed
+  with the same key `renewBeforeMinutes` before its expiry, or at the
+  refresh time Proton gives if that comes first, and the tunnel stays as it
+  is. The answer must be for the candidate's key (`ClientKeyFingerprint`).
+  A short `durationMinutes` limits the damage of a leaked key: a revoked
+  certificate keeps working for about 40–50 minutes.
+- **Rotation.** With `keys.rotateOnStart` every start begins a new
+  generation: every candidate gets a new key and certificate (a failed one
+  keeps its old key and tries again on the next tick).
+  `revokeOldAfterMinutes` after the rotation wgp revokes the certificates of
+  the older generations, giving scd time to switch. Revocation only touches
+  names that are exactly `<deviceNamePrefix><output id>-<generation>-<n>`:
+  other hosts (another prefix), other outputs and certificates without a
+  name (such as the one-off certificate of `login`) are never touched. The
+  certificate list is read in full, page by page. A certificate the API
+  reports as not found when revoked (already revoked) is counted
+  (`certificates_revoked.alreadyRevoked`), not an error.
+- **`logout`** revokes every certificate of that template, forgets the keys
+  and closes the session.
+- `status.json`: `issued` is the number of candidates with a live
+  certificate, `limit` is `MaxConnect`, `expiresAt` the earliest expiry. A
+  failing candidate makes `state: error` with `candidate N: …`, never a key
+  or token; no line at all fails the tick and the previous output stays.
+- Logs: `candidate_server_changed` (`fromServer`, `toServer`, `reasonCode`
+  `gone|better|vacant`, `detail` of `gone`), `certificate_issued` (`mode`
+  `new|rotation|renew`, `deviceName`, `expiresAt`), `keys_rotated`,
+  `certificates_revoked` and `session_refreshed`. A dead session is one
+  `provider_tick_failed` line with `state: needs_login` (repeats are
+  `debug`); the text is the same on every tick.
 
 ### Provider `warp`
 

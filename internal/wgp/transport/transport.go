@@ -31,6 +31,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/klauspost/compress/zstd"
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http/httpguts"
 
@@ -51,6 +52,9 @@ const (
 
 // maxBody limits a decoded response body.
 const maxBody = 32 << 20
+
+// zstdWindow is the largest zstd window a response may use.
+const zstdWindow = 8 << 20
 
 // maxRetryAfter caps a Retry-After pause (the context still bounds it).
 const maxRetryAfter = time.Hour
@@ -76,9 +80,13 @@ type Request struct {
 	Header []Header
 	// Body is the request body, never logged or put in an error.
 	Body []byte
+	// Dialed, Raw mode only, is called once per attempt right after the TCP
+	// connect, before the TLS handshake, so a caller can start concurrent
+	// requests in a fixed order. A failed dial does not call it.
+	Dialed func()
 }
 
-// Response is an API answer with its body decoded (gzip, deflate).
+// Response is an API answer with its body decoded (gzip, deflate, zstd).
 type Response struct {
 	Status int
 	Header http.Header
@@ -167,7 +175,7 @@ func New(cfg Config) (*Client, error) {
 		c.http = &http.Client{
 			Transport: &http.Transport{
 				DialTLSContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-					tc, _, err := c.dial(ctx, sessions)
+					tc, _, err := c.dial(ctx, sessions, nil)
 					return tc, err
 				},
 				IdleConnTimeout: 90 * time.Second,
@@ -220,6 +228,9 @@ func (c *Client) check(req Request) error {
 		if c.cfg.Mode == Raw && strings.EqualFold(h.Name, "Content-Length") && h.Value != strconv.Itoa(len(req.Body)) {
 			return errors.New("transport: Content-Length does not match the body")
 		}
+	}
+	if c.cfg.Mode != Raw && req.Dialed != nil {
+		return errors.New("transport: Dialed is for Raw mode only")
 	}
 	return nil
 }
@@ -291,9 +302,9 @@ func (c *Client) once(ctx context.Context, req Request) (Response, error) {
 	return c.viaHTTP(ctx, req)
 }
 
-// dial connects and completes the uTLS handshake. raw is the TCP connection
-// under tc.
-func (c *Client) dial(ctx context.Context, sessions utls.ClientSessionCache) (tc *utls.UConn, raw net.Conn, err error) {
+// dial connects and completes the uTLS handshake; dialed, if set, runs
+// right after the TCP connect. raw is the TCP connection under tc.
+func (c *Client) dial(ctx context.Context, sessions utls.ClientSessionCache, dialed func()) (tc *utls.UConn, raw net.Conn, err error) {
 	dial := c.cfg.Dial
 	if dial == nil {
 		dial = new(net.Dialer).DialContext
@@ -301,6 +312,9 @@ func (c *Client) dial(ctx context.Context, sessions utls.ClientSessionCache) (tc
 	raw, err = dial(ctx, "tcp", c.addr)
 	if err != nil {
 		return nil, nil, err
+	}
+	if dialed != nil {
+		dialed()
 	}
 	tc = utls.UClient(raw, &utls.Config{ServerName: c.host, RootCAs: c.cfg.RootCAs, ClientSessionCache: sessions}, utls.HelloCustom)
 	if err = tc.ApplyPreset(c.cfg.Spec()); err == nil && c.cfg.Prepare != nil {
@@ -347,7 +361,7 @@ func (c *Client) viaHTTP(ctx context.Context, req Request) (Response, error) {
 // raw writes req by hand on a new connection and closes the TCP connection
 // after the response, without a TLS close_notify.
 func (c *Client) raw(ctx context.Context, req Request) (Response, error) {
-	tc, conn, err := c.dial(ctx, nil)
+	tc, conn, err := c.dial(ctx, nil, req.Dialed)
 	if err != nil {
 		return Response{}, err
 	}
@@ -392,6 +406,15 @@ func read(resp *http.Response) (Response, error) {
 		body, err = gzip.NewReader(body)
 	case "deflate":
 		body, err = zlib.NewReader(body) // shortcut: zlib-wrapped only (RFC 9110), a raw deflate stream fails; add flate if an API sends one
+	case "zstd":
+		var d *zstd.Decoder
+		// One synchronous decoder, the 8 MiB window of RFC 9659: a frame cannot make it allocate more.
+		// No WithDecoderMaxMemory: the output limit comes from the LimitReader below.
+		d, err = zstd.NewReader(body, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxWindow(zstdWindow))
+		if err == nil {
+			defer d.Close()
+			body = d
+		}
 	default:
 		return Response{}, fmt.Errorf("unsupported Content-Encoding %q", enc)
 	}

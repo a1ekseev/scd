@@ -96,8 +96,8 @@ func (j job) ids() []any {
 
 // tick runs one provider tick, logs its events, publishes its lines and
 // writes status.json. A provider or publish error goes into the provider
-// status and is logged here as provider_tick_failed; the previous output
-// file stays.
+// status (state error, or needs_login when the provider says so) and is
+// logged here as provider_tick_failed; the previous output file stays.
 //
 // Warnings, errors and the status write are edge-triggered: a repeat of the
 // last state is logged at debug, a change at its own level, and the way
@@ -132,7 +132,10 @@ func (d *Daemon) tick(ctx context.Context, j job) {
 	s.ID, s.Output, s.Type, s.LastTickAt = j.p.ID, j.out.ID, j.p.Type, start
 	switch {
 	case err != nil:
-		s.State, s.Error = wgpstatus.StateError, err.Error()
+		if s.State != wgpstatus.StateNeedsLogin { // needs_login is a failed tick the owner must act on
+			s.State = wgpstatus.StateError
+		}
+		s.Error = err.Error()
 	case s.State == "":
 		s.State = wgpstatus.StateOK
 	}

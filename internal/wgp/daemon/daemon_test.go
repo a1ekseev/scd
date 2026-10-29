@@ -25,6 +25,7 @@ type scripted struct {
 	lines []string
 	errs  []error
 	n     int
+	state string
 }
 
 func (*scripted) ID() string           { return "p" }
@@ -32,7 +33,7 @@ func (*scripted) Kind() candidate.Kind { return candidate.KindWireGuard }
 func (s *scripted) Tick(context.Context, provider.Store) (provider.Result, error) {
 	err := s.errs[s.n]
 	s.n++
-	return provider.Result{Lines: s.lines, Status: wgpstatus.Provider{Issued: len(s.lines)}}, err
+	return provider.Result{Lines: s.lines, Status: wgpstatus.Provider{Issued: len(s.lines), State: s.state}}, err
 }
 
 // A provider error goes into its status, the previous file stays, and
@@ -77,6 +78,39 @@ func TestTickStatus(t *testing.T) {
 	d.tick(ctx, d.jobs[0])
 	if after := d.Status().Providers[0]; p.n != 2 || after.LastTickAt != before.LastTickAt {
 		t.Fatalf("cancelled tick ran %d, status %+v", p.n, after)
+	}
+}
+
+// A failed tick that reports needs_login keeps that state and its error,
+// and the previous file stays.
+func TestTickNeedsLogin(t *testing.T) {
+	b, err := os.ReadFile("../../../docker/fixtures/wireguard/candidates.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := &scripted{lines: strings.Split(string(b), "\n")[:1], errs: []error{nil, errors.New("session rejected")}}
+	out := filepath.Join(dir, "o")
+	cfg := config.Config{
+		Providers: []config.Provider{{ID: "p", Type: "x", Enabled: true, Schedule: "@hourly", Impl: p}},
+		Outputs:   []config.Output{{ID: "o", Path: out, Provider: "p"}},
+	}
+	d, err := New(cfg, func(string) provider.Store { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.tick(t.Context(), d.jobs[0])
+	p.lines, p.state = nil, wgpstatus.StateNeedsLogin
+	d.tick(t.Context(), d.jobs[0])
+	st, err := wgpstatus.Read(dir, 1<<16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := st.Providers[0]; s.State != wgpstatus.StateNeedsLogin || s.Error != "session rejected" || s.LastSuccessAt.IsZero() {
+		t.Fatalf("status %+v", s)
+	}
+	if got, _ := os.ReadFile(out); len(got) == 0 {
+		t.Fatal("a needs_login tick emptied the file")
 	}
 }
 
@@ -314,5 +348,22 @@ func TestStatusWriteEdge(t *testing.T) {
 	want := []string{"INFO output_published", "ERROR status_write_failed", "DEBUG status_write_failed", "INFO status_write_recovered"}
 	if got := levels(logLines(t, buf)); !slices.Equal(got, want) {
 		t.Fatalf("log %q, want %q", got, want)
+	}
+}
+
+// needs_login over two ticks is exactly two lines: provider_tick_failed at
+// error, then its repeat at debug; no other event is logged for it.
+func TestNeedsLoginLogLines(t *testing.T) {
+	d, buf, _ := logDaemon(t, funcProvider{func(context.Context) (provider.Result, error) {
+		return provider.Result{Status: wgpstatus.Provider{State: wgpstatus.StateNeedsLogin}}, errors.New("no valid session, sign in again")
+	}})
+	d.tick(t.Context(), d.jobs[0])
+	d.tick(t.Context(), d.jobs[0])
+	lines := logLines(t, buf)
+	if got, want := levels(lines), []string{"ERROR provider_tick_failed", "DEBUG provider_tick_failed"}; !slices.Equal(got, want) {
+		t.Fatalf("log %q, want %q", got, want)
+	}
+	if lines[0]["state"] != wgpstatus.StateNeedsLogin {
+		t.Fatalf("state %v", lines[0])
 	}
 }
