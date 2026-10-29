@@ -178,13 +178,18 @@ func (s *Syncer) perform(ctx context.Context) Report {
 func (s *Syncer) failedLoad(ctx context.Context, f manifest.FailedSource) TargetReport {
 	c, src := f.Subscription, f.Config
 	msg := inputsrc.RedactInputIn(f.Error, src.Input)
-	s.Log.LogAttrs(ctx, slog.LevelError, "Subscription fetch failed.",
+	attrs := []slog.Attr{
 		slog.String("event", "subscription_fetch_failed"),
 		slog.String("subscriptionId", c.ID),
 		slog.String("sourceId", src.ID),
 		slog.String("source", inputsrc.RedactInput(src.Input)),
 		slog.String("error", msg),
-		slog.String("targetAddress", c.Target.Address))
+		slog.String("targetAddress", c.Target.Address),
+	}
+	if f.Code != "" {
+		attrs = append(attrs, slog.String("reasonCode", f.Code))
+	}
+	s.Log.LogAttrs(ctx, slog.LevelError, "Subscription fetch failed.", attrs...)
 	return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, msg), nil)
 }
 
@@ -197,6 +202,16 @@ func (s *Syncer) failAll(ctx context.Context, c config.SubscriptionConfig, sourc
 		reports = append(reports, r)
 	}
 	return reports
+}
+
+// dial connects to the target of c for mutations: AddOutbound of a source
+// with maxActive goes through apply.Capped.
+func (s *Syncer) dial(c config.SubscriptionConfig) (xrayapi.Client, error) {
+	client, err := s.Dial(c.Target.Address, time.Duration(c.Target.TimeoutMs)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	return apply.Capped(client, c.Target, c.Sources), nil
 }
 
 func (s *Syncer) meta(c config.SubscriptionConfig, sourceID string) apply.Meta {
@@ -346,13 +361,20 @@ func (s *Syncer) syncSource(ctx context.Context, l manifest.LoadedSource) (r Tar
 			slog.Int("filteredByLabelRegex", m.Summary.FilteredByLabelRegex),
 			slog.String("targetAddress", t.Address))
 	}
-	r, ok = s.syncPlans(ctx, c, src.ID, plans, skipped)
+	if src.Type == config.SourceWireGuard {
+		r, ok = s.syncWireGuard(ctx, c, src, m, skipped)
+	} else {
+		r, ok = s.syncPlans(ctx, c, src.ID, plans, skipped)
+	}
 	if ok && r.Failed == 0 {
 		// Set also when the hashes are unchanged: the lines beyond the range
 		// may change without changing the applied ones.
 		s.Memory.Update(state.Key(c.ID, t.Address), func(tg *state.Target) {
 			if st := tg.Sources[src.ID]; st != nil {
 				st.Warnings = warnings
+				if src.Type == config.SourceWireGuard {
+					st.CandidateCount = len(m.Entries)
+				}
 			}
 		})
 	}
@@ -480,11 +502,7 @@ func (s *Syncer) syncPlans(ctx context.Context, c config.SubscriptionConfig, sou
 	if ctx.Err() != nil {
 		return TargetReport{}, false
 	}
-	// The mutation sequence is not cut short by a cancellation; each RPC has
-	// the client's own timeout (Review Focus 1, D7).
-	actx := context.WithoutCancel(ctx)
-
-	client, err := s.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
+	client, err := s.dial(c)
 	if err != nil {
 		reports := make([]apply.Report, 0, len(plans))
 		for _, p := range plans {
@@ -496,12 +514,27 @@ func (s *Syncer) syncPlans(ctx context.Context, c config.SubscriptionConfig, sou
 	}
 	defer func() { _ = client.Close() }()
 
-	reports := make([]apply.Report, 0, len(plans))
-	hashes := map[apply.Kind]string{}
-	failed := false
+	reports, hashes, failed := s.applyPlans(ctx, client, c, sourceID, plans)
+	if !failed {
+		// Every plan carries the same source topology.
+		s.Memory.ReplaceSourceTopology(key, sourceID, *plans[len(plans)-1].Topology, hashes)
+	}
+	return newTargetReport(c.ID, t.Address, sourceID, nil, reports, skipped), true
+}
+
+// applyPlans applies every plan of source sourceID in order through client
+// (under the target lock, which the caller holds) and logs each report. It
+// returns the reports, the hashes of the plans that succeeded and whether
+// any failed.
+func (s *Syncer) applyPlans(ctx context.Context, client xrayapi.Client, c config.SubscriptionConfig, sourceID string, plans []apply.Plan) (reports []apply.Report, hashes map[apply.Kind]string, failed bool) {
+	// The mutation sequence is not cut short by a cancellation; each RPC has
+	// the client's own timeout (Review Focus 1, D7).
+	actx := context.WithoutCancel(ctx)
+	reports = make([]apply.Report, 0, len(plans))
+	hashes = map[apply.Kind]string{}
 	for _, p := range plans {
 		s.Log.LogAttrs(ctx, slog.LevelInfo, "Applying resource to target.", targetAttrs("resource_apply_started", p.Kind, c, sourceID)...)
-		r := apply.Apply(actx, client, p, t, s.meta(c, p.SourceID))
+		r := apply.Apply(actx, client, p, c.Target, s.meta(c, p.SourceID))
 		s.logApply(ctx, r)
 		reports = append(reports, r)
 		if r.Failed > 0 {
@@ -510,11 +543,7 @@ func (s *Syncer) syncPlans(ctx context.Context, c config.SubscriptionConfig, sou
 		}
 		hashes[p.Kind] = p.ManifestHash
 	}
-	if !failed {
-		// Every plan carries the same source topology.
-		s.Memory.ReplaceSourceTopology(key, sourceID, *plans[len(plans)-1].Topology, hashes)
-	}
-	return newTargetReport(c.ID, t.Address, sourceID, nil, reports, skipped), true
+	return reports, hashes, failed
 }
 
 // missingInXray counts, per kind, the managed resources of plans that the
@@ -534,7 +563,11 @@ func (s *Syncer) missingInXray(ctx context.Context, c config.SubscriptionConfig,
 		return nil
 	}
 	defer func() { _ = client.Close() }()
+	return missingIn(ctx, client, t, plans)
+}
 
+// missingIn is missingInXray through client, without the lock.
+func missingIn(ctx context.Context, client xrayapi.Client, t config.SubscriptionTargetConfig, plans []apply.Plan) map[apply.Kind]int {
 	missing := map[apply.Kind]int{}
 	for _, p := range plans {
 		have := map[string]bool{}

@@ -66,6 +66,9 @@ type Meta struct {
 	SubscriptionID string
 	TargetAddress  string
 	Now            func() time.Time
+	// MaxOutbounds caps the outbounds an outbound rollback may restore
+	// (maxActive of a wireguard source); 0 is no cap.
+	MaxOutbounds int
 }
 
 func (m Meta) now() time.Time {

@@ -35,6 +35,37 @@ subscriptions:
         portRange:
           start: 20000
           end: 20099
+      # Кандидаты WireGuard (по строке wireguard:// на кандидата). input — только
+      # абсолютный путь к обычному файлу с правами 0600 (группа и остальные без доступа).
+      # В Xray ставятся не больше maxActive кандидатов, выбранных по selection.strategy.
+      # Выключен: файла кандидатов в примере нет.
+      - id: wg
+        type: wireguard
+        input: /app/wgp/wg
+        enabled: false
+        portRange:
+          start: 20100
+          end: 20109
+        maxActive: 2
+        selection:
+          strategy: score          # score | load | label
+          switchMarginPercent: 20
+          switchConfirmChecks: 2
+          deadPairCooldownMinutes: 10
+          replaceAfterFailures: 2
+        # Переопределение target.monitor для туннелей источника: отказ WG виден
+        # только как таймаут, первый handshake бывает долгим.
+        monitor:
+          request:
+            timeoutMs: 10000
+          retry:
+            attempts: 2
+            delayMs: 2000
+        filters:
+          countryAllowlist: [NL, CH]       # страна выхода (exit, иначе флаг label)
+          entryCountryAllowlist: [NL, CH]  # страна входа (entry, иначе флаг label)
+        wireguard:
+          endpointDomainStrategy: UseIPv4
     target:
       # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
       # (docker/xray/config/01_api.json).

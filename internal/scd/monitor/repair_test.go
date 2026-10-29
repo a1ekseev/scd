@@ -618,3 +618,76 @@ func TestRemoveOutboundAbsentContinues(t *testing.T) {
 		})
 	}
 }
+
+// failSecondRemoveOutbound fails the second RemoveOutbound without sending it.
+type failSecondRemoveOutbound struct {
+	xrayapi.Client
+	n *atomic.Int32
+}
+
+func (c failSecondRemoveOutbound) RemoveOutbound(ctx context.Context, tag string) error {
+	if c.n.Add(1) == 2 {
+		return status.Error(codes.Unknown, "rollback remove failed")
+	}
+	return c.Client.RemoveOutbound(ctx, tag)
+}
+
+// outboundPeak replays calls from the outbounds have and returns the most
+// outbounds that existed at once.
+func outboundPeak(have []string, calls []string) int {
+	set := map[string]bool{}
+	for _, t := range have {
+		set[t] = true
+	}
+	peak := len(set)
+	for _, c := range calls {
+		method, tag, _ := strings.Cut(c, ":")
+		switch method {
+		case "AddOutbound":
+			set[tag] = true
+		case "RemoveOutbound":
+			delete(set, tag)
+		}
+		peak = max(peak, len(set))
+	}
+	return peak
+}
+
+// A rejoin whose rollback cannot remove the initial outbound adds nothing
+// more and records the tunnel on it, so a later repair removes it first:
+// there are never more outbounds than tunnels.
+func TestRejoinRollbackRemoveFailure(t *testing.T) {
+	e := newEnv(t, newSub(prefixed), linkAT, linkBE)
+	e.repairTunnel(0)
+	tn := e.tunnel(0).Mapping
+	have, before := e.xray.OutboundTags(), len(e.xray.Calls())
+	var removes atomic.Int32
+	e.wrap = func(c xrayapi.Client) xrayapi.Client { return failSecondRemoveOutbound{Client: c, n: &removes} }
+	e.xray.FailNext("AddRule", status.Error(codes.Unknown, "rejoin add failed"))
+	e.deps.Probe = ok(200, 25)
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if calls := e.callsSince(before); slices.Contains(calls, "AddOutbound:"+tn.OutboundWithoutPrefix.Tag) {
+		t.Fatalf("unprefixed outbound added back: %q", calls)
+	}
+	if cur := e.tunnel(0).Mapping; cur.OutboundTagCurrent != tn.OutboundTagInitial {
+		t.Fatalf("current = %q", cur.OutboundTagCurrent)
+	}
+
+	e.wrap = nil
+	e.deps.Probe = failProbe
+	e.xray.FailNext("RemoveOutbound", status.Error(codes.Unknown, "remove failed"))
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if p := outboundPeak(have, e.callsSince(before)); p > 2 {
+		t.Fatalf("peak %d outbounds for 2 tunnels: %q", p, e.callsSince(before))
+	}
+	if got := e.xray.OutboundTags(); len(got) != 2 {
+		t.Fatalf("outbounds %v", got)
+	}
+}

@@ -26,7 +26,7 @@ import (
 // apply are removed in reverse order, then the backups are re-added in
 // removal order, rollback errors ignored — and ends the report with one
 // failed item. The report's Skipped is empty; the caller sets it.
-func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns Owner, entries []outbound.Outbound, m Meta) (Report, error) {
+func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns Owner, entries []outbound.Spec, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindOutbound, m, startedAt, nil)
 	finish := func() {
@@ -34,12 +34,12 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns 
 	}
 
 	for _, e := range entries {
-		if slices.Contains(fixed, e.Tag) {
+		if slices.Contains(fixed, e.GetTag()) {
 			r.Failed = 1
 			r.Items = append(r.Items, Item{
-				ID:      e.Tag,
+				ID:      e.GetTag(),
 				Status:  StatusFailed,
-				Message: "Managed outbound tag \"" + e.Tag + "\" conflicts with fixedOutbounds on target \"" + m.TargetAddress + "\".",
+				Message: "Managed outbound tag \"" + e.GetTag() + "\" conflicts with fixedOutbounds on target \"" + m.TargetAddress + "\".",
 			})
 			finish()
 			return r, nil
@@ -73,7 +73,8 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns 
 			r.Items = append(r.Items, Item{ID: tag, Status: StatusRemoved})
 		}
 		for _, e := range entries {
-			currentID = e.Tag
+			tag := e.GetTag()
+			currentID = tag
 			h, err := outbound.ToProto(e)
 			if err != nil {
 				return err
@@ -81,16 +82,16 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns 
 			if err := c.AddOutbound(ctx, h); err != nil {
 				return err
 			}
-			added = append(added, e.Tag)
-			r.AppliedIDs = append(r.AppliedIDs, e.Tag)
+			added = append(added, tag)
+			r.AppliedIDs = append(r.AppliedIDs, tag)
 			status := StatusAdded
-			if removed[e.Tag] {
+			if removed[tag] {
 				status = StatusReplaced
 				r.Replaced++
 			} else {
 				r.Added++
 			}
-			r.Items = append(r.Items, Item{ID: e.Tag, Status: status})
+			r.Items = append(r.Items, Item{ID: tag, Status: status})
 		}
 		return nil
 	}
@@ -102,9 +103,7 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns 
 		for _, tag := range slices.Backward(added) {
 			_ = c.RemoveOutbound(rctx, tag)
 		}
-		for _, h := range backups {
-			_ = c.AddOutbound(rctx, h)
-		}
+		restoreBackups(rctx, c, fixed, owns, backups, m.MaxOutbounds)
 		r.Failed = 1
 		r.Items = append(r.Items, Item{ID: failedID(currentID, added, entries), Status: StatusFailed, Message: err.Error()})
 	}
@@ -114,16 +113,29 @@ func Outbounds(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns 
 	return r, nil
 }
 
+// restoreBackups re-adds backups in removal order, errors ignored. With a
+// cap (maxActive) every add first passes CheckCap, so a failed removal of
+// an added outbound (or an add that timed out but happened) never exceeds
+// it; the first refusal stops the restore.
+func restoreBackups(ctx context.Context, c xrayapi.OutboundAPI, fixed []string, owns Owner, backups []*core.OutboundHandlerConfig, limit int) {
+	for _, h := range backups {
+		if limit > 0 && CheckCap(ctx, c, fixed, owns, limit) != nil {
+			return
+		}
+		_ = c.AddOutbound(ctx, h)
+	}
+}
+
 // failedID is the id of the failed item: the entry being added, else the
 // last added one, else the first entry, else "unknown".
-func failedID(currentID string, added []string, entries []outbound.Outbound) string {
+func failedID(currentID string, added []string, entries []outbound.Spec) string {
 	switch {
 	case currentID != "":
 		return currentID
 	case len(added) > 0:
 		return added[len(added)-1]
-	case len(entries) > 0 && entries[0].Tag != "":
-		return entries[0].Tag
+	case len(entries) > 0 && entries[0].GetTag() != "":
+		return entries[0].GetTag()
 	default:
 		return "unknown"
 	}

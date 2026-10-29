@@ -2,11 +2,15 @@ package manifest
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
+	"github.com/a1ekseev/scd/internal/common/securefile"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 )
@@ -29,6 +33,9 @@ type FailedSource struct {
 	// it does hold the input URL; redact it with inputsrc.RedactInputIn before
 	// logging or printing (D33).
 	Error string
+	// Code is CodeWireGuardInputRefused for a refused wireguard input, else
+	// "".
+	Code string
 }
 
 // LoadSources loads the enabled sources of sub one after another, ordered by
@@ -51,17 +58,43 @@ func LoadSources(
 		if ctx.Err() != nil {
 			break
 		}
-		l, err := load(ctx, s.Input, LoadOptions(s))
+		var (
+			l   inputsrc.Loaded
+			err error
+		)
+		if s.Type == config.SourceWireGuard {
+			l, err = LoadPrivate(s.Input, s.MaxInputBytes)
+		} else {
+			l, err = load(ctx, s.Input, LoadOptions(s))
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				break // cut short by the cancellation: not a failure
 			}
-			failed = append(failed, FailedSource{Subscription: sub, Config: s, Error: err.Error()})
+			f := FailedSource{Subscription: sub, Config: s, Error: err.Error()}
+			if errors.Is(err, securefile.ErrRefused) {
+				f.Code = CodeWireGuardInputRefused
+			}
+			failed = append(failed, f)
 			continue
 		}
 		loaded = append(loaded, LoadedSource{Subscription: sub, Config: s, Source: l.Source, Content: l.Content, Encoding: l.Encoding})
 	}
 	return loaded, failed
+}
+
+// LoadPrivate reads the candidate file of a wireguard source with
+// securefile.ReadPrivate: an absolute path to a regular file that group and
+// others cannot access, at most maxBytes long.
+func LoadPrivate(path string, maxBytes int64) (inputsrc.Loaded, error) {
+	if !filepath.IsAbs(path) {
+		return inputsrc.Loaded{}, fmt.Errorf("input %s must be an absolute file path", path)
+	}
+	b, err := securefile.ReadPrivate(path, maxBytes)
+	if err != nil {
+		return inputsrc.Loaded{}, err
+	}
+	return inputsrc.Loaded{Source: path, Content: string(b), Encoding: "plain"}, nil
 }
 
 // LoadOptions returns the inputsrc options of source s.
@@ -82,12 +115,19 @@ func PolicyFor(s config.SourceConfig) normalize.Policy {
 }
 
 // FromSource builds the manifest of a loaded source as sync does (01 §10):
-// the trimmed content under the source's policy, with the source id as
-// source file, filtered and validated. The manifest is returned with the
+// the trimmed content under the source's policy (a wireguard source: its
+// candidates, BuildWireGuard), with the source id as source file, filtered
+// and validated. The manifest is returned with the
 // validation error too.
 func FromSource(s LoadedSource, now time.Time) (Manifest, error) {
 	id := s.Config.ID
-	m := Build(strings.TrimSpace(s.Content), id, PolicyFor(s.Config), now)
+	var m Manifest
+	if wg := s.Config.WireGuard; s.Config.Type == config.SourceWireGuard && wg != nil {
+		m = BuildWireGuard(strings.TrimSpace(s.Content), id, id, wg.EndpointDomainStrategy, now)
+		m = applyWireGuardFilters(m, s.Config.Filters)
+		return m, Validate(m, id)
+	}
+	m = Build(strings.TrimSpace(s.Content), id, PolicyFor(s.Config), now)
 	m = ApplyFilters(m, s.Config.Filters)
 	return m, Validate(m, id)
 }

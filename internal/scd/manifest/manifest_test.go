@@ -16,6 +16,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
 )
 
 const (
@@ -290,7 +291,7 @@ func TestBuild3xuiRealityLink(t *testing.T) { // Review Focus 7
 	if len(m.Entries) != 1 || m.Entries[0].Profile != "tcp-reality-vision" || len(m.Entries[0].Warnings) != 0 {
 		t.Fatalf("entries %+v skipped %+v", m.Entries, m.Skipped)
 	}
-	r := m.Entries[0].JSONOutbound.StreamSettings.RealitySettings
+	r := m.Entries[0].JSONOutbound.(outbound.Outbound).StreamSettings.RealitySettings
 	if r == nil || r.SpiderX == "" || r.Mldsa65Verify == "" {
 		t.Fatalf("realitySettings %+v", r)
 	}

@@ -358,7 +358,8 @@ type sourcesCardView struct {
 }
 
 // sourcesCard is the sources card of t, nil without sources: a metric per
-// source ("<id>": "<type>", "· disabled" when off), followed by its
+// source ("<id>": "<type>", "· <active>/<maxActive> active of
+// <candidates>" for wireguard, "· disabled" when off), followed by its
 // warnings (the code as tooltip).
 func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
 	if len(t.Sources) == 0 {
@@ -367,6 +368,9 @@ func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
 	c := &sourcesCardView{Class: state.TunnelIdle, Title: strconv.Itoa(len(t.Sources)) + " source(s)"}
 	for _, s := range t.Sources {
 		v := s.Type
+		if s.MaxActive > 0 {
+			v += " · " + strconv.Itoa(s.ActiveCount) + "/" + strconv.Itoa(s.MaxActive) + " active of " + strconv.Itoa(s.CandidateCount)
+		}
 		if !s.Enabled {
 			v += " · disabled"
 		}

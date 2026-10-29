@@ -9,6 +9,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
 )
 
 const (
@@ -67,10 +68,10 @@ func TestAllocatesStablePortsAndTargetScopedTags(t *testing.T) { // T1
 	if a.OutboundTagInitial != "x-observe-"+a.BaseOutboundTag || a.OutboundTagCurrent != a.OutboundTagInitial {
 		t.Errorf("outbound tags = %q / %q", a.OutboundTagInitial, a.OutboundTagCurrent)
 	}
-	if a.OutboundInitial.Tag != a.OutboundTagInitial || a.OutboundInitial.Normalized.Tag != a.OutboundTagInitial || a.OutboundInitial.JSON.Tag != a.OutboundTagInitial {
+	if a.OutboundInitial.Tag != a.OutboundTagInitial || a.OutboundInitial.Normalized.Tag != a.OutboundTagInitial || a.OutboundInitial.JSON.GetTag() != a.OutboundTagInitial {
 		t.Errorf("initial outbound tag mismatch: %+v", a.OutboundInitial.Tag)
 	}
-	if a.OutboundWithoutPrefix.Tag != a.BaseOutboundTag || a.OutboundWithoutPrefix.JSON.Tag != a.BaseOutboundTag {
+	if a.OutboundWithoutPrefix.Tag != a.BaseOutboundTag || a.OutboundWithoutPrefix.JSON.GetTag() != a.BaseOutboundTag {
 		t.Errorf("withoutPrefix tag = %q", a.OutboundWithoutPrefix.Tag)
 	}
 	if a.BaseTunnelID != a.BaseOutboundTag || a.InboundTag != "in-"+a.BaseOutboundTag || a.RouteTag != "route-"+a.BaseOutboundTag {
@@ -105,7 +106,7 @@ func TestVisionOverridePerTarget(t *testing.T) { // T2
 			t.Errorf("override %s flow = %q", name, got)
 		}
 	}
-	if u.OutboundInitial.JSON.Settings.Vnext[0].Users[0].Flow != "xtls-rprx-vision-udp443" {
+	if u.OutboundInitial.JSON.(outbound.Outbound).Settings.Vnext[0].Users[0].Flow != "xtls-rprx-vision-udp443" {
 		t.Errorf("JSON flow not overridden")
 	}
 }

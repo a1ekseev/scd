@@ -228,9 +228,14 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 		if pr := src.PortRange; pr != nil {
 			if pr.Start > 0 && pr.End > 0 && pr.End < pr.Start {
 				n.Addf(key+"portRange.end", "must be greater than or equal to start")
+			} else if src.MaxActive > 0 && pr.Start > 0 && pr.End-pr.Start+1 < src.MaxActive {
+				n.Addf(key+"portRange", "has %d ports, fewer than maxActive %d", pr.End-pr.Start+1, src.MaxActive)
 			}
 		} else if needPorts {
 			n.Addf(key+"portRange", "required when resources.inbounds.enabled or resources.routing.enabled is true")
+		}
+		if src.Type == SourceWireGuard && (!res.Inbounds.Enabled || !res.Routing.Enabled) {
+			n.Addf(key+"type", "%q requires resources.inbounds.enabled and resources.routing.enabled", src.Type)
 		}
 		if !ValidSourceID(src.ID) {
 			continue

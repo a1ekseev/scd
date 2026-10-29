@@ -180,9 +180,10 @@ func updateTunnel(m *state.Memory, key, id string, fn func(tn *state.Tunnel)) {
 
 // tunnelRef is the part of a tunnel the tick needs, copied at its start.
 type tunnelRef struct {
-	id     string
-	listen string
-	port   int
+	id       string
+	sourceID string
+	listen   string
+	port     int
 }
 
 // TunnelTick probes every tunnel of the subscription's target (03 §4.1):
@@ -204,7 +205,7 @@ func TunnelTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) erro
 	d.Memory.View(key, func(tg *state.Target) {
 		synced = tg.SyncSeen
 		for _, tn := range tg.Tunnels {
-			refs = append(refs, tunnelRef{tn.Mapping.BaseTunnelID, tn.Mapping.Listen, tn.Mapping.Port})
+			refs = append(refs, tunnelRef{tn.Mapping.BaseTunnelID, tn.Mapping.SourceID, tn.Mapping.Listen, tn.Mapping.Port})
 		}
 	})
 	if !synced {
@@ -218,11 +219,13 @@ func TunnelTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) erro
 // checkTunnel is the worker of TunnelTick for one tunnel.
 func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key string, ref tunnelRef) error {
 	t := sub.Target
+	src := sourceOf(sub, ref.sourceID)
+	request, retry := sourceProbe(t.Monitor, src)
 	resp, err := d.probeWithRetry(ctx, probeSpec{
 		host:    ResolveProxyHost(ref.listen, t.Address),
 		port:    ref.port,
-		request: t.Monitor.Request,
-		retry:   t.Monitor.Retry,
+		request: request,
+		retry:   retry,
 		event:   "monitor_check_retry",
 		message: "Monitor check attempt failed; retrying.",
 		attrs: []slog.Attr{
@@ -237,6 +240,7 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 	}
 	if err != nil {
 		failedAt := d.now()
+		inRow := 0
 		updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 			m := &tn.Monitor
 			m.State = state.TunnelDegraded
@@ -244,7 +248,14 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 			m.LastStatusCode, m.LastLatencyMs = nil, nil
 			m.LastError = err.Error()
 			m.ConsecutiveFailures++
+			m.FailuresInRow++
+			inRow = m.FailuresInRow
 		})
+		if src != nil && src.Selection != nil && inRow >= src.Selection.ReplaceAfterFailures {
+			if done, err := ReplaceFailed(ctx, d, sub, *src, ref.id); done || err != nil {
+				return err
+			}
+		}
 		return Repair(ctx, d, sub, ref.id)
 	}
 
@@ -257,6 +268,12 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 		m.LastSuccessStatusCode, m.LastSuccessLatencyMs = new(resp.StatusCode), new(resp.LatencyMs)
 		m.LastError = ""
 		m.ConsecutiveFailures = 0
+		m.FailuresInRow = 0
+	})
+	d.Memory.Update(key, func(tg *state.Target) {
+		if st := tg.Sources[ref.sourceID]; st != nil {
+			delete(st.NoReplacement, ref.id)
+		}
 	})
 	if err := Rejoin(ctx, d, sub, ref.id); err != nil {
 		updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
@@ -265,6 +282,40 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 		d.logRejoinFailed(ctx, sub, ref.id, err)
 	}
 	return nil
+}
+
+// sourceOf is the source id of sub, nil when it is not configured.
+func sourceOf(sub config.SubscriptionConfig, id string) *config.SourceConfig {
+	for i := range sub.Sources {
+		if sub.Sources[i].ID == id {
+			return &sub.Sources[i]
+		}
+	}
+	return nil
+}
+
+// sourceProbe is the probe request and retry of the tunnels of src:
+// target.monitor with sources[].monitor's timeoutMs, retry.attempts and
+// retry.delayMs where they are set.
+func sourceProbe(m config.TargetMonitorConfig, src *config.SourceConfig) (*config.TargetMonitorRequestConfig, config.RetryConfig) {
+	request, retry := m.Request, m.Retry
+	if src == nil || src.Monitor == nil {
+		return request, retry
+	}
+	if o := src.Monitor.Request; o != nil {
+		r := *request
+		r.TimeoutMs = o.TimeoutMs
+		request = &r
+	}
+	if o := src.Monitor.Retry; o != nil {
+		if o.Attempts != 0 {
+			retry.Attempts = o.Attempts
+		}
+		if o.DelayMs != nil {
+			retry.DelayMs = *o.DelayMs
+		}
+	}
+	return request, retry
 }
 
 // runLimited runs worker for 0..n-1 on max(1, min(maxParallel, n))

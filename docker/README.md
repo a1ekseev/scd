@@ -30,13 +30,14 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 
 | Файл | Назначение |
 | --- | --- |
-| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с одним источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
+| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`) и выключенным источником `wireguard` `wg` (порты `20100..20109`, файла кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go) |
 | `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` (для scd — временную копию с sync раз в 5 секунд из `SCD_SMOKE_SCD_CONFIG`) |
 | `fixtures/subscription.txt` | 8 фейковых VLESS-ссылок: `tcp+tls`, `ws+tls`, `tcp+reality+vision` (DE/NL/FI/US) |
 | `fixtures/subscription.b64` | та же подписка в base64 |
+| `fixtures/wireguard/candidates.txt` | фейковые WireGuard-кандидаты (ключи из повторяющихся байтов, адреса 192.0.2.0/24) и строки, которые пропускаются: `wireguard_invalid`, `unsupported_scheme`, `duplicate_tag`. Тесты копируют файл с правами 0600 |
 | `xray/config/*.json` | конфиг тестового Xray (`-confdir`) |
 
 В `scd/config.example.yml` `fixedOutbounds` / `fixedInbounds` / `fixedRouting`

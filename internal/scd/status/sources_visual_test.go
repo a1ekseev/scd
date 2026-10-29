@@ -73,6 +73,27 @@ func TestDashboardSourcesVisual(t *testing.T) {
 	}
 }
 
+// The wireguard source with its counts and the no_replacement warning
+// against the Go reference PNGs; the warning is visible at every width.
+func TestDashboardWireGuardSourceVisual(t *testing.T) {
+	bctx := startChrome(t)
+	page := filepath.Join(t.TempDir(), "go.html")
+	writeFile(t, page, []byte(dashboard(t, "sources-wireguard", "/")))
+	for _, w := range visualWidths {
+		label := strconv.FormatInt(w, 10)
+		t.Run(label, func(t *testing.T) {
+			matchGolden(t, filepath.Join(visualGoldenDir, "sources-wireguard-"+label+".png"), screenshot(bctx, t, w, page, nil))
+			v, err := chromedp.Run(bctx, chromedp.Evaluate[bool](warningVisible))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !v {
+				t.Error("no_replacement warning is not visible")
+			}
+		})
+	}
+}
+
 // matchGolden compares the screenshot got with the PNG at path (written
 // instead with -update): same size and at most maxDiffRatio differing
 // pixels. A missing golden skips the test; on a mismatch the images are

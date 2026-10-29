@@ -100,6 +100,9 @@ type StatusTunnel struct {
 	// SourceID is the id of the tunnel's source, set only when its target
 	// has sources (GroupedStatusTarget.Sources).
 	SourceID string `json:"sourceId,omitempty"`
+	// Protocol is the tunnel protocol, set only when it is not VLESS
+	// ("wireguard").
+	Protocol string `json:"protocol,omitempty"`
 }
 
 // SourceView is one source of a grouped target, in source id order.
@@ -107,6 +110,11 @@ type SourceView struct {
 	SourceID string `json:"sourceId"`
 	Type     string `json:"type"`
 	Enabled  bool   `json:"enabled"`
+	// MaxActive, ActiveCount and CandidateCount are set for a wireguard
+	// source; the counts after its first successful sync.
+	MaxActive      int `json:"maxActive,omitempty"`
+	ActiveCount    int `json:"activeCount,omitempty"`
+	CandidateCount int `json:"candidateCount,omitempty"`
 	// Warnings are the source-level warnings of its last successful sync.
 	Warnings []normalize.Warning `json:"warnings,omitempty"`
 }
@@ -263,6 +271,7 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 				if withSource {
 					st.SourceID = tn.Mapping.SourceID
 				}
+				st.Protocol = tn.Mapping.Protocol
 				tunnels = append(tunnels, st)
 			}
 		})
@@ -276,19 +285,23 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 }
 
 // sourceViews is the sources[] of target t (nil before any state) of sub:
-// every source of sub in id order with its warnings, or nil when sub has
-// one source without warnings (D3: the TS snapshot form).
+// every source of sub in id order with its warnings and, for wireguard, its
+// counts; nil when sub has one VLESS source without warnings (D3: the TS
+// snapshot form).
 func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 	views := make([]SourceView, 0, len(sub.Sources))
 	shown := len(sub.Sources) > 1
 	for _, src := range sub.Sources {
-		v := SourceView{SourceID: src.ID, Type: src.Type, Enabled: src.Enabled}
+		v := SourceView{SourceID: src.ID, Type: src.Type, Enabled: src.Enabled, MaxActive: src.MaxActive}
 		if t != nil {
 			if s := t.Sources[src.ID]; s != nil {
-				v.Warnings = slices.Clone(s.Warnings)
+				v.Warnings = s.AllWarnings()
+				if src.Type == config.SourceWireGuard && s.Topology != nil {
+					v.ActiveCount, v.CandidateCount = len(s.Topology.Tunnels), s.CandidateCount
+				}
 			}
 		}
-		shown = shown || len(v.Warnings) > 0
+		shown = shown || len(v.Warnings) > 0 || src.Type != config.SourceVLESS
 		views = append(views, v)
 	}
 	if !shown {

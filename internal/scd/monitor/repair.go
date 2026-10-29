@@ -2,9 +2,11 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
 	"github.com/a1ekseev/scd/internal/scd/resources"
@@ -35,8 +37,22 @@ func viewTunnel(m *state.Memory, key, id string) (state.Tunnel, bool) {
 	return out, found
 }
 
-func (d Deps) dial(t config.SubscriptionTargetConfig) (xrayapi.Client, error) {
-	return d.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
+// dial connects to the target of sub for mutations: AddOutbound of a
+// source with maxActive goes through apply.Capped.
+func (d Deps) dial(sub config.SubscriptionConfig) (xrayapi.Client, error) {
+	c, err := d.Dial(sub.Target.Address, time.Duration(sub.Target.TimeoutMs)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	return apply.Capped(c, sub.Target, sub.Sources), nil
+}
+
+// capRefused resets the hashes of the tunnel's source when err is an
+// AddOutbound refused by apply.Capped: the next sync applies it in full.
+func capRefused(m *state.Memory, key string, tn topology.Tunnel, err error) {
+	if errors.Is(err, apply.ErrCapReached) {
+		m.Update(key, func(tg *state.Target) { tg.ResetSourceHashes(tn.SourceID) })
+	}
 }
 
 // Repair moves a tunnel whose final probe failed to its unprefixed outbound
@@ -84,7 +100,7 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 			slog.String("outboundTag", cur.Mapping.OutboundTagCurrent))
 		return nil
 	}
-	client, err := d.dial(t)
+	client, err := d.dial(sub)
 	if err != nil {
 		return err
 	}
@@ -92,9 +108,14 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 
 	repaired := cur.Mapping
 	repaired.OutboundTagCurrent = repaired.OutboundWithoutPrefix.Tag
-	if err := repairCalls(context.WithoutCancel(ctx), client, cur.Mapping, repaired); err != nil {
+	if added, err := repairCalls(context.WithoutCancel(ctx), client, cur.Mapping, repaired); err != nil {
 		failedAt := d.now()
+		capRefused(d.Memory, key, cur.Mapping, err)
 		updateTunnel(d.Memory, key, tunnelID, func(tn *state.Tunnel) {
+			if added {
+				// The unprefixed outbound is in Xray; only its rule is missing.
+				tn.Mapping = repaired
+			}
 			tn.Monitor.State = state.TunnelDegraded
 			tn.Monitor.LastFailureAt = &failedAt
 			tn.Monitor.LastError = err.Error()
@@ -126,18 +147,19 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 }
 
 // repairCalls is the RPC sequence of a repair; cur is the tunnel before it.
-func repairCalls(ctx context.Context, c xrayapi.Client, cur, repaired topology.Tunnel) error {
+// added reports that the unprefixed outbound was added.
+func repairCalls(ctx context.Context, c xrayapi.Client, cur, repaired topology.Tunnel) (added bool, err error) {
 	h, err := outbound.ToProto(repaired.OutboundWithoutPrefix.JSON)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := removeTunnel(ctx, c, cur); err != nil {
-		return err
+		return false, err
 	}
 	if err := c.AddOutbound(ctx, h); err != nil {
-		return err
+		return false, err
 	}
-	return c.AddRule(ctx, resources.Rule(repaired, repaired.OutboundTagCurrent))
+	return true, c.AddRule(ctx, resources.Rule(repaired, repaired.OutboundTagCurrent))
 }
 
 // removeTunnel removes the tunnel's rule (best effort) and current outbound
@@ -185,7 +207,7 @@ func Rejoin(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 	if !ok || !shouldRejoin(cur.Mapping) {
 		return nil
 	}
-	client, err := d.dial(t)
+	client, err := d.dial(sub)
 	if err != nil {
 		return err
 	}
@@ -194,7 +216,12 @@ func Rejoin(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 	rejoined := cur.Mapping
 	rejoined.OutboundTagCurrent = rejoined.OutboundTagInitial
 	if err := rejoinCalls(context.WithoutCancel(ctx), client, cur.Mapping, rejoined); err != nil {
+		capRefused(d.Memory, key, cur.Mapping, err)
+		_, stuck := errors.AsType[*stuckOnInitialError](err)
 		updateTunnel(d.Memory, key, tunnelID, func(tn *state.Tunnel) {
+			if stuck {
+				tn.Mapping = rejoined
+			}
 			tn.Monitor.LastError = rejoinFailedPrefix + err.Error()
 		})
 		d.logRejoinFailed(ctx, sub, tunnelID, err)
@@ -233,13 +260,24 @@ func rejoinCalls(ctx context.Context, c xrayapi.Client, cur, rejoined topology.T
 		err = c.AddRule(ctx, resources.Rule(rejoined, rejoined.OutboundTagCurrent))
 	}
 	if err != nil {
-		_ = c.RemoveOutbound(ctx, rejoined.OutboundTagCurrent)
+		if rerr := c.RemoveOutbound(ctx, rejoined.OutboundTagCurrent); rerr != nil {
+			// The initial outbound may still exist: adding the unprefixed one
+			// could run the tunnel on two outbounds.
+			return &stuckOnInitialError{err}
+		}
 		_ = c.AddOutbound(ctx, unprefixed)
 		_ = c.AddRule(ctx, resources.Rule(cur, cur.OutboundTagCurrent))
 		return err
 	}
 	return nil
 }
+
+// stuckOnInitialError is a rejoin error after which the rollback could not
+// remove the initial outbound: the tunnel is then recorded on it, so the
+// next repair removes it first.
+type stuckOnInitialError struct{ error }
+
+func (e *stuckOnInitialError) Unwrap() error { return e.error }
 
 func (d Deps) logRejoinFailed(ctx context.Context, sub config.SubscriptionConfig, tunnelID string, err error) {
 	d.Log.LogAttrs(ctx, slog.LevelError, "Tunnel balancer rejoin failed after successful monitor probe.",

@@ -135,7 +135,7 @@ func TestValidateNoValidEntriesMessage(t *testing.T) {
 		t.Fatalf("got %v\nwant %s", err, want)
 	}
 	// Every counter is printed from the summary.
-	m.Summary = Summary{1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0}
+	m.Summary = Summary{1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 0}
 	want = `Subscription source "x" produced no valid outbound entries. parsed=0 skipped=2 filtered=3 ` +
 		`filteredByCountry=4 filteredByLabelRegex=5 unsupportedScheme=6 unsupportedParam=7 unsupportedValue=8 ` +
 		`unsupportedCombo=9 invalidUri=10 missingRequiredField=11 duplicateTag=12`

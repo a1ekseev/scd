@@ -29,6 +29,7 @@ import (
 const (
 	msgTargetNotFound    = "Target not found in loaded config."
 	msgExpectedNoRefetch = "Expected topology is unavailable for remote or stdin inputs; runtime-state does not refetch subscription sources."
+	msgExpectedNoActive  = "Expected topology of a wireguard source is its active set, which no sync has applied yet."
 )
 
 // Runtime item classifications.
@@ -245,7 +246,7 @@ func BuildRuntimeState(ctx context.Context, d Deps, subscriptionID, targetAddres
 		now = d.Now
 	}
 
-	expected := buildExpected(ctx, sub, cfg.Resources, opts.IncludeSecrets, now())
+	expected := buildExpected(ctx, d.Memory, sub, cfg.Resources, opts.IncludeSecrets, now())
 	outbounds, inbounds, rules, err := listRuntime(ctx, d.Dial, sub.Target)
 	if err != nil {
 		code := http.StatusInternalServerError
@@ -316,12 +317,20 @@ func listRuntime(ctx context.Context, dial xrayapi.Dialer, t config.Subscription
 
 // buildExpected derives the expected topology from the enabled sources of
 // the subscription (03 §6.4), as the union of the sources in id order.
-func buildExpected(ctx context.Context, sub config.SubscriptionConfig, res config.ResourceConfig, includeSecrets bool, now time.Time) rsExpected {
+func buildExpected(ctx context.Context, mem *state.Memory, sub config.SubscriptionConfig, res config.ResourceConfig, includeSecrets bool, now time.Time) rsExpected {
 	exp := rsExpected{Outbounds: []expectedOutbound{}, Inbounds: []expectedInbound{}, RoutingRules: []expectedRule{}}
 	sources := sub.EnabledSources()
 	slices.SortStableFunc(sources, func(a, b config.SourceConfig) int { return strings.Compare(a.ID, b.ID) })
 	for _, src := range sources {
-		origin, tunnels, errMsg := expectedSourceTunnels(ctx, sub, src, includeSecrets, now)
+		var (
+			origin, errMsg string
+			tunnels        []topology.Tunnel
+		)
+		if src.Type == config.SourceWireGuard {
+			origin, tunnels, errMsg = activeTunnels(mem, sub, src)
+		} else {
+			origin, tunnels, errMsg = expectedSourceTunnels(ctx, sub, src, includeSecrets, now)
+		}
 		es := expectedSource{SourceID: src.ID, Source: origin, Error: errMsg}
 		exp.Sources = append(exp.Sources, es)
 		for _, tn := range tunnels {
@@ -347,7 +356,7 @@ func buildExpected(ctx context.Context, sub config.SubscriptionConfig, res confi
 		}
 	}
 	// One VLESS source keeps the single-source shape of the TS API.
-	if len(exp.Sources) == 1 {
+	if len(exp.Sources) == 1 && sources[0].Type == config.SourceVLESS {
 		exp.Source, exp.Error = exp.Sources[0].Source, exp.Sources[0].Error
 		exp.Sources = nil
 	}
@@ -386,6 +395,22 @@ func expectedSourceTunnels(ctx context.Context, sub config.SubscriptionConfig, s
 	}
 	topo, _ := topology.BuildSource(m, src, sub.Target)
 	return l.Source, topo.Tunnels, ""
+}
+
+// activeTunnels is the expected topology of a wireguard source: its active
+// set in the state (the candidate file is not read again).
+func activeTunnels(mem *state.Memory, sub config.SubscriptionConfig, src config.SourceConfig) (origin string, tunnels []topology.Tunnel, errMsg string) {
+	if mem != nil {
+		mem.View(state.Key(sub.ID, sub.Target.Address), func(t *state.Target) {
+			if s := t.Sources[src.ID]; s != nil && s.Topology != nil {
+				tunnels = slices.Clone(s.Topology.Tunnels)
+			}
+		})
+	}
+	if tunnels == nil {
+		return src.Input, nil, msgExpectedNoActive
+	}
+	return src.Input, tunnels, ""
 }
 
 // redactedConfig is the config section: the subscription (input and
@@ -431,8 +456,9 @@ func classifyOutbounds(list []*core.OutboundHandlerConfig, t config.Subscription
 		if p, ok := resources.DescribeOutbound(h, opts.IncludeSecrets); ok {
 			item.Parsed = p
 		}
-		// rawBase64 is the unredacted proto (keys included), so it also needs includeSecrets.
-		if opts.IncludeRaw && opts.IncludeSecrets {
+		// rawBase64 is the unredacted proto (keys included), so it also needs
+		// includeSecrets; a WireGuard private key is never shown.
+		if opts.IncludeRaw && opts.IncludeSecrets && !resources.IsWireGuard(h) {
 			item.RawBase64 = resources.RawBase64(h)
 		}
 		items = append(items, item)

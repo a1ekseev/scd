@@ -296,3 +296,11 @@ func FromLabel(label string) (Info, bool) {
 	}
 	return Info{Emoji: string(flag), ISO2: iso.String(), NameEn: nm.en, NameRu: nm.ru}, true
 }
+
+// FromISO2 resolves a supported upper-case ISO2 code.
+func FromISO2(code string) (Info, bool) {
+	if len(code) != 2 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return Info{}, false
+	}
+	return FromLabel(string([]rune{regionalA + rune(code[0]-'A'), regionalA + rune(code[1]-'A')}))
+}

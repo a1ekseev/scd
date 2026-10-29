@@ -13,6 +13,7 @@ import (
 	"github.com/xtls/xray-core/proxy/socks"
 	"github.com/xtls/xray-core/proxy/vless"
 	vout "github.com/xtls/xray-core/proxy/vless/outbound"
+	"github.com/xtls/xray-core/proxy/wireguard"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/headers/http"
 	"github.com/xtls/xray-core/transport/internet/reality"
@@ -72,8 +73,8 @@ func address(a *xnet.IPOrDomain) string {
 }
 
 // DescribeOutbound returns the runtime-state "parsed" object of a VLESS
-// outbound (SenderConfig + vless outbound Config), false for any other
-// outbound. Keys are those of the TS runtime-state (protocol, address, port,
+// outbound (SenderConfig + vless outbound Config) or a WireGuard outbound
+// (describeWireGuard), false for any other outbound. Keys are those of the TS runtime-state (protocol, address, port,
 // uuid, flow, encryption, network, security, sni, alpn, fingerprint, host,
 // path, publicKey, shortId) plus xhttpMode; empty values are omitted, alpn is
 // always present ([] when unset) unless security is none. Without
@@ -87,6 +88,9 @@ func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[s
 	sender, ok := instance[*proxyman.SenderConfig](h.SenderSettings)
 	if !ok {
 		return nil, false
+	}
+	if wg, ok := instance[*wireguard.DeviceConfig](h.ProxySettings); ok {
+		return describeWireGuard(wg, sender), true
 	}
 	cfg, ok := instance[*vout.Config](h.ProxySettings)
 	if !ok {
@@ -117,6 +121,40 @@ func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[s
 	describeTransport(p, stream, includeSecrets)
 	describeSecurity(p, stream, includeSecrets)
 	return p, true
+}
+
+// IsWireGuard reports whether h is a WireGuard outbound, whose proto holds
+// the private key: runtime-state never shows its rawBase64.
+func IsWireGuard(h *core.OutboundHandlerConfig) bool {
+	_, ok := instance[*wireguard.DeviceConfig](h.GetProxySettings())
+	return ok
+}
+
+// describeWireGuard is the "parsed" object of a WireGuard outbound:
+// protocol, endpoint, publicKey (the peer's), address, mtu, remoteDNS,
+// noKernelTun and domainStrategy. The private and preshared keys are never
+// shown, whatever includeSecrets.
+func describeWireGuard(wg *wireguard.DeviceConfig, sender *proxyman.SenderConfig) map[string]any {
+	p := map[string]any{"protocol": "wireguard", "noKernelTun": wg.NoKernelTun}
+	if peers := wg.GetPeers(); len(peers) > 0 {
+		setString(p, "endpoint", peers[0].Endpoint)
+		if k, err := hex.DecodeString(peers[0].PublicKey); err == nil {
+			p["publicKey"] = base64.StdEncoding.EncodeToString(k)
+		}
+	}
+	if len(wg.Endpoint) > 0 {
+		p["address"] = wg.Endpoint
+	}
+	if wg.Mtu != 0 {
+		p["mtu"] = int(wg.Mtu)
+	}
+	if len(wg.DNS) > 0 {
+		p["remoteDNS"] = wg.DNS
+	}
+	if ds := sender.GetStreamSettings().GetSocketSettings().GetDomainStrategy(); ds != internet.DomainStrategy_AS_IS {
+		p["domainStrategy"] = ds.String()
+	}
+	return p
 }
 
 // describeTransport adds host, path and xhttpMode of the stream's transport.

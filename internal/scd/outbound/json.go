@@ -9,6 +9,7 @@ package outbound
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/a1ekseev/scd/internal/scd/normalize"
@@ -116,6 +117,25 @@ type XHTTPSettings struct {
 	Mode  string          `json:"mode,omitempty"`
 	Extra json.RawMessage `json:"extra,omitempty"`
 }
+
+// GetTag implements Spec.
+func (o Outbound) GetTag() string { return o.Tag }
+
+// WithTag implements Spec: the tag and the user email.
+func (o Outbound) WithTag(tag string) Spec {
+	o.Tag = tag
+	o.Settings.Vnext = slices.Clone(o.Settings.Vnext)
+	for i := range o.Settings.Vnext {
+		users := slices.Clone(o.Settings.Vnext[i].Users)
+		for j := range users {
+			users[j].Email = tag
+		}
+		o.Settings.Vnext[i].Users = users
+	}
+	return o
+}
+
+func (o Outbound) xrayJSON() ([]byte, error) { return json.Marshal(o) }
 
 // Build returns the JSON outbound of n.
 func Build(n normalize.Normalized) Outbound {

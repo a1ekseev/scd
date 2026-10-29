@@ -144,3 +144,21 @@ func TestDashboardSources(t *testing.T) {
 	}
 	assertContains(t, page.String(), `<span class="metric-label">spare</span><span class="metric-value">vless · disabled</span>`)
 }
+
+// A wireguard source: its counts and the no_replacement warning, in the
+// JSON and in the sources card.
+func TestSourcesWireGuard(t *testing.T) {
+	l := loadFixture(t, "sources-wireguard")
+	body := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
+	target := index(t, field(t, index(t, field(t, body, "subscriptions"), 0), "targets"), 0)
+	jsonEqual(t, decode(t, field(t, target, "sources")), decode(t, []byte(`[
+	{"sourceId": "main", "type": "vless", "enabled": true},
+	{"sourceId": "wg", "type": "wireguard", "enabled": true, "maxActive": 2, "activeCount": 2, "candidateCount": 3, "warnings": [
+		{"code": "no_replacement", "message": "1 tunnels have no replacement candidate outside quarantine."}]}]`)))
+
+	html := bodyOf(t, dashboard(t, "sources-wireguard", "/"))
+	assertContains(t, html,
+		`<span class="metric-label">wg</span><span class="metric-value">wireguard · 2/2 active of 3</span>`,
+		`<span class="metric metric-state-repairing" title="wg: no_replacement"><span class="metric-label">Warning</span>`+
+			`<span class="metric-value">1 tunnels have no replacement candidate outside quarantine.</span></span>`)
+}

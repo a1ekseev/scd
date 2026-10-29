@@ -37,7 +37,7 @@ func TestApplyKeepsForeignNotOwned(t *testing.T) {
 			name: "outbound",
 			opts: []xrayfake.Option{xrayfake.WithStaticOutbounds("keep", "other", "s-old")},
 			run: func(c xrayapi.Client) (apply.Report, error) {
-				return apply.Outbounds(ctx, c, fixed, prefixOwner(apply.KindOutbound, "s-"), []outbound.Outbound{entry("s-a", "198.51.100.1")}, meta())
+				return apply.Outbounds(ctx, c, fixed, prefixOwner(apply.KindOutbound, "s-"), []outbound.Spec{entry("s-a", "198.51.100.1")}, meta())
 			},
 			tags:     (*xrayfake.Server).OutboundTags,
 			wantTags: []string{"keep", "other", "s-a"},

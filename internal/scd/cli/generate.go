@@ -3,6 +3,9 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,26 +21,46 @@ import (
 // one input without trimming or filters, under the default policy with the
 // tags of source --source-id, and writes the manifest and the parse log.
 // Nothing is written when the input has no valid entries; stdout gets the
-// summary.
+// summary. With --type wireguard the input is a candidate file read as a
+// private file (securefile.ReadPrivate) and the outbounds use
+// --endpoint-domain-strategy; no key is written anywhere.
 func generateCommand() *cobra.Command {
-	var input, output, logPath, sourceID, sourceType string
+	var input, output, logPath, sourceID, sourceType, domainStrategy string
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Build an outbound manifest from a subscription",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if sourceType != config.SourceVLESS {
-				return fmt.Errorf("--type must be %s", config.SourceVLESS)
-			}
-			if !config.ValidSourceID(sourceID) {
+			switch {
+			case sourceType != config.SourceVLESS && sourceType != config.SourceWireGuard:
+				return fmt.Errorf("--type must be %s or %s", config.SourceVLESS, config.SourceWireGuard)
+			case sourceType == config.SourceWireGuard && !slices.Contains(config.EndpointDomainStrategies, domainStrategy):
+				return fmt.Errorf("--endpoint-domain-strategy must be one of %s with --type %s",
+					strings.Join(config.EndpointDomainStrategies, "|"), config.SourceWireGuard)
+			case sourceType == config.SourceVLESS && domainStrategy != "":
+				return fmt.Errorf("--endpoint-domain-strategy is only for --type %s", config.SourceWireGuard)
+			case !config.ValidSourceID(sourceID):
 				return fmt.Errorf(`--source-id %q must be 1..16 characters [a-z0-9-] without a leading or trailing "-"`, sourceID)
 			}
-			loaded, err := inputsrc.Load(cmd.Context(), input, inputsrc.Options{Stdin: cmd.InOrStdin()})
-			if err != nil {
-				return err
+			var m manifest.Manifest
+			if sourceType == config.SourceWireGuard {
+				path, err := filepath.Abs(input)
+				if err != nil {
+					return err
+				}
+				loaded, err := manifest.LoadPrivate(path, maxGenerateInput)
+				if err != nil {
+					return err
+				}
+				m = manifest.BuildWireGuard(loaded.Content, loaded.Source, sourceID, domainStrategy, time.Now())
+			} else {
+				loaded, err := inputsrc.Load(cmd.Context(), input, inputsrc.Options{Stdin: cmd.InOrStdin()})
+				if err != nil {
+					return err
+				}
+				m = manifest.Build(loaded.Content, loaded.Source, normalize.Policy{TagPrefix: sourceID}, time.Now())
 			}
-			m := manifest.Build(loaded.Content, loaded.Source, normalize.Policy{TagPrefix: sourceID}, time.Now())
-			if err := manifest.Validate(m, loaded.Source); err != nil {
+			if err := manifest.Validate(m, m.SourceFile); err != nil {
 				return err
 			}
 			if err := writeJSON(output, m); err != nil {
@@ -49,16 +72,22 @@ func generateCommand() *cobra.Command {
 			return jsonout.Write(cmd.OutOrStdout(), m.Summary)
 		},
 	}
-	cmd.Flags().StringVar(&input, "input", "", `Subscription file, http(s) URL or "-" for stdin`)
+	cmd.Flags().StringVar(&input, "input", "", `Subscription file, http(s) URL or "-" for stdin; a candidate file for wireguard`)
 	cmd.Flags().StringVar(&output, "output", "", "Manifest JSON file to write")
 	cmd.Flags().StringVar(&logPath, "log", "", "Parse log JSON file to write")
 	cmd.Flags().StringVar(&sourceID, "source-id", "", "Source id: the prefix of every generated tag")
-	cmd.Flags().StringVar(&sourceType, "type", config.SourceVLESS, "Source type (vless)")
+	cmd.Flags().StringVar(&sourceType, "type", config.SourceVLESS, "Source type (vless|wireguard)")
+	cmd.Flags().StringVar(&domainStrategy, "endpoint-domain-strategy", "",
+		"Endpoint domain strategy of the wireguard outbounds ("+strings.Join(config.EndpointDomainStrategies, "|")+"); required with --type wireguard")
 	for _, f := range []string{"input", "output", "log", "source-id"} {
 		_ = cmd.MarkFlagRequired(f)
 	}
 	return cmd
 }
+
+// maxGenerateInput is the size limit of a wireguard candidate file in
+// generate (the default sources[].maxInputBytes).
+const maxGenerateInput = 64 << 20
 
 // writeJSON writes v to the file path (created or truncated).
 func writeJSON(path string, v any) error {

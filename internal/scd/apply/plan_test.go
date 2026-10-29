@@ -72,10 +72,10 @@ func sha(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func outboundTags(list []outbound.Outbound) []string {
+func outboundTags(list []outbound.Spec) []string {
 	out := make([]string, 0, len(list))
 	for _, o := range list {
-		out = append(out, o.Tag)
+		out = append(out, o.GetTag())
 	}
 	return out
 }
@@ -114,10 +114,10 @@ func TestPlanOutboundAppliesObservatoryPrefix(t *testing.T) {
 	if base.ManifestHash == prefixed.ManifestHash {
 		t.Error("prefix does not change the hash")
 	}
-	if !strings.HasPrefix(prefixed.ManagedIDs[0], "x-observe-") || !strings.HasPrefix(prefixed.Outbounds[0].Tag, "x-observe-") {
-		t.Errorf("managedIds = %v, tag = %q", prefixed.ManagedIDs, prefixed.Outbounds[0].Tag)
+	if !strings.HasPrefix(prefixed.ManagedIDs[0], "x-observe-") || !strings.HasPrefix(prefixed.Outbounds[0].GetTag(), "x-observe-") {
+		t.Errorf("managedIds = %v, tag = %q", prefixed.ManagedIDs, prefixed.Outbounds[0].GetTag())
 	}
-	if prefixed.Outbounds[0].Settings.Vnext[0].Users[0].Email != prefixed.Outbounds[0].Tag {
+	if prefixed.Outbounds[0].(outbound.Outbound).Settings.Vnext[0].Users[0].Email != prefixed.Outbounds[0].GetTag() {
 		t.Errorf("outbound is not built for the prefixed tag: %+v", prefixed.Outbounds[0])
 	}
 }
@@ -141,7 +141,7 @@ func TestPlanOutboundFromTopology(t *testing.T) {
 	}
 	flows := []string{}
 	for _, o := range socks.Outbounds {
-		flows = append(flows, o.Settings.Vnext[0].Users[0].Flow)
+		flows = append(flows, o.(outbound.Outbound).Settings.Vnext[0].Users[0].Flow)
 	}
 	if !slices.Contains(flows, "xtls-rprx-vision-udp443") {
 		t.Errorf("flows = %v, want the udp443 override", flows)

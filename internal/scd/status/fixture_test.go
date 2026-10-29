@@ -39,9 +39,10 @@ type fixture struct {
 			// Sources extends the 0.4 contract (sources-*); empty = one
 			// source "vless".
 			Sources []struct {
-				ID      string `json:"id"`
-				Type    string `json:"type"`
-				Enabled bool   `json:"enabled"`
+				ID        string `json:"id"`
+				Type      string `json:"type"`
+				Enabled   bool   `json:"enabled"`
+				MaxActive int    `json:"maxActive"`
 			} `json:"sources"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
@@ -59,8 +60,11 @@ type fixture struct {
 		BalancerSelection *fixtureSelection `json:"balancerSelection"`
 		// Sources extends the 0.4 contract (sources-*): the source warnings.
 		Sources []struct {
-			SourceID string              `json:"sourceId"`
-			Warnings []normalize.Warning `json:"warnings"`
+			SourceID       string              `json:"sourceId"`
+			Warnings       []normalize.Warning `json:"warnings"`
+			CandidateCount int                 `json:"candidateCount"`
+			// NoReplacement are the tunnels without a replacement candidate.
+			NoReplacement []string `json:"noReplacement"`
 		} `json:"sources"`
 		Tunnels []struct {
 			// SourceID extends the 0.4 contract (sources-*); "" = "vless".
@@ -93,6 +97,8 @@ type fixtureMonitor struct {
 	LastSuccessStatusCode, LastSuccessLatencyMs *int
 	LastError                                   string
 	ConsecutiveFailures                         int
+	// FailuresInRow is not in the API; the fixtures never set it.
+	FailuresInRow int `json:"-"`
 }
 
 type fixtureBalancer struct {
@@ -238,7 +244,7 @@ func loadFixture(t *testing.T, name string) loaded {
 			sources = nil
 			for _, fs := range s.Sources {
 				src := testSource("/fixture/" + fs.ID + ".txt")
-				src.ID, src.Type, src.Enabled = fs.ID, fs.Type, fs.Enabled
+				src.ID, src.Type, src.Enabled, src.MaxActive = fs.ID, fs.Type, fs.Enabled, fs.MaxActive
 				sources = append(sources, src)
 			}
 		}
@@ -296,7 +302,14 @@ func loadFixture(t *testing.T, name string) loaded {
 				tn.Monitor = monitors[tn.Mapping.OutboundTagInitial]
 			}
 			for _, s := range tg.Sources {
-				st.Sources[s.SourceID].Warnings = s.Warnings
+				src := st.Sources[s.SourceID]
+				src.Warnings, src.CandidateCount = s.Warnings, s.CandidateCount
+				for _, tag := range s.NoReplacement {
+					if src.NoReplacement == nil {
+						src.NoReplacement = map[string]bool{}
+					}
+					src.NoReplacement[tag] = true
+				}
 			}
 		})
 	}

@@ -9,6 +9,7 @@
 package state
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -16,7 +17,9 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/scd/apply"
+	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/selection"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
@@ -114,6 +117,10 @@ type TunnelMonitor struct {
 	LastSuccessStatusCode, LastSuccessLatencyMs *int
 	LastError                                   string
 	ConsecutiveFailures                         int
+	// FailuresInRow counts the failed checks in a row; unlike
+	// ConsecutiveFailures a repair does not reset it, only a successful
+	// check (and a new tunnel) does. It drives replaceAfterFailures.
+	FailuresInRow int
 }
 
 // BalancerMonitor is the balancer monitor state of a target (TS
@@ -155,6 +162,38 @@ type Source struct {
 	// Warnings are the source-level warnings of the last successful sync
 	// (port_range_exhausted); nil when there are none.
 	Warnings []normalize.Warning
+	// CandidateCount is the number of candidates of a wireguard source after
+	// its filters at the last successful sync; 0 for VLESS.
+	CandidateCount int
+
+	// The rest is wireguard only. ConfigHash is apply.ConfigHash of the
+	// last full apply. Candidates are the filtered candidates of the last
+	// sync, ranked: the monitor replaces a failed tunnel from them.
+	ConfigHash string
+	Candidates []manifest.Entry
+	// Selection is the quarantine and hysteresis state; it survives a full
+	// apply.
+	Selection selection.State
+	// NoReplacement holds the base tags of the tunnels with no replacement
+	// outside quarantine: kept in repair, or removed with their slot left
+	// empty.
+	NoReplacement map[string]bool
+}
+
+// CodeNoReplacement is the code of the source warning for NoReplacement.
+const CodeNoReplacement = "no_replacement"
+
+// AllWarnings returns Warnings plus a no_replacement warning when
+// NoReplacement is not empty.
+func (s *Source) AllWarnings() []normalize.Warning {
+	out := slices.Clone(s.Warnings)
+	if n := len(s.NoReplacement); n > 0 {
+		out = append(out, normalize.Warning{
+			Code:    CodeNoReplacement,
+			Message: fmt.Sprintf("%d tunnels have no replacement candidate outside quarantine.", n),
+		})
+	}
+	return out
 }
 
 // Target is the state of one subscription target.
@@ -271,6 +310,11 @@ func (m *Memory) ReplaceSourceTopology(key, sourceID string, topo topology.Topol
 	}
 	t.SyncSeen = true
 	src := &Source{Hashes: maps.Clone(hashes)}
+	if old := t.Sources[sourceID]; old != nil {
+		// Quarantine and no_replacement survive; the hysteresis starts over.
+		src.Selection = selection.State{Quarantine: old.Selection.Quarantine}
+		src.NoReplacement = old.NoReplacement
+	}
 	if src.Hashes == nil {
 		src.Hashes = map[apply.Kind]string{}
 	}
@@ -285,6 +329,73 @@ func (m *Memory) ReplaceSourceTopology(key, sourceID string, topo topology.Topol
 		fresh = append(fresh, &Tunnel{Mapping: tn, Monitor: TunnelMonitor{State: TunnelIdle}})
 	}
 	t.replaceTunnels(sourceID, fresh)
+}
+
+// ReplaceSourceTunnel puts next in place of tunnel oldID of source
+// sourceID (same slot, a new idle monitor), drops the tunnel when next is
+// nil (the slot is empty), or adds next to an empty slot when oldID is "".
+// The source's tunnels stay in port (slot) order, its hashes are
+// recomputed for the new tunnels (apply.TopologyPlan) and oldID leaves
+// NoReplacement. Generation++. It must run inside Update.
+func (t *Target) ReplaceSourceTunnel(sourceID, oldID string, next *topology.Tunnel) {
+	src := t.Sources[sourceID]
+	if src == nil || src.Topology == nil {
+		return
+	}
+	byID := map[string]*Tunnel{}
+	for _, tn := range t.Tunnels {
+		if tn.Mapping.SourceID == sourceID {
+			byID[tn.Mapping.BaseTunnelID] = tn
+		}
+	}
+	var tunnels []topology.Tunnel
+	for _, tn := range src.Topology.Tunnels {
+		if oldID == "" || tn.BaseTunnelID != oldID {
+			tunnels = append(tunnels, tn)
+		}
+	}
+	if next != nil {
+		nt := *next
+		nt.SourceID = sourceID
+		tunnels = append(tunnels, nt)
+		byID[nt.BaseTunnelID] = &Tunnel{Mapping: nt, Monitor: TunnelMonitor{State: TunnelIdle}}
+	}
+	slices.SortStableFunc(tunnels, func(a, b topology.Tunnel) int { return a.Port - b.Port })
+	src.Topology = &topology.Topology{Tunnels: tunnels}
+	for k := range src.Hashes {
+		if p, err := apply.TopologyPlan(k, sourceID, *src.Topology); err == nil {
+			src.Hashes[k] = p.ManifestHash
+		}
+	}
+	delete(src.NoReplacement, oldID)
+
+	fresh := make([]*Tunnel, 0, len(tunnels))
+	for _, tn := range tunnels {
+		fresh = append(fresh, byID[tn.BaseTunnelID])
+	}
+	t.replaceTunnels(sourceID, fresh)
+}
+
+// DropSourceTunnels forgets the topology and tunnels of source sourceID
+// and resets its hashes, keeping its selection state: after a failed full
+// apply Xray no longer matches them, so nothing may act on them until the
+// next full apply. It must run inside Update.
+func (t *Target) DropSourceTunnels(sourceID string) {
+	src := t.Sources[sourceID]
+	if src == nil {
+		return
+	}
+	src.Topology = &topology.Topology{}
+	src.Hashes = map[apply.Kind]string{}
+	t.replaceTunnels(sourceID, nil)
+}
+
+// ResetSourceHashes empties the hashes of source sourceID: its next sync
+// applies it in full. It must run inside Update.
+func (t *Target) ResetSourceHashes(sourceID string) {
+	if src := t.Sources[sourceID]; src != nil {
+		src.Hashes = map[apply.Kind]string{}
+	}
 }
 
 // DropSource forgets source sourceID of key (its resources are gone from

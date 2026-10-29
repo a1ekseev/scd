@@ -40,14 +40,18 @@ type PrintedSource struct {
 	Type           string               `json:"type"`
 	Input          string               `json:"input"`
 	Enabled        bool                 `json:"enabled"`
-	Format         string               `json:"format"`
-	FetchTimeoutMs int                  `json:"fetchTimeoutMs"`
-	AllowInsecure  string               `json:"allowInsecure"`
+	Format         string               `json:"format,omitempty"`
+	FetchTimeoutMs int                  `json:"fetchTimeoutMs,omitempty"`
+	AllowInsecure  string               `json:"allowInsecure,omitempty"`
 	FetchUserAgent string               `json:"fetchUserAgent,omitempty"`
 	FetchHeaders   map[string]string    `json:"fetchHeaders,omitempty"`
 	MaxInputBytes  int64                `json:"maxInputBytes"`
 	PortRange      *PortRange           `json:"portRange,omitempty"`
 	Filters        *SourceFiltersConfig `json:"filters,omitempty"`
+	MaxActive      int                  `json:"maxActive,omitempty"`
+	Selection      *SelectionConfig     `json:"selection,omitempty"`
+	Monitor        *SourceMonitorConfig `json:"monitor,omitempty"`
+	WireGuard      *WireGuardConfig     `json:"wireguard,omitempty"`
 }
 
 // Printed returns s for printing: unless includeSecrets, the input is
@@ -59,6 +63,7 @@ func (s SourceConfig) Printed(includeSecrets bool) PrintedSource {
 		AllowInsecure: s.AllowInsecure, FetchUserAgent: s.FetchUserAgent,
 		FetchHeaders: s.FetchHeaders.Printed(includeSecrets), MaxInputBytes: s.MaxInputBytes,
 		PortRange: s.PortRange, Filters: s.Filters,
+		MaxActive: s.MaxActive, Selection: s.Selection, Monitor: s.Monitor, WireGuard: s.WireGuard,
 	}
 	if !includeSecrets {
 		p.Input = inputsrc.RedactInput(s.Input)
