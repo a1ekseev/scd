@@ -30,8 +30,10 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"selectionCard":          selectionCard,
 	"sourcesCard":            sourcesCard,
 	"tunnelCards":            tunnelCards,
+	"wgpCards":               wgpCards,
 	"orIdle":                 func(s string) string { return cmp.Or(s, state.BalancerIdle) },
 	"orDash":                 func(s string) string { return cmp.Or(s, "-") },
+	"sourceColor":            sourceColor,
 }).ParseFS(web, "web/dashboard.html.tmpl"))
 
 // dashboardCSS and dashboardJS are inlined into the page, as in TS: the
@@ -65,8 +67,9 @@ type instanceView struct {
 	Snapshot              *InstanceSnapshot
 }
 
-// metricView is one metric pill; Title, when set, becomes its tooltip.
-type metricView struct{ Label, Value, Title string }
+// metricView is one metric pill; Title, when set, becomes its tooltip;
+// Class, when set, is an extra CSS class with a leading space.
+type metricView struct{ Label, Value, Title, Class string }
 
 // RenderDashboard writes the HTML status dashboard of agg (03 §6.6): one
 // tab per instance (the local one, if stored, first and active), each with
@@ -374,13 +377,26 @@ func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
 		if !s.Enabled {
 			v += " · disabled"
 		}
-		c.Metrics = append(c.Metrics, metricView{Label: s.SourceID, Value: v})
+		c.Metrics = append(c.Metrics, metricView{Label: s.SourceID, Value: v, Class: " source-chip " + sourceColor(s.SourceID)})
 		for _, w := range s.Warnings {
 			c.Class = state.TunnelRepairing
 			c.Metrics = append(c.Metrics, metricView{Label: "Warning", Value: w.Message, Title: s.SourceID + ": " + w.Code})
 		}
 	}
 	return c
+}
+
+// sourceColors is the number of source colors (src-0 … in the CSS).
+const sourceColors = 7
+
+// sourceColor is the color class of source id: fixed by the id alone (a
+// byte sum, which keeps short ids apart), never by the source type.
+func sourceColor(id string) string {
+	n := 0
+	for i := range len(id) {
+		n += int(id[i])
+	}
+	return "src-" + strconv.Itoa(n%sourceColors)
 }
 
 // tunnelCard is a tunnel of the dashboard with its balancer selection

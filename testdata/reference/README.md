@@ -5,7 +5,7 @@ checked against them. These files are frozen Go test data (D20): the TS services
 capture scripts (`tools/golden/`) are gone from the tree, so the references cannot be
 regenerated. The TS references were captured by commits `ae1fde2`..`975287a`
 (tooling and TS sources as of `975287a`: `git show 975287a:tools/golden/README.md`);
-later commits only add Go-side fixtures (`scd/status/fixtures/{selection,sources}-*.json`, `scd/print-config/minimal.sources.{yml,json}`).
+later commits only add Go-side fixtures (`scd/status/fixtures/{selection,sources,wgp}-*.json`, `scd/print-config/minimal.sources.{yml,json}`).
 Script names below (`tools/golden/*.mjs`) refer to that commit.
 
 Exception (2026-10-27): the REALITY key, short ids and one SNI in the fixtures came from a
@@ -173,6 +173,21 @@ them with `SCD_CHROME=… go test -tags visual ./internal/scd/status -run TestDa
 
 Fixture: `sources-two` (sources `main` and `spare`, `spare` with `port_range_exhausted`; remote `edge-old` holds the
 TS snapshot of `healthy-single`).
+
+#### wgp extension
+
+`fixtures/wgp-*.json` add wgp `status.json` files; **no TS reference**, skipped by the TS comparisons like `sources-*`.
+Go reference screenshots `internal/scd/status/testdata/visual/wgp-*-{1280,390}.png` are local and gitignored, never
+committed; create them with `SCD_CHROME=… go test -tags visual ./internal/scd/status -run TestDashboardWGPVisual -update`.
+
+| Key | Meaning |
+|---|---|
+| `wgp` | `{"<dir>": status.json}` written to `<tmp>/<dir>/status.json` with mode 0600; a JSON string is written verbatim (a broken file) |
+| `config.subscriptions[].sources[].wgpDir` | the source input becomes `<tmp>/<wgpDir>/<id>` |
+
+Fixtures: `wgp-ok` (sources `wg` and `mq` share one directory: two `ok` providers; remote `edge-old` holds the TS
+snapshot of `healthy-single`), `wgp-needs-login` (a `needs_login` provider and an `ok` provider expiring within
+24 hours in one directory, a broken `status.json` in the other).
 
 #### runtime-state (`scd/status/runtime-state/`)
 

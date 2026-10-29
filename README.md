@@ -501,7 +501,7 @@ replacement, quarantine and hysteresis, secrets and status
 | Path | Content |
 |---|---|
 | `/`, `/status` (any other path) | HTML dashboard: instance tabs (local first), then subscription → target, balancer cards first, tunnel cards sorted by latency. |
-| `/api/status` | `{tunnels}` |
+| `/api/status` | `{tunnels, wgp?}` |
 | `/api/instance-status` | Local snapshot `{version: 1, instanceId, capturedAt, subscriptions, tunnels, …}`, which remote collectors poll. |
 | `/api/instances` | Local snapshot plus the last successful snapshot of each remote instance (`lastError` on failure). |
 | `/api/runtime-state?subscriptionId=…&targetAddress=…` | Diagnostic view from the loaded config and live Xray API data. `expected` is the union of the enabled sources; with several sources `expected.sources[]` gives `{sourceId, source, error?}` per source. |
@@ -516,9 +516,29 @@ source with a warning, gets `targets[].sources[]` =
 `{sourceId, type, enabled, maxActive?, activeCount?, candidateCount?, warnings?[]{code, message}}`
 in source id order, and its tunnels get `sourceId`; a WireGuard or MASQUE
 tunnel also has `protocol: "wireguard"` or `"masque"` (VLESS tunnels have no `protocol`). The dashboard then shows a
-Sources card with the warnings (for example `port_range_exhausted`) and the
-source next to each tunnel endpoint. A subscription with one source and no
+Sources card with the warnings (for example `port_range_exhausted`) and a
+colored badge with the source id in the title of each tunnel card (the color
+follows the id). A subscription with one source and no
 warning has neither key, as before.
+
+Each enabled `wireguard` or `masque` source has its input directory checked
+for `status.json` (written by wgp) on every request to `/api/status`,
+`/api/instance-status` and the dashboard: a private regular file (no access
+for group or others) of at most 64 KiB. Each directory with the file adds a
+block to `wgp[]` of `/api/status` and `/api/instance-status`:
+`{sources[]{subscriptionId, sourceId}, updatedAt?, error?, providers?[]{id, output, type, state, error?, lastTickAt?, lastSuccessAt?, issued, limit?, expiresAt?}}`.
+Without the file there is no block and no key. A file that cannot be read
+(wrong mode, too large, invalid JSON, a `version` other than `1`) gives a block
+with only `error`, a text without the host path; the response is still 200 and
+complete. The dashboard shows a wgp section above the subscriptions with a card
+per provider (state, issued of limit, expiry, last success, error) and a card
+per unreadable file. `needs_login`, `error`, an unknown state,
+an expiry within 2 hours of the snapshot time (below the renewal window, so
+only a missed renewal; with `renewBeforeMinutes` under 120 a healthy
+certificate shows as degraded too) and an unreadable file are shown
+as degraded. A central scd gets the blocks of remote instances through
+`remoteInstances` and never reads their files. `/api/runtime-state` has no wgp
+data.
 
 `/api/runtime-state` hides secrets unless `includeSecrets: true`. Hidden values
 include subscription and monitor/push URLs (shown as `<scheme>://<host>/<redacted>`),

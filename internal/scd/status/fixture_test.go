@@ -26,7 +26,10 @@ const refStatusDir = "../../../testdata/reference/scd/status/"
 
 // fixture is the task 0.4 fixture contract (testdata/reference/README.md).
 type fixture struct {
-	Now    time.Time `json:"now"`
+	Now time.Time `json:"now"`
+	// WGP extends the contract (wgp-*): status.json per wgpDir, written
+	// with mode 0600; a JSON string is written verbatim (broken files).
+	WGP    map[string]json.RawMessage `json:"wgp"`
 	Config struct {
 		InstanceID    string `json:"instanceId"`
 		Subscriptions []struct {
@@ -43,6 +46,9 @@ type fixture struct {
 				Type      string `json:"type"`
 				Enabled   bool   `json:"enabled"`
 				MaxActive int    `json:"maxActive"`
+				// WGPDir extends the contract (wgp-*): the source input is
+				// <tmp>/<wgpDir>/<id>, next to the status.json of wgp[wgpDir].
+				WGPDir string `json:"wgpDir"`
 			} `json:"sources"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
@@ -191,11 +197,14 @@ const selectionPrefix = "selection-"
 // have no TS reference either.
 const sourcesPrefix = "sources-"
 
+// wgpPrefix names the fixtures with wgp status files; no TS reference.
+const wgpPrefix = "wgp-"
+
 // fixtureNames lists the 0.4 fixtures (with a TS reference).
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
 	return globFixtures(t, func(name string) bool {
-		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix)
+		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix) && !strings.HasPrefix(name, wgpPrefix)
 	})
 }
 
@@ -237,6 +246,23 @@ func loadFixture(t *testing.T, name string) loaded {
 		t.Fatalf("%s: %v", name, err)
 	}
 
+	wgpRoot := ""
+	if len(f.WGP) > 0 {
+		wgpRoot = t.TempDir()
+	}
+	for dir, data := range f.WGP {
+		var verbatim string
+		if json.Unmarshal(data, &verbatim) == nil {
+			data = []byte(verbatim)
+		}
+		if err := os.MkdirAll(filepath.Join(wgpRoot, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(wgpRoot, dir, "status.json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	var cfg config.AppConfig
 	for _, s := range f.Config.Subscriptions {
 		sources := []config.SourceConfig{testSource("/fixture/sub.txt")}
@@ -244,6 +270,9 @@ func loadFixture(t *testing.T, name string) loaded {
 			sources = nil
 			for _, fs := range s.Sources {
 				src := testSource("/fixture/" + fs.ID + ".txt")
+				if fs.WGPDir != "" {
+					src.Input = filepath.Join(wgpRoot, fs.WGPDir, fs.ID)
+				}
 				src.ID, src.Type, src.Enabled, src.MaxActive = fs.ID, fs.Type, fs.Enabled, fs.MaxActive
 				sources = append(sources, src)
 			}

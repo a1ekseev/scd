@@ -8,7 +8,7 @@
 - Layout:
   - `cmd/scd/`: entry point. `main.version` is set by ldflags.
   - `internal/cli/`: root cobra command and `--version` (root only). Mounts the three services.
-  - `internal/common/`: shared code only. `buildinfo candidate cliutil configload cron cronloop httpserve inputsrc jsonout labelfilter listenaddr logging regexlit schema securefile sigctx subscription vless`.
+  - `internal/common/`: shared code only. `buildinfo candidate cliutil configload cron cronloop httpserve inputsrc jsonout labelfilter listenaddr logging regexlit schema securefile sigctx subscription vless wgpstatus`.
   - `internal/scd/`, `internal/sfc/`, `internal/gtl/`: the services (`config/`, `cli/`, …).
   - `internal/archtest/`: import-boundary test.
   - `testdata/reference/`: frozen reference outputs of the previous implementation, used by Go tests (D20).
@@ -74,7 +74,7 @@ The live and visual tests skip without their environment variables.
 - `daemon` runs `common/cronloop` loops: sync; per subscription the tunnel monitor, balancer monitor and balancer selection; per remote instance a status poll. It also runs the status HTTP server. On SIGINT/SIGTERM, loops stop at once, in-flight Xray mutations finish (`context.WithoutCancel`) but no new source is loaded and no new target or source is applied, then pending remote pings, then the HTTP server. There is no hot reload.
 - `monitor`: tunnel probes through the generated SOCKS inbounds (`socks`). Repair recreates the outbound without the observatory prefix; rejoin restores it. Both remove first (rule, outbound), then add (outbound, rule); a failed `RemoveOutbound` stops either before any add and restores the old rule best effort (an unknown tag is no error in Xray); a failed rejoin add is rolled back best effort to the unprefixed outbound. `balancerMonitor` is observe-only, with an optional remote push. Both run only after a sync reached the target.
 - `balancer`: read-only balancer selection view (D22). Never calls `OverrideBalancerTarget`.
-- `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted and `rawBase64` omitted unless `includeSecrets`; never for WireGuard or MASQUE; `expected` of a `wireguard`/`masque` source is its active set in `state`). `aggregate` holds the remote snapshots. Tunnel `protocol` and source `maxActive`/`activeCount`/`candidateCount` are written only for `wireguard` and `masque`.
+- `status`: dashboard (`html/template` + `web/` assets, embedded), `/api/status`, `/api/instance-status`, `/api/instances`, `/api/runtime-state` (secrets redacted and `rawBase64` omitted unless `includeSecrets`; never for WireGuard or MASQUE; `expected` of a `wireguard`/`masque` source is its active set in `state`). `aggregate` holds the remote snapshots. Tunnel `protocol` and source `maxActive`/`activeCount`/`candidateCount` are written only for `wireguard` and `masque`. `wgp[]` (`/api/status`, `/api/instance-status`; `wgp.go`): one block per input directory of the enabled `wireguard`/`masque` sources that holds `status.json` (`common/wgpstatus`, 64 KiB, read on every request); a read or parse error is a block with `error` and no host path; no file, no key. The dashboard draws only the common fields, never switches on the provider type.
 - `country`: flag emoji → ISO2. Labels are not interpreted beyond country and city (D33).
 
 ## sfc Notes

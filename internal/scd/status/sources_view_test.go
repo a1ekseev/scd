@@ -124,15 +124,18 @@ func TestDashboardSources(t *testing.T) {
 	}
 	card, _, _ := strings.Cut(local[strings.LastIndex(local[:i], "<article"):], "</article>")
 	assertContains(t, card, `class="balancer-card state-repairing"`, ">2 source(s)<",
-		`<span class="metric"><span class="metric-label">main</span><span class="metric-value">vless</span></span>`,
+		`<span class="metric source-chip `+sourceColor("main")+`"><span class="metric-label">main</span><span class="metric-value">vless</span></span>`,
 		`<span class="metric metric-state-repairing" title="spare: port_range_exhausted"><span class="metric-label">Warning</span>`+
 			`<span class="metric-value">2 lines were skipped: the source portRange has no free port for them.</span></span>`)
 	ext, src, grid := strings.Index(local, "External SOCKS check"), i, strings.Index(local, `class="nodes-grid"`)
 	if ext >= src || src >= grid {
 		t.Errorf("card order: external %d, sources %d, grid %d", ext, src, grid)
 	}
-	assertContains(t, nodeCard(t, local, "🇳🇱 Amsterdam"), `<div class="node-meta">NL · 127.0.0.1:21000 · spare</div>`)
-	assertContains(t, nodeCard(t, local, "🇦🇹 Vienna"), `<div class="node-meta">AT · 127.0.0.1:20000 · main</div>`)
+	// The source is a badge in the card head, its color the one of its chip.
+	assertContains(t, nodeCard(t, local, "🇳🇱 Amsterdam"), `<div class="node-meta">NL · 127.0.0.1:21000</div>`,
+		`<span class="source-badge `+sourceColor("spare")+`">spare</span></div>`)
+	assertContains(t, nodeCard(t, local, "🇦🇹 Vienna"), `<div class="node-meta">AT · 127.0.0.1:20000</div>`,
+		`<span class="source-badge `+sourceColor("main")+`">main</span></div>`)
 	assertNotContains(t, remote, ">Sources<", "Warning")
 
 	// Disabled source.
@@ -161,4 +164,17 @@ func TestSourcesWireGuard(t *testing.T) {
 		`<span class="metric-label">wg</span><span class="metric-value">wireguard · 2/2 active of 3</span>`,
 		`<span class="metric metric-state-repairing" title="wg: no_replacement"><span class="metric-label">Warning</span>`+
 			`<span class="metric-value">1 tunnels have no replacement candidate outside quarantine.</span></span>`)
+}
+
+// The color of a source depends on its id only, and the usual ids get
+// different colors.
+func TestSourceColor(t *testing.T) {
+	seen := map[string]string{}
+	for _, id := range []string{"vless", "wg", "warp", "warpmq", "proton"} {
+		c := sourceColor(id)
+		if c != sourceColor(id) || seen[c] != "" {
+			t.Errorf("%s: %s (also %s)", id, c, seen[c])
+		}
+		seen[c] = id
+	}
 }

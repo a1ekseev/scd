@@ -203,6 +203,8 @@ type InstanceSnapshot struct {
 	CapturedAt    string                `json:"capturedAt"`
 	Subscriptions []GroupedSubscription `json:"subscriptions"`
 	Tunnels       []StatusTunnel        `json:"tunnels"`
+	// WGP holds the wgp status.json blocks; nil (no key, D3) without any.
+	WGP []WGPBlock `json:"wgp,omitzero"`
 }
 
 // RemoteView is the collection state of one remote instance for the
@@ -564,11 +566,12 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 	return subs
 }
 
-// BuildInstanceSnapshot is the local /api/instance-status snapshot.
+// BuildInstanceSnapshot is the local /api/instance-status snapshot. It reads
+// the wgp status.json files on every call.
 func BuildInstanceSnapshot(m *state.Memory, cfg config.AppConfig, instanceID string, now time.Time) InstanceSnapshot {
 	tunnels := BuildTunnels(m, cfg)
 	return InstanceSnapshot{
 		Version: SnapshotVersion, InstanceID: instanceID, CapturedAt: formatTime(now),
-		Subscriptions: BuildConfiguredGroups(tunnels, cfg, m), Tunnels: tunnels,
+		Subscriptions: BuildConfiguredGroups(tunnels, cfg, m), Tunnels: tunnels, WGP: buildWGP(cfg),
 	}
 }

@@ -88,7 +88,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == pathStatus:
 		writeJSON(w, http.StatusOK, struct {
 			Tunnels []StatusTunnel `json:"tunnels"`
-		}{local.Tunnels})
+			WGP     []WGPBlock     `json:"wgp,omitzero"`
+		}{local.Tunnels, local.WGP})
 	case path == pathInstanceStatus:
 		writeJSON(w, http.StatusOK, local)
 	case path == pathInstances:
