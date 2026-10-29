@@ -117,7 +117,7 @@ func TestOutboundsReplacesExisting(t *testing.T) {
 	from := seed(t, srv, c, entry("a", "198.51.100.1"))
 	next := entry("a", "198.51.100.2")
 
-	r, err := apply.Outbounds(context.Background(), c, nil, []outbound.Outbound{next}, meta())
+	r, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), []outbound.Spec{next}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,8 @@ func TestOutboundsKeepsFixed(t *testing.T) {
 	from := seed(t, srv, c, entry("old", "198.51.100.1"))
 	direct, blocked := srv.Outbound("direct"), srv.Outbound("blocked")
 
-	entries := []outbound.Outbound{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
-	r, err := apply.Outbounds(context.Background(), c, []string{"direct", "blocked"}, entries, meta())
+	entries := []outbound.Spec{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
+	r, err := apply.Outbounds(context.Background(), c, []string{"direct", "blocked"}, notFixed([]string{"direct", "blocked"}), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestOutboundsKeepsFixed(t *testing.T) {
 func TestOutboundsDeletesForeignNonFixed(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticOutbounds("direct", "foreign"))
 
-	r, err := apply.Outbounds(context.Background(), c, []string{"direct"}, []outbound.Outbound{entry("a", "198.51.100.2")}, meta())
+	r, err := apply.Outbounds(context.Background(), c, []string{"direct"}, notFixed([]string{"direct"}), []outbound.Spec{entry("a", "198.51.100.2")}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,8 +187,8 @@ func TestOutboundsDeletesForeignNonFixed(t *testing.T) {
 func TestOutboundsFixedConflictNoRPC(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 
-	entries := []outbound.Outbound{entry("a", "198.51.100.1"), entry("direct", "198.51.100.2")}
-	r, err := apply.Outbounds(context.Background(), c, []string{"direct"}, entries, meta())
+	entries := []outbound.Spec{entry("a", "198.51.100.1"), entry("direct", "198.51.100.2")}
+	r, err := apply.Outbounds(context.Background(), c, []string{"direct"}, notFixed([]string{"direct"}), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +235,9 @@ func TestOutboundsRollbackOnAddFailure(t *testing.T) {
 	from := seed(t, srv, c, entry("a", "198.51.100.1"))
 	original := snapshot(srv)
 
-	entries := []outbound.Outbound{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
+	entries := []outbound.Spec{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
 	api := &failOnAdd{OutboundAPI: c, srv: srv, tag: "b"}
-	r, err := apply.Outbounds(context.Background(), api, []string{"direct"}, entries, meta())
+	r, err := apply.Outbounds(context.Background(), api, []string{"direct"}, notFixed([]string{"direct"}), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,12 +273,12 @@ func TestOutboundsRollbackErrorsIgnored(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 	from := seed(t, srv, c, entry("old1", "198.51.100.1"), entry("old2", "198.51.100.2"))
 
-	entries := []outbound.Outbound{entry("a", "198.51.100.3"), entry("b", "198.51.100.4")}
+	entries := []outbound.Spec{entry("a", "198.51.100.3"), entry("b", "198.51.100.4")}
 	api := &failOnAdd{OutboundAPI: c, srv: srv, tag: "b", after: func() {
 		srv.FailNext("RemoveOutbound", status.Error(codes.Unknown, "rollback remove failed"))
 		srv.FailNext("AddOutbound", status.Error(codes.Unknown, "rollback add failed"))
 	}}
-	r, err := apply.Outbounds(context.Background(), api, nil, entries, meta())
+	r, err := apply.Outbounds(context.Background(), api, nil, notFixed(nil), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,8 +308,8 @@ func TestOutboundsRollbackOnRemoveFailure(t *testing.T) {
 	original := snapshot(srv)
 	srv.FailNext("RemoveOutbound", status.Error(codes.Unknown, "remove boom"))
 
-	entries := []outbound.Outbound{entry("a", "198.51.100.3")}
-	r, err := apply.Outbounds(context.Background(), c, nil, entries, meta())
+	entries := []outbound.Spec{entry("a", "198.51.100.3")}
+	r, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestOutboundsFailedIDUnknownWithoutEntries(t *testing.T) {
 	seed(t, srv, c, entry("old", "198.51.100.1"))
 	srv.FailNext("RemoveOutbound", status.Error(codes.Unknown, "remove boom"))
 
-	r, err := apply.Outbounds(context.Background(), c, nil, nil, meta())
+	r, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), nil, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestOutboundsBuildErrorRollsBack(t *testing.T) {
 
 	bad := entry("bad", "198.51.100.3")
 	bad.Protocol = "no-such-protocol"
-	r, err := apply.Outbounds(context.Background(), c, nil, []outbound.Outbound{entry("a", "198.51.100.2"), bad}, meta())
+	r, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), []outbound.Spec{entry("a", "198.51.100.2"), bad}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestOutboundsListErrorPropagates(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 	srv.FailNext("ListOutbounds", status.Error(codes.Unknown, "list boom"))
 
-	_, err := apply.Outbounds(context.Background(), c, nil, []outbound.Outbound{entry("a", "198.51.100.1")}, meta())
+	_, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), []outbound.Spec{entry("a", "198.51.100.1")}, meta())
 	if err == nil || err.Error() != "list boom" {
 		t.Fatalf("err = %v, want list boom", err)
 	}
@@ -403,7 +403,7 @@ func TestReportJSONKeyNames(t *testing.T) {
 
 	// a successful item has no message key; empty lists are [] not null
 	_, c := xrayfake.Start(t)
-	ok, err := apply.Outbounds(context.Background(), c, nil, []outbound.Outbound{entry("a", "198.51.100.1")}, meta())
+	ok, err := apply.Outbounds(context.Background(), c, nil, notFixed(nil), []outbound.Spec{entry("a", "198.51.100.1")}, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,9 +427,9 @@ func TestOutboundsRollbackSurvivesCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	entries := []outbound.Outbound{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
+	entries := []outbound.Spec{entry("a", "198.51.100.2"), entry("b", "198.51.100.3")}
 	api := &failOnAdd{OutboundAPI: c, srv: srv, tag: "b", after: cancel}
-	r, err := apply.Outbounds(ctx, api, []string{"direct"}, entries, meta())
+	r, err := apply.Outbounds(ctx, api, []string{"direct"}, notFixed([]string{"direct"}), entries, meta())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,14 +1,15 @@
 package topology
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
 )
 
 const (
@@ -19,16 +20,13 @@ const (
 )
 
 func build(lines ...string) manifest.Manifest {
-	return manifest.Build(strings.Join(lines, "\n"), "inline", normalize.Policy{}, time.Unix(0, 0))
+	return manifest.Build(strings.Join(lines, "\n"), "inline", normalize.Policy{TagPrefix: "vless"}, time.Unix(0, 0))
 }
 
 func target(mut func(*config.SubscriptionTargetConfig)) config.SubscriptionTargetConfig {
 	t := config.SubscriptionTargetConfig{
-		Address: "127.0.0.1:8080",
-		InboundSocks: &config.InboundSocksConfig{
-			Listen:    "127.0.0.1",
-			PortRange: config.PortRange{Start: 20000, End: 20010},
-		},
+		Address:      "127.0.0.1:8080",
+		InboundSocks: &config.InboundSocksConfig{Listen: "127.0.0.1"},
 	}
 	if mut != nil {
 		mut(&t)
@@ -36,16 +34,26 @@ func target(mut func(*config.SubscriptionTargetConfig)) config.SubscriptionTarge
 	return t
 }
 
+// buildSrc builds the topology of source "vless" with ports 20000..20010,
+// or the given range.
+func buildSrc(m manifest.Manifest, t config.SubscriptionTargetConfig, pr ...config.PortRange) (Topology, []vless.Skip) {
+	src := config.SourceConfig{ID: "vless", PortRange: &config.PortRange{Start: 20000, End: 20010}}
+	if len(pr) > 0 {
+		src.PortRange = &pr[0]
+	}
+	return BuildSource(m, src, t)
+}
+
 func TestAllocatesStablePortsAndTargetScopedTags(t *testing.T) { // T1
 	m := build(berlin, vienna)
 	if len(m.Entries) != 2 {
 		t.Fatalf("entries = %d, skipped = %+v", len(m.Entries), m.Skipped)
 	}
-	topo, err := Build(m, target(func(c *config.SubscriptionTargetConfig) {
+	topo, skipped := buildSrc(m, target(func(c *config.SubscriptionTargetConfig) {
 		c.ObservatorySubjectSelectorPrefix = "x-observe-"
 	}))
-	if err != nil {
-		t.Fatal(err)
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	if len(topo.Tunnels) != 2 {
 		t.Fatalf("tunnels = %d", len(topo.Tunnels))
@@ -60,10 +68,10 @@ func TestAllocatesStablePortsAndTargetScopedTags(t *testing.T) { // T1
 	if a.OutboundTagInitial != "x-observe-"+a.BaseOutboundTag || a.OutboundTagCurrent != a.OutboundTagInitial {
 		t.Errorf("outbound tags = %q / %q", a.OutboundTagInitial, a.OutboundTagCurrent)
 	}
-	if a.OutboundInitial.Tag != a.OutboundTagInitial || a.OutboundInitial.Normalized.Tag != a.OutboundTagInitial || a.OutboundInitial.JSON.Tag != a.OutboundTagInitial {
+	if a.OutboundInitial.Tag != a.OutboundTagInitial || a.OutboundInitial.Normalized.Tag != a.OutboundTagInitial || a.OutboundInitial.JSON.GetTag() != a.OutboundTagInitial {
 		t.Errorf("initial outbound tag mismatch: %+v", a.OutboundInitial.Tag)
 	}
-	if a.OutboundWithoutPrefix.Tag != a.BaseOutboundTag || a.OutboundWithoutPrefix.JSON.Tag != a.BaseOutboundTag {
+	if a.OutboundWithoutPrefix.Tag != a.BaseOutboundTag || a.OutboundWithoutPrefix.JSON.GetTag() != a.BaseOutboundTag {
 		t.Errorf("withoutPrefix tag = %q", a.OutboundWithoutPrefix.Tag)
 	}
 	if a.BaseTunnelID != a.BaseOutboundTag || a.InboundTag != "in-"+a.BaseOutboundTag || a.RouteTag != "route-"+a.BaseOutboundTag {
@@ -76,13 +84,13 @@ func TestAllocatesStablePortsAndTargetScopedTags(t *testing.T) { // T1
 
 func TestVisionOverridePerTarget(t *testing.T) { // T2
 	m := build(vision)
-	plain, err := Build(m, target(nil))
-	if err != nil {
-		t.Fatal(err)
+	plain, skipped := buildSrc(m, target(nil))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
-	udp, err := Build(m, target(func(c *config.SubscriptionTargetConfig) { c.VisionUDP443Override = true }))
-	if err != nil {
-		t.Fatal(err)
+	udp, skipped := buildSrc(m, target(func(c *config.SubscriptionTargetConfig) { c.VisionUDP443Override = true }))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	if len(plain.Tunnels) != 1 || len(udp.Tunnels) != 1 {
 		t.Fatalf("tunnels = %d, %d (skipped %+v)", len(plain.Tunnels), len(udp.Tunnels), m.Skipped)
@@ -98,16 +106,16 @@ func TestVisionOverridePerTarget(t *testing.T) { // T2
 			t.Errorf("override %s flow = %q", name, got)
 		}
 	}
-	if u.OutboundInitial.JSON.Settings.Vnext[0].Users[0].Flow != "xtls-rprx-vision-udp443" {
+	if u.OutboundInitial.JSON.(outbound.Outbound).Settings.Vnext[0].Users[0].Flow != "xtls-rprx-vision-udp443" {
 		t.Errorf("JSON flow not overridden")
 	}
 }
 
 func TestVisionOverrideLeavesTLS(t *testing.T) {
 	m := build(tlsVis)
-	topo, err := Build(m, target(func(c *config.SubscriptionTargetConfig) { c.VisionUDP443Override = true }))
-	if err != nil {
-		t.Fatal(err)
+	topo, skipped := buildSrc(m, target(func(c *config.SubscriptionTargetConfig) { c.VisionUDP443Override = true }))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	if len(topo.Tunnels) != 1 {
 		t.Fatalf("tcp-tls vision not accepted: %+v", m.Skipped)
@@ -117,23 +125,21 @@ func TestVisionOverrideLeavesTLS(t *testing.T) {
 	}
 }
 
-func TestPortRangeExhausted(t *testing.T) { // T3
-	_, err := Build(build(berlin, vienna), target(func(c *config.SubscriptionTargetConfig) {
-		c.InboundSocks.PortRange = config.PortRange{Start: 20000, End: 20000}
-	}))
-	if !errors.Is(err, ErrPortRangeExhausted) {
-		t.Fatalf("err = %v", err)
+func TestSourceIDAndNoPortRange(t *testing.T) {
+	topo, skipped := buildSrc(build(berlin), target(nil))
+	if len(skipped) > 0 || len(topo.Tunnels) != 1 || topo.Tunnels[0].SourceID != "vless" {
+		t.Fatalf("topo = %+v, skipped = %v", topo, skipped)
 	}
-	const want = `target "127.0.0.1:8080" inboundSocks.portRange can allocate only 1 ports, but 2 tunnels were generated`
-	if !strings.Contains(err.Error(), want) {
-		t.Errorf("err = %q, want it to contain %q", err, want)
+	topo, skipped = BuildSource(build(berlin), config.SourceConfig{ID: "vless"}, target(nil))
+	if len(skipped) > 0 || len(topo.Tunnels) != 0 {
+		t.Fatalf("without portRange: %+v, %v", topo, skipped)
 	}
 }
 
 func TestNoInboundSocksEmpty(t *testing.T) {
-	topo, err := Build(build(berlin, vienna), target(func(c *config.SubscriptionTargetConfig) { c.InboundSocks = nil }))
-	if err != nil {
-		t.Fatal(err)
+	topo, skipped := buildSrc(build(berlin, vienna), target(func(c *config.SubscriptionTargetConfig) { c.InboundSocks = nil }))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	if len(topo.Tunnels) != 0 {
 		t.Errorf("tunnels = %d", len(topo.Tunnels))
@@ -141,13 +147,13 @@ func TestNoInboundSocksEmpty(t *testing.T) {
 }
 
 func TestPortsFollowTagOrderNotLineOrder(t *testing.T) {
-	forward, err := Build(build(berlin, vienna), target(nil))
-	if err != nil {
-		t.Fatal(err)
+	forward, skipped := buildSrc(build(berlin, vienna), target(nil))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
-	reverse, err := Build(build(vienna, berlin), target(nil))
-	if err != nil {
-		t.Fatal(err)
+	reverse, skipped := buildSrc(build(vienna, berlin), target(nil))
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	if len(forward.Tunnels) != 2 || len(reverse.Tunnels) != 2 {
 		t.Fatal("expected two tunnels")
@@ -161,10 +167,58 @@ func TestPortsFollowTagOrderNotLineOrder(t *testing.T) {
 }
 
 func TestExactCapacityFits(t *testing.T) {
-	topo, err := Build(build(berlin, vienna), target(func(c *config.SubscriptionTargetConfig) {
-		c.InboundSocks.PortRange = config.PortRange{Start: 30000, End: 30001}
-	}))
-	if err != nil || len(topo.Tunnels) != 2 || topo.Tunnels[1].Port != 30001 {
-		t.Fatalf("topo = %+v, err = %v", topo, err)
+	topo, skipped := buildSrc(build(berlin, vienna), target(nil), config.PortRange{Start: 30000, End: 30001})
+	if len(skipped) > 0 || len(topo.Tunnels) != 2 || topo.Tunnels[1].Port != 30001 {
+		t.Fatalf("topo = %+v, skipped = %v", topo, skipped)
+	}
+}
+
+func TestPortRangeCapacity(t *testing.T) { // T3
+	lines := []string{berlin, vienna, vision}
+	for _, tc := range []struct {
+		name    string
+		pr      config.PortRange
+		tunnels int
+	}{
+		{"zero", config.PortRange{Start: 20000, End: 19999}, 0},
+		{"one", config.PortRange{Start: 20000, End: 20000}, 1},
+		{"n-1", config.PortRange{Start: 20000, End: 20001}, 2},
+		{"n", config.PortRange{Start: 20000, End: 20002}, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			topo, skipped := buildSrc(build(lines...), target(nil), tc.pr)
+			if len(topo.Tunnels) != tc.tunnels || len(skipped) != len(lines)-tc.tunnels {
+				t.Fatalf("tunnels = %d, skipped = %d", len(topo.Tunnels), len(skipped))
+			}
+			full, _ := buildSrc(build(lines...), target(nil))
+			for i, tn := range topo.Tunnels {
+				if tn.BaseTunnelID != full.Tunnels[i].BaseTunnelID || tn.Port != 20000+i {
+					t.Errorf("tunnel %d = %s:%d, want %s:%d", i, tn.BaseTunnelID, tn.Port, full.Tunnels[i].BaseTunnelID, 20000+i)
+				}
+			}
+			for i, sk := range skipped {
+				want := full.Tunnels[tc.tunnels+i]
+				if sk.Code != CodePortRangeExhausted || sk.Label == nil || *sk.Label != want.DisplayName || sk.Raw == "" || len(sk.Details) != 1 {
+					t.Errorf("skip %d = %+v, want the entry %s", i, sk, want.BaseTunnelID)
+				}
+			}
+		})
+	}
+}
+
+func TestPortRangeOverflowStableAcrossInputOrder(t *testing.T) {
+	pr := config.PortRange{Start: 20000, End: 20000}
+	for _, lines := range [][]string{{berlin, vienna, vision}, {vision, berlin, vienna}, {vienna, vision, berlin}} {
+		topo, skipped := buildSrc(build(lines...), target(nil), pr)
+		if len(topo.Tunnels) != 1 || !strings.HasPrefix(topo.Tunnels[0].BaseTunnelID, "vless-at-") {
+			t.Errorf("%d lines: tunnels = %+v", len(lines), topo.Tunnels)
+		}
+		var labels []string
+		for _, sk := range skipped {
+			labels = append(labels, *sk.Label)
+		}
+		if got := strings.Join(labels, "|"); got != "🇩🇪 Берлин, Германия|🇩🇪 Германия, Extra" {
+			t.Errorf("skipped = %s", got)
+		}
 	}
 }

@@ -105,6 +105,19 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .node-kicker { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: 15px; }
 .node-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.node-head { display: flex; align-items: center; gap: 8px; }
+.node-head .node-title { flex: 1; min-width: 0; }
+.source-badge { flex: none; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.metric.source-chip { padding: 6px 11px; }
+.source-chip .metric-label { color: currentColor; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.source-chip .metric-value { font-size: 13px; }
+.src-0 { background: #dbe7fb; color: #1c4f8f; }
+.src-1 { background: #ebe1fb; color: #5a2d97; }
+.src-2 { background: #d3efea; color: #0c5c53; }
+.src-3 { background: #fbdfe7; color: #8d1f48; }
+.src-4 { background: #e0e5ef; color: #2c3d57; }
+.src-5 { background: #f1e3d3; color: #6a3d12; }
+.src-6 { background: #d6eef7; color: #0b5570; }
 .node-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .metric { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 8px; border-radius: 999px; background: rgba(239, 230, 215, .8); }
 .metric-label { color: var(--muted); font-size: 11px; }
@@ -205,7 +218,7 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
     <article class="node-card state-healthy is-selected">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-title"><span class="node-badge">Selected</span>🇩🇪 Germany 1</div>
+    <div class="node-head"><div class="node-title"><span class="node-badge">Selected</span>🇩🇪 Germany 1</div></div>
     <div class="node-meta">DE · 127.0.0.1:20000</div>
     <div class="node-metrics">
       <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
@@ -218,7 +231,7 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 <article class="node-card state-degraded">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-title">🇳🇱 Netherlands 1</div>
+    <div class="node-head"><div class="node-title">🇳🇱 Netherlands 1</div></div>
     <div class="node-meta">NL · 127.0.0.1:20001</div>
     <div class="node-metrics">
       <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
@@ -231,7 +244,7 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 <article class="node-card state-healthy">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-title">🇦🇹 Austria 1</div>
+    <div class="node-head"><div class="node-title">🇦🇹 Austria 1</div></div>
     <div class="node-meta">AT · 127.0.0.1:20002</div>
     <div class="node-metrics">
       <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>

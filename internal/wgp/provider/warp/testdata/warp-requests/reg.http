@@ -1,0 +1,10 @@
+POST /v0a5641/reg HTTP/1.1
+Host: api.cloudflareclient.com
+User-Agent: 1.1.1.1/6.38.9-5641 (Android 16.0.0)
+Content-Length: 246
+Cf-Client-Version: a-6.38.9-5641
+Connection: Keep-Alive
+Content-Type: application/json; charset=UTF-8
+Accept-Encoding: gzip
+
+{"fcm_token":"","install_id":"","key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","key_type":"curve25519","locale":"en_US","model":"PC","os_version":"16.0.0","serial_number":"","tos":"2026-10-29T12:00:00.123456789Z","tunnel_type":"wireguard"}

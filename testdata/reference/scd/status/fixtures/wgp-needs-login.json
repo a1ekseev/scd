@@ -1,0 +1,141 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "wgp": {
+    "a": {
+      "version": 1,
+      "updatedAt": "2026-08-15T09:58:00Z",
+      "providers": [
+        {
+          "id": "acc",
+          "output": "wg",
+          "type": "account",
+          "state": "needs_login",
+          "error": "session refresh rejected (HTTP 422)",
+          "lastTickAt": "2026-08-15T09:58:00Z",
+          "lastSuccessAt": "2026-08-14T08:00:00Z",
+          "issued": 3,
+          "limit": 10,
+          "expiresAt": "2026-08-15T16:00:00Z"
+        },
+        {
+          "id": "soon",
+          "output": "wg2",
+          "type": "account",
+          "state": "ok",
+          "lastTickAt": "2026-08-15T09:58:00Z",
+          "lastSuccessAt": "2026-08-15T09:58:00Z",
+          "issued": 1,
+          "limit": 10,
+          "expiresAt": "2026-08-15T11:00:00Z"
+        }
+      ]
+    },
+    "b": "{\"version\": 1, \"providers\": ["
+  },
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "sources": [
+          {
+            "id": "main",
+            "type": "vless",
+            "enabled": true
+          },
+          {
+            "id": "wg",
+            "type": "wireguard",
+            "enabled": true,
+            "maxActive": 2,
+            "wgpDir": "a"
+          },
+          {
+            "id": "mq",
+            "type": "masque",
+            "enabled": true,
+            "maxActive": 1,
+            "wgpDir": "b"
+          }
+        ]
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-1",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 17,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 17
+      },
+      "sources": [
+        {
+          "sourceId": "wg",
+          "candidateCount": 3
+        }
+      ],
+      "tunnels": [
+        {
+          "sourceId": "main",
+          "baseTunnelId": "main-at-x-tcp-tls-1",
+          "displayName": "🇦🇹 Vienna",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-main-at-x-tcp-tls-1",
+          "outboundTagCurrent": "x-observe-main-at-x-tcp-tls-1",
+          "outboundWithoutPrefixTag": "main-at-x-tcp-tls-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "consecutiveFailures": 0,
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42
+          }
+        },
+        {
+          "sourceId": "wg",
+          "baseTunnelId": "wg-ch-zurich-wg-171a296a",
+          "displayName": "🇨🇭 Zurich",
+          "countryIso2": "CH",
+          "listen": "127.0.0.1",
+          "port": 20101,
+          "outboundTagInitial": "x-observe-wg-ch-zurich-wg-171a296a",
+          "outboundTagCurrent": "x-observe-wg-ch-zurich-wg-171a296a",
+          "outboundWithoutPrefixTag": "wg-ch-zurich-wg-171a296a",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "consecutiveFailures": 0,
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": []
+}

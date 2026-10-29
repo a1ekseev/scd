@@ -172,7 +172,7 @@ func TestTickIdleToOK(t *testing.T) {
 			t.Errorf("balancer tags = %v", e.c.tags)
 		}
 		e.mem.View(e.key, func(tg *state.Target) {
-			if tg.Topology != nil || len(tg.Tunnels) != 0 || tg.Balancer.State != state.BalancerIdle {
+			if len(tg.Sources) != 0 || len(tg.Tunnels) != 0 || tg.Balancer.State != state.BalancerIdle {
 				t.Errorf("tick changed more than the selection: %+v", tg)
 			}
 		})
@@ -307,9 +307,12 @@ func TestTickSelectionChanged(t *testing.T) {
 		if len(ch) != len(want) {
 			t.Fatalf("changed logs = %v", ch)
 		}
+		// Xray moving its pick within a mode is debug; the first pick, a
+		// mode change and a move to no pick are info.
+		levels := []string{"INFO", "DEBUG", "INFO", "INFO"}
 		for i, w := range want {
-			if ch[i]["from"] != w[0] || ch[i]["to"] != w[1] || ch[i]["mode"] != w[2] {
-				t.Errorf("changed[%d] = %v, want %v", i, ch[i], w)
+			if ch[i]["from"] != w[0] || ch[i]["to"] != w[1] || ch[i]["mode"] != w[2] || ch[i]["level"] != levels[i] {
+				t.Errorf("changed[%d] = %v, want %v at %s", i, ch[i], w, levels[i])
 			}
 		}
 	})
@@ -491,7 +494,7 @@ func TestSelectionSurvivesReplaceTopology(t *testing.T) {
 		e := newEnv(false)
 		e.c.info = single(prefix + "de-1")
 		e.tick(t)
-		e.mem.ReplaceTopology(e.key, topologyOf(), nil)
+		e.mem.ReplaceSourceTopology(e.key, "vless", topologyOf(), nil)
 		if s := e.sel(t); s.SelectedTag != prefix+"de-1" || s.State != state.SelectionOK {
 			t.Errorf("state after ReplaceTopology = %+v", s)
 		}
@@ -501,4 +504,48 @@ func TestSelectionSurvivesReplaceTopology(t *testing.T) {
 // topologyOf is a one-tunnel topology (de-1, prefixed).
 func topologyOf() topology.Topology {
 	return topology.Topology{Tunnels: []topology.Tunnel{tunnelOf("de-1", prefix, prefix+"de-1").Mapping}}
+}
+
+// An unavailable Xray API is one xray_unavailable line: the selection and
+// observatory errors of the tick are debug, and the next good
+// GetBalancerInfo logs xray_recovered with balancer_selection_recovered at
+// debug.
+func TestTickXrayUnavailable(t *testing.T) {
+	e := newEnv(true)
+	down := &xrayapi.Error{Message: "Request to Xray API at 127.0.0.1:8080 timed out after 5000ms.", Unavailable: true}
+	e.c.set(func(s *stubClient) { s.infoErr, s.obsErr = down, down })
+	e.tick(t)
+	e.tick(t)
+	if ev := e.logs.events(t, "xray_unavailable"); len(ev) != 1 || ev[0]["level"] != "ERROR" || ev[0]["error"] != down.Message {
+		t.Fatalf("xray_unavailable %v", ev)
+	}
+	for _, name := range []string{"balancer_selection_failed", "balancer_observatory_unavailable"} {
+		if ev := e.logs.events(t, name); len(ev) != 1 || ev[0]["level"] != "DEBUG" {
+			t.Errorf("%s %v", name, ev)
+		}
+	}
+	e.c.set(func(s *stubClient) { s.info, s.infoErr, s.obsErr = single(prefix+"de-1"), nil, nil })
+	e.tick(t)
+	if ev := e.logs.events(t, "xray_recovered"); len(ev) != 1 || ev[0]["level"] != "INFO" {
+		t.Fatalf("xray_recovered %v", ev)
+	}
+	if ev := e.logs.events(t, "balancer_selection_recovered"); len(ev) != 1 || ev[0]["level"] != "DEBUG" {
+		t.Fatalf("balancer_selection_recovered %v", ev)
+	}
+}
+
+// An observatory error in a tick whose GetBalancerInfo failed with another
+// error is debug: the same client, the same cause.
+func TestTickObservatoryDebugWithInfoError(t *testing.T) {
+	e := newEnv(true)
+	e.c.set(func(s *stubClient) {
+		s.infoErr, s.obsErr = &xrayapi.Error{Message: "boom"}, &xrayapi.Error{Message: "boom"}
+	})
+	e.tick(t)
+	if ev := e.logs.events(t, "balancer_observatory_unavailable"); len(ev) != 1 || ev[0]["level"] != "DEBUG" {
+		t.Fatalf("balancer_observatory_unavailable %v", ev)
+	}
+	if ev := e.logs.events(t, "balancer_selection_failed"); len(ev) != 1 || ev[0]["level"] != "WARN" {
+		t.Fatalf("balancer_selection_failed %v", ev)
+	}
 }

@@ -4,6 +4,7 @@ run:
   build-tags:
     - xraylive
     - visual
+    - warplive
 
 linters:
   default: standard

@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/a1ekseev/scd/internal/common/neterr"
 )
 
 // Request describes one probe.
@@ -170,7 +172,8 @@ type probe struct {
 	conn  net.Conn
 }
 
-// fail maps an I/O error in the current phase to the probe error.
+// fail maps an I/O error in the current phase to the probe error; a
+// network error loses its local address (neterr.Stable).
 func (p *probe) fail(err error) error {
 	var ne net.Error
 	if errors.Is(p.ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
@@ -179,7 +182,7 @@ func (p *probe) fail(err error) error {
 	if cerr := p.ctx.Err(); cerr != nil {
 		return cerr
 	}
-	return err
+	return neterr.Stable(err)
 }
 
 // readFull reads exactly len(buf) bytes of a SOCKS reply. first marks the

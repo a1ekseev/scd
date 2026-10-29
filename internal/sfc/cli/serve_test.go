@@ -179,11 +179,18 @@ func TestServeRefreshesOnSchedule(t *testing.T) {
 	cancel()
 	waitDone(t, done, 5*time.Second)
 	out := logs.String()
-	if !strings.Contains(out, `"msg":"Refresh tick started.","event":"refresh_tick"}`) {
-		t.Fatalf("refresh_tick missing:\n%s", out)
+	// refresh_tick is debug; the scheduled refresh is the second
+	// subscription_refreshed, after the server started.
+	if strings.Contains(out, `"event":"refresh_tick"`) {
+		t.Fatalf("refresh_tick at info:\n%s", out)
 	}
-	if strings.Index(out, `"event":"refresh_tick"`) < strings.Index(out, `"event":"server_started"`) {
+	if strings.LastIndex(out, `"event":"subscription_refreshed"`) < strings.Index(out, `"event":"server_started"`) {
 		t.Fatalf("cron tick before server start:\n%s", out)
+	}
+	for _, want := range []string{`"version":"dev"`, `"event":"server_stopping"`, `"signal":"context canceled"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %s in:\n%s", want, out)
+		}
 	}
 }
 
@@ -264,7 +271,8 @@ func TestServeBindErrorAfterInitialRefresh(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(logs.String(), `"event":"subscription_refreshed"`) ||
-		strings.Contains(logs.String(), `"event":"server_started"`) {
+		strings.Contains(logs.String(), `"event":"server_started"`) || !strings.Contains(logs.String(), `"event":"service_failed"`) ||
+		!errors.Is(err, cliutil.ErrLogged) {
 		t.Fatalf("logs:\n%s", logs.String())
 	}
 }

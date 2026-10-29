@@ -25,7 +25,7 @@ func corpusParam(t *testing.T, line int, key string) string {
 const realityQuery = "type=tcp&security=reality&sni=www.example.test&fp=chrome&pbk=" + testPbk + "&sid=ab"
 
 func TestTLSFields(t *testing.T) {
-	n, w := mustEntry(t, "type=tcp&security=tls&sni=front.example.test&fp=Firefox&alpn=h2,%20http/1.1,,", Policy{})
+	n, w := mustEntry(t, "type=tcp&security=tls&sni=front.example.test&fp=Firefox&alpn=h2,%20http/1.1,,", Policy{TagPrefix: "vless"})
 	if n.SNI != "front.example.test" || n.Fingerprint != "firefox" || !slices.Equal(n.ALPN, []string{"h2", "http/1.1"}) {
 		t.Fatalf("got sni %q fp %q alpn %q", n.SNI, n.Fingerprint, n.ALPN)
 	}
@@ -33,7 +33,7 @@ func TestTLSFields(t *testing.T) {
 		t.Fatalf("warnings %v", w)
 	}
 	// TLS-only fields stay empty without their parameters.
-	n, _ = mustEntry(t, "type=tcp&security=tls", Policy{})
+	n, _ = mustEntry(t, "type=tcp&security=tls", Policy{TagPrefix: "vless"})
 	if n.ALPN == nil || len(n.ALPN) != 0 || n.PinnedPeerCertSha256 != nil || n.VerifyPeerCertByName != nil ||
 		n.ECHConfigList != "" || n.CipherSuites != "" || n.PublicKey != "" || n.SpiderX != "" {
 		t.Fatalf("unexpected fields %+v", n)
@@ -44,7 +44,7 @@ func TestTLSPinsAndNames(t *testing.T) {
 	const colon = "2D:AA:13:89:E3:E6:0F:82:11:59:DE:ED:A7:5E:55:BD:ED:FA:90:B7:31:A4:02:82:36:98:36:A7:ED:40:D3:04"
 	const hex = "3dfdf0330d3e9e2bbd2e1b4e8c0e7d4b54e1f1b0d0c6a5f8f3b2e2d1c0b9a8f7"
 	n, _ := mustEntry(t, "type=tcp&security=tls&pcs="+url.QueryEscape(colon+", "+hex+",")+
-		"&vcn="+url.QueryEscape("a.example.test, b.example.test"), Policy{})
+		"&vcn="+url.QueryEscape("a.example.test, b.example.test"), Policy{TagPrefix: "vless"})
 	if !slices.Equal(n.PinnedPeerCertSha256, []string{colon, hex}) {
 		t.Fatalf("pcs %q", n.PinnedPeerCertSha256)
 	}
@@ -55,7 +55,7 @@ func TestTLSPinsAndNames(t *testing.T) {
 
 func TestTLSECHKeptVerbatim(t *testing.T) {
 	for _, ech := range []string{corpusParam(t, 46, "ech"), "ech.example.test+https://1.1.1.1/dns-query"} {
-		n, _ := mustEntry(t, "type=tcp&security=tls&sni=ech.example.test&ech="+url.QueryEscape(ech), Policy{})
+		n, _ := mustEntry(t, "type=tcp&security=tls&sni=ech.example.test&ech="+url.QueryEscape(ech), Policy{TagPrefix: "vless"})
 		if n.ECHConfigList != ech {
 			t.Fatalf("ech %q, want %q", n.ECHConfigList, ech)
 		}
@@ -64,11 +64,11 @@ func TestTLSECHKeptVerbatim(t *testing.T) {
 
 func TestTLSCipherSuitesKept(t *testing.T) {
 	const cs = "cs=TLS_AES_128_GCM_SHA256%3ATLS_CHACHA20_POLY1305_SHA256"
-	n, w := mustEntry(t, "type=tcp&security=tls&sni=tls.example.test&"+cs, Policy{})
+	n, w := mustEntry(t, "type=tcp&security=tls&sni=tls.example.test&"+cs, Policy{TagPrefix: "vless"})
 	if n.CipherSuites != "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256" || w != nil {
 		t.Fatalf("cipherSuites %q warnings %v", n.CipherSuites, w)
 	}
-	n, w = mustEntry(t, realityQuery+"&"+cs, Policy{})
+	n, w = mustEntry(t, realityQuery+"&"+cs, Policy{TagPrefix: "vless"})
 	if n.CipherSuites != "" || w != nil {
 		t.Fatalf("reality: cipherSuites %q warnings %v", n.CipherSuites, w)
 	}
@@ -80,9 +80,9 @@ func TestRealityRequiresOnlyPbk(t *testing.T) {
 		"type=tcp&security=reality&pbk=&sid=ab",
 		"type=xhttp&security=reality&sni=www.example.test",
 	} {
-		mustSkip(t, q, Policy{}, vless.CodeMissingRequiredField, wantPbk)
+		mustSkip(t, q, Policy{TagPrefix: "vless"}, vless.CodeMissingRequiredField, wantPbk)
 	}
-	n, w := mustEntry(t, "type=tcp&security=reality&pbk="+testPbk, Policy{})
+	n, w := mustEntry(t, "type=tcp&security=reality&pbk="+testPbk, Policy{TagPrefix: "vless"})
 	if n.Profile != "tcp-reality" || n.SNI != "" || n.Fingerprint != "" || n.ShortID != "" || w != nil {
 		t.Fatalf("got %+v %v", n, w)
 	}
@@ -90,7 +90,7 @@ func TestRealityRequiresOnlyPbk(t *testing.T) {
 
 func TestRealityFields(t *testing.T) {
 	n, _ := mustEntry(t, "type=tcp&security=reality&sni=www.example.test&fp=Chrome&pbk="+testPbk+
-		"&sid=ab&alpn=h2&pcs=ab&vcn=a.example.test&ech=x", Policy{})
+		"&sid=ab&alpn=h2&pcs=ab&vcn=a.example.test&ech=x", Policy{TagPrefix: "vless"})
 	if n.SNI != "www.example.test" || n.Fingerprint != "chrome" || n.PublicKey != testPbk || n.ShortID != "ab" {
 		t.Fatalf("got %+v", n)
 	}
@@ -110,7 +110,7 @@ func TestRealityPbkNormalized(t *testing.T) {
 	if !strings.HasSuffix(std, "=") || !strings.ContainsAny(std, "+/") {
 		t.Fatalf("test key %q must use the std alphabet and padding", std)
 	}
-	n, _ := mustEntry(t, "type=tcp&security=reality&pbk="+url.QueryEscape(std), Policy{})
+	n, _ := mustEntry(t, "type=tcp&security=reality&pbk="+url.QueryEscape(std), Policy{TagPrefix: "vless"})
 	if n.PublicKey != testPbk {
 		t.Fatalf("publicKey %q, want %q", n.PublicKey, testPbk)
 	}
@@ -118,7 +118,7 @@ func TestRealityPbkNormalized(t *testing.T) {
 
 func TestRealityDefaultSpiderX(t *testing.T) {
 	for _, q := range []string{realityQuery, realityQuery + "&spx="} {
-		n, _ := mustEntry(t, q, Policy{})
+		n, _ := mustEntry(t, q, Policy{TagPrefix: "vless"})
 		if n.SpiderX != "/" {
 			t.Fatalf("%s: spiderX %q", q, n.SpiderX)
 		}
@@ -126,7 +126,7 @@ func TestRealityDefaultSpiderX(t *testing.T) {
 }
 
 func TestRealitySpxKept(t *testing.T) {
-	n, _ := mustEntry(t, realityQuery+"&spx="+url.QueryEscape("/abc?p=10-20&c=2"), Policy{})
+	n, _ := mustEntry(t, realityQuery+"&spx="+url.QueryEscape("/abc?p=10-20&c=2"), Policy{TagPrefix: "vless"})
 	if n.SpiderX != "/abc?p=10-20&c=2" {
 		t.Fatalf("spiderX %q", n.SpiderX)
 	}
@@ -134,12 +134,12 @@ func TestRealitySpxKept(t *testing.T) {
 
 func TestRealityPqvKept(t *testing.T) {
 	pqv := corpusParam(t, 53, "pqv")
-	n, _ := mustEntry(t, realityQuery+"&pqv="+pqv, Policy{})
+	n, _ := mustEntry(t, realityQuery+"&pqv="+pqv, Policy{TagPrefix: "vless"})
 	if n.Mldsa65Verify != pqv {
 		t.Fatalf("mldsa65Verify %.20q…", n.Mldsa65Verify)
 	}
 	// pqv is a REALITY parameter: ignored on TLS (O16).
-	n, _ = mustEntry(t, "type=tcp&security=tls&pqv="+pqv, Policy{})
+	n, _ = mustEntry(t, "type=tcp&security=tls&pqv="+pqv, Policy{TagPrefix: "vless"})
 	if n.Mldsa65Verify != "" {
 		t.Fatal("pqv on tls")
 	}
@@ -147,7 +147,7 @@ func TestRealityPqvKept(t *testing.T) {
 
 func TestNoneSecurityLeavesFieldsEmpty(t *testing.T) {
 	n, w := mustEntry(t, "type=tcp&security=none&sni=x&fp=chrome&alpn=h2&pbk="+testPbk+"&sid=ab&spx=/a&pcs=ab"+
-		"&vcn=a&ech=x&cs=TLS_AES_128_GCM_SHA256&encryption="+mlkemEnc(t), Policy{})
+		"&vcn=a&ech=x&cs=TLS_AES_128_GCM_SHA256&encryption="+mlkemEnc(t), Policy{TagPrefix: "vless"})
 	if n.SNI != "" || n.Fingerprint != "" || len(n.ALPN) != 0 || n.ALPN == nil || n.PublicKey != "" ||
 		n.ShortID != "" || n.SpiderX != "" || n.Mldsa65Verify != "" || n.PinnedPeerCertSha256 != nil ||
 		n.VerifyPeerCertByName != nil || n.ECHConfigList != "" || n.CipherSuites != "" || w != nil {

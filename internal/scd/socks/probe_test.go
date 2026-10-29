@@ -578,3 +578,20 @@ func TestOverlongHeadRejected(t *testing.T) {
 		t.Fatalf("took %v: head was not capped", d)
 	}
 }
+
+// A reset connection gives an error text without the local address (a
+// new ephemeral port on every probe), so repeated probes give one text.
+func TestResetErrorTextStable(t *testing.T) {
+	p := newFakeProxy(t, func(p *fakeProxy) {
+		p.after = func(c net.Conn) {
+			_ = c.(*net.TCPConn).SetLinger(0) // close with RST
+		}
+	})
+	_, err := Do(context.Background(), req(p, "http://example.test/", "GET", time.Second))
+	if err == nil || strings.Contains(err.Error(), "->") || !strings.Contains(err.Error(), "tcp "+p.ln.Addr().String()+":") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, ok := errors.AsType[*net.OpError](err); !ok {
+		t.Fatalf("err %T does not unwrap to *net.OpError", err)
+	}
+}

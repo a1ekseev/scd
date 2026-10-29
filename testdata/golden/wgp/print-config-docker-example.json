@@ -1,0 +1,181 @@
+{
+  "server": {
+    "listen": "0.0.0.0:8080"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "state": {
+    "dir": "/app/state",
+    "keyFile": "/run/secrets/wgp_state_key"
+  },
+  "identification": {
+    "proton": {
+      "appVersion": "linux-vpn-gui@5.8.11+x86-64",
+      "userAgent": "ProtonVPN/5.8.11 (Linux; ubuntu/26.04)",
+      "timezone": "Europe/Istanbul"
+    },
+    "warp": {
+      "userAgent": "1.1.1.1/6.38.9-5641 (Android 16.0.0)",
+      "clientVersion": "a-6.38.9-5641",
+      "apiVersion": "v0a5641",
+      "model": "PC",
+      "locale": "en_US",
+      "osVersion": "16.0.0"
+    }
+  },
+  "deviceNamePrefix": "wgp-a-",
+  "keys": {
+    "revokeOldAfterMinutes": 30
+  },
+  "api": {
+    "timeoutMs": 15000,
+    "retry": {
+      "attempts": 3,
+      "minDelayMs": 3000,
+      "maxDelayMs": 8000
+    }
+  },
+  "providers": [
+    {
+      "id": "static",
+      "type": "static",
+      "enabled": true,
+      "schedule": "*/5 * * * *",
+      "dir": "/app/static",
+      "maxFileBytes": 65536,
+      "defaults": {
+        "mtu": 1420,
+        "allowedIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "dns": []
+      }
+    },
+    {
+      "id": "proton",
+      "type": "proton",
+      "enabled": false,
+      "schedule": "*/15 * * * *",
+      "tier": "free",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "certificate": {
+        "durationMinutes": 1440,
+        "renewBeforeMinutes": 360,
+        "features": {
+          "netShield": 0,
+          "vpnAccelerator": true,
+          "moderateNat": false
+        }
+      },
+      "servers": {
+        "exitCountries": [
+          "NL",
+          "CH",
+          "JP"
+        ],
+        "entryCountries": [],
+        "cities": [],
+        "requireFeatures": [],
+        "excludeFeatures": [
+          "secureCore",
+          "tor"
+        ],
+        "maxLoad": 80,
+        "maxScore": 999,
+        "switchMarginPercent": 20,
+        "switchConfirmChecks": 2
+      },
+      "wireguard": {
+        "port": 51820,
+        "dns": [
+          "10.2.0.1"
+        ],
+        "mtu": 1420
+      },
+      "label": "{flag} {city}, Proton {name}"
+    },
+    {
+      "id": "warp",
+      "type": "warp",
+      "enabled": false,
+      "schedule": "0 */6 * * *",
+      "tunnel": "wireguard",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "deviceLostAfterChecks": 2,
+      "reRegisterMinIntervalMinutes": 1440,
+      "label": "☁️ WARP",
+      "wireguard": {
+        "dns": [
+          "1.1.1.1",
+          "1.0.0.1",
+          "2606:4700:4700::1111",
+          "2606:4700:4700::1001"
+        ],
+        "mtu": 1280,
+        "allowedIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
+      }
+    },
+    {
+      "id": "warpmq",
+      "type": "warp",
+      "enabled": false,
+      "schedule": "0 */6 * * *",
+      "tunnel": "masque",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "deviceLostAfterChecks": 2,
+      "reRegisterMinIntervalMinutes": 1440,
+      "label": "☁️ WARP",
+      "masque": {
+        "transports": [
+          "h3",
+          "h2"
+        ],
+        "sni": "consumer-masque.cloudflareclient.com",
+        "port": 443,
+        "dns": [
+          "1.1.1.1",
+          "1.0.0.1",
+          "2606:4700:4700::1111",
+          "2606:4700:4700::1001"
+        ]
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "proton",
+      "path": "/app/out/proton",
+      "provider": "proton",
+      "candidates": 4
+    },
+    {
+      "id": "wg",
+      "path": "/app/out/wg",
+      "provider": "static"
+    },
+    {
+      "id": "warp",
+      "path": "/app/out/warp",
+      "provider": "warp",
+      "candidates": 1
+    },
+    {
+      "id": "warpmq",
+      "path": "/app/out/warpmq",
+      "provider": "warpmq",
+      "candidates": 1
+    }
+  ]
+}

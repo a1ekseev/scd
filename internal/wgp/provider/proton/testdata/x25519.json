@@ -1,0 +1,50 @@
+[
+  {
+    "seed": "294e72ae42d7c6cfca7b871a6a2526a6759d43cdbe53619385c45a6b3e905e07",
+    "ed25519PublicKey": "el/C/V44sRHu9LyigLEadKnXvYLAC99916U4KQ0KpuY=",
+    "x25519PublicKey": "mmbyVJrIn9SVt8EBz6/dBzSeu6fQoJG5bGzLCzA8hTY=",
+    "clientKeyFingerprint": "XTeQQXy5fhqJhfQ6zMnFKKHjGO+39b9+h9xrT98gla+gAtyf/eA3BnFnwCo7d+RslRgTv8Mozy/HxW8PTjMKYw=="
+  },
+  {
+    "seed": "51d6d695d243795599f37a4591617ca49b431206f98de9ed048fb3b3b7042771",
+    "ed25519PublicKey": "n+q3x6zqYVuwDMKBQhIuINjqic4MjLE22uHjYSQ2iQU=",
+    "x25519PublicKey": "6sRBp44sXRswhHDmwp7zreDyONsv7egyNa50BIp1yiw=",
+    "clientKeyFingerprint": "h/zlp9x69z29ea8P2XHkQj53p3yOqIMz1ejeDi7a2thuKF3yLEN+agFoZLJJAdgzYHZ5jHzXAwS+uoolka/jIw=="
+  },
+  {
+    "seed": "a98270d980de2a6f3f359a2b09daab726e9ebae345a7383dfa525d5954c48466",
+    "ed25519PublicKey": "Bni8ESQ0mZeNU2Ze7NAWDvDBGtmOgfoSnMUJmwQSgdM=",
+    "x25519PublicKey": "FJEiUbEHMz0z6en1ZYKlKPH7CG0fPagI6ijsfU7OvQs=",
+    "clientKeyFingerprint": "jVQxcMQRVGZXI/WEgVc2k/Iw9V/C3Bj1lP+BsHbb1nAKWbbWoC9gVTDk5hcExUCKZW+RhBpMqyTcdqj2BX4Z5g=="
+  },
+  {
+    "seed": "b03e2ce5a98fc100ce78edac14e41bc6e34a5ffd8d704489073e397a3e4b065f",
+    "ed25519PublicKey": "V547/YeW8yFyEm4ix24JK3RaSgcfiZLUbU0wVpMrzD0=",
+    "x25519PublicKey": "GAH9qMgVvYTo8coFHx4DJ6nT1QuOWg7Uh0h+awGCUyQ=",
+    "clientKeyFingerprint": "44U0ViA/wybVjHYjglrkWODmIbuTTocEUJKbX4ca6sTLuyEsbLOrUR+I0ZbIyv0WlU1cCEi+zzmpRhXZx5Zl0w=="
+  },
+  {
+    "seed": "e71431623d0ac52a5a0e18b65d994430add4335e12e0334c719591a0c039e0d1",
+    "ed25519PublicKey": "ecnm+/wNJoeNzQTuiSdcPFL3OOJOuneuT9gdDk30R/4=",
+    "x25519PublicKey": "0i4AnDJ05gFJjth1k5wYk+iczQTP0EYWEQN+jgZOcEE=",
+    "clientKeyFingerprint": "o7CCtsGw/ygzNlGG02VFPxGnTbCuJlIJ8Elq+Wz4ki2k4sqXfupCwpyj6ei1S77d8fzSaVSRWpwj8FTlxheGFQ=="
+  },
+  {
+    "seed": "d8b2351928143724a8fb25c278661c68dabd175f948106d8e72dc29e628009ab",
+    "ed25519PublicKey": "rfN/W47KUeguLluLe0O1uFtrrAmUuPzlfQJM15aRdHg=",
+    "x25519PublicKey": "nwxOhLy8OLMcRclEtZ1ZSDC7ciGz3bOPxXn0e+iifnw=",
+    "clientKeyFingerprint": "6xbe9mbJFQBx6aMDuLOS/WNeSA0M7Wo9gvKbDXWMLneZFk/MzEUkwKr4fEjAclvUdFsOU3IgLzNdrCIsttxQ8w=="
+  },
+  {
+    "seed": "644e0738c8e9bcf26f1f2ef49c40a456049450a6dd06e4b4fd1f93d8dd98d2ad",
+    "ed25519PublicKey": "LkPy7A1c8AW52BYlo2Ix237hoxv+GyxKbaMlO0gNDtE=",
+    "x25519PublicKey": "xLBgBTVXxCwKOmLUEkoesHJ9jN32fg7ZopOJ+W02MiE=",
+    "clientKeyFingerprint": "RmcnzRztYNv4+xN9lgLuYOsRPhfJn83oRVUsr9OZhtEeW0FqBPVqai6ECqrCxIPZDPUoPhW8KTzOwOhf6tA14Q=="
+  },
+  {
+    "seed": "ea4f91443271fed84984d66774900eeacdd38e61cb0a4112b39d07bec07de87d",
+    "ed25519PublicKey": "+4/fRnhYIwFbljhgMWcMmorn87FRYhTTzNhg7opcqBQ=",
+    "x25519PublicKey": "ZlNRju4wvRYrdmK3Ef7WVOTT1lNwiD89qAW/9oIHBn8=",
+    "clientKeyFingerprint": "7oVooRh56gCQFBRCMNlipRvlOJDVfhKxYZ/O08TMQ72+UTIGqg5JccfBvtS9xAv6i+3qOLoffRBgQpQ2FpZ0Bg=="
+  }
+]

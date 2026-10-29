@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/sigctx"
 	"github.com/a1ekseev/scd/internal/gtl/cli"
 )
@@ -106,7 +108,7 @@ func TestServeServesAndStops(t *testing.T) {
 	}
 	out := logs.String()
 	last := -1
-	for _, ev := range []string{`"event":"gtl_server_started"`, `"event":"gtl_server_stopping"`, `"event":"gtl_server_stopped"`} {
+	for _, ev := range []string{`"event":"config_loaded"`, `"event":"gtl_server_started"`, `"event":"gtl_server_stopping"`, `"event":"gtl_server_stopped"`} {
 		i := strings.Index(out, ev)
 		if i <= last {
 			t.Fatalf("event %s missing or out of order:\n%s", ev, out)
@@ -183,11 +185,13 @@ func TestServeBindError(t *testing.T) {
 	defer ln.Close()
 	logs := &syncBuf{}
 	err = cli.RunServe(t.Context(), writeConfig(t, ln.Addr().String()), logs)
-	if err == nil || !strings.Contains(err.Error(), "address already in use") {
+	if err == nil || !strings.Contains(err.Error(), "address already in use") || !errors.Is(err, cliutil.ErrLogged) {
 		t.Fatalf("err = %v", err)
 	}
-	if logs.String() != "" {
-		t.Fatalf("unexpected logs: %s", logs.String())
+	// config_loaded, then the failure as one JSON line.
+	if out := logs.String(); strings.Count(out, "\n") != 2 || !strings.Contains(out, `"event":"service_failed"`) ||
+		!strings.Contains(out, "address already in use") || !strings.Contains(out, `"version":"dev"`) {
+		t.Fatalf("logs: %s", out)
 	}
 }
 

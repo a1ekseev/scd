@@ -27,20 +27,20 @@ func TestTCPHeaderNoneKept(t *testing.T) {
 		{tlsTCP + "&headerType=", ""},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
-			n, w := mustEntry(t, tc.query, Policy{})
+			n, w := mustEntry(t, tc.query, Policy{TagPrefix: "vless"})
 			if w != nil || n.HeaderType == nil || *n.HeaderType != tc.want {
 				t.Fatalf("headerType %v, warnings %v", n.HeaderType, w)
 			}
 		})
 	}
-	n, _ := mustEntry(t, tlsTCP, Policy{})
+	n, _ := mustEntry(t, tlsTCP, Policy{TagPrefix: "vless"})
 	if n.HeaderType != nil {
 		t.Fatalf("absent headerType mapped to %q", *n.HeaderType)
 	}
 }
 
 func TestTCPHeaderHTTP(t *testing.T) {
-	n, w := mustEntry(t, tlsTCP+"&headerType=http&host=h1.example.test,h2.example.test&path=/a,/b", Policy{})
+	n, w := mustEntry(t, tlsTCP+"&headerType=http&host=h1.example.test,h2.example.test&path=/a,/b", Policy{TagPrefix: "vless"})
 	if w != nil || n.HeaderType == nil || *n.HeaderType != "http" {
 		t.Fatalf("headerType %v, warnings %v", n.HeaderType, w)
 	}
@@ -48,57 +48,57 @@ func TestTCPHeaderHTTP(t *testing.T) {
 		t.Fatalf("host %q path %q", n.Host, n.Path)
 	}
 	// Without http the request host/path do not apply (O16).
-	n, w = mustEntry(t, tlsTCP+"&headerType=none&host=h1.example.test&path=/a", Policy{})
+	n, w = mustEntry(t, tlsTCP+"&headerType=none&host=h1.example.test&path=/a", Policy{TagPrefix: "vless"})
 	if w != nil || n.Host != "" || n.Path != "" {
 		t.Fatalf("host %q path %q warnings %v", n.Host, n.Path, w)
 	}
 	// Other values are left to conf ("unknown config id").
-	n, _ = mustEntry(t, tlsTCP+"&headerType=bogus&host=h1.example.test", Policy{})
+	n, _ = mustEntry(t, tlsTCP+"&headerType=bogus&host=h1.example.test", Policy{TagPrefix: "vless"})
 	if *n.HeaderType != "bogus" || n.Host != "" {
 		t.Fatalf("headerType %q host %q", *n.HeaderType, n.Host)
 	}
 }
 
 func TestWSHostPathEd(t *testing.T) {
-	n, w := mustEntry(t, tlsWS+"&host=cdn.example.test&path=%2Fws%3Fed%3D2048&headerType=none", Policy{})
+	n, w := mustEntry(t, tlsWS+"&host=cdn.example.test&path=%2Fws%3Fed%3D2048&headerType=none", Policy{TagPrefix: "vless"})
 	if w != nil || n.Host != "cdn.example.test" || n.Path != "/ws?ed=2048" || n.HeaderType != nil {
 		t.Fatalf("host %q path %q headerType %v warnings %v", n.Host, n.Path, n.HeaderType, w)
 	}
 }
 
 func TestWSWithoutPathAccepted(t *testing.T) {
-	n, w := mustEntry(t, tlsWS, Policy{})
+	n, w := mustEntry(t, tlsWS, Policy{TagPrefix: "vless"})
 	if w != nil || n.Profile != "ws-tls" || n.Path != "" {
 		t.Fatalf("profile %s path %q warnings %v", n.Profile, n.Path, w)
 	}
 }
 
 func TestWSHeartbeatPeriod(t *testing.T) {
-	n, w := mustEntry(t, tlsWS+"&path=%2Fws&heartbeatPeriod=30", Policy{})
+	n, w := mustEntry(t, tlsWS+"&path=%2Fws&heartbeatPeriod=30", Policy{TagPrefix: "vless"})
 	if w != nil || n.HeartbeatPeriod != 30 {
 		t.Fatalf("heartbeatPeriod %d warnings %v", n.HeartbeatPeriod, w)
 	}
-	n, _ = mustEntry(t, tlsWS+"&heartbeatPeriod=4294967295", Policy{})
+	n, _ = mustEntry(t, tlsWS+"&heartbeatPeriod=4294967295", Policy{TagPrefix: "vless"})
 	if n.HeartbeatPeriod != 4294967295 {
 		t.Fatalf("heartbeatPeriod %d", n.HeartbeatPeriod)
 	}
 	// An empty value is an unset parameter, like any other empty one.
-	n, w = mustEntry(t, tlsWS+"&heartbeatPeriod=", Policy{})
+	n, w = mustEntry(t, tlsWS+"&heartbeatPeriod=", Policy{TagPrefix: "vless"})
 	if w != nil || n.HeartbeatPeriod != 0 {
 		t.Fatalf("heartbeatPeriod %d warnings %v", n.HeartbeatPeriod, w)
 	}
 	for _, v := range []string{"abc", "-1", "4294967296", "1.5", "+1", " 1"} {
 		t.Run(v, func(t *testing.T) {
-			mustSkip(t, tlsWS+"&heartbeatPeriod="+url.QueryEscape(v), Policy{},
+			mustSkip(t, tlsWS+"&heartbeatPeriod="+url.QueryEscape(v), Policy{TagPrefix: "vless"},
 				vless.CodeUnsupportedValue, wantHeartbeat, "heartbeatPeriod="+v)
 		})
 	}
 	// Final review M13: a long value is truncated in the detail like extra/fm.
 	long := strings.Repeat("9", 60)
-	mustSkip(t, tlsWS+"&heartbeatPeriod="+long, Policy{}, vless.CodeUnsupportedValue, wantHeartbeat, "heartbeatPeriod="+truncate(long, 40))
+	mustSkip(t, tlsWS+"&heartbeatPeriod="+long, Policy{TagPrefix: "vless"}, vless.CodeUnsupportedValue, wantHeartbeat, "heartbeatPeriod="+truncate(long, 40))
 	// Inapplicable on tcp and xhttp: dropped silently (O16).
 	for _, q := range []string{tlsXHTTP, tlsTCP} {
-		n, w := mustEntry(t, q+"&heartbeatPeriod=abc", Policy{})
+		n, w := mustEntry(t, q+"&heartbeatPeriod=abc", Policy{TagPrefix: "vless"})
 		if w != nil || n.HeartbeatPeriod != 0 {
 			t.Fatalf("%s: heartbeatPeriod %d warnings %v", q, n.HeartbeatPeriod, w)
 		}
@@ -108,7 +108,7 @@ func TestWSHeartbeatPeriod(t *testing.T) {
 func TestXHTTPFields(t *testing.T) {
 	extra := `{"xPaddingBytes":"100-1000","xmux":{"maxConcurrency":"16-32"},"headers":{},` +
 		`"downloadSettings":{"address":"dl.example.test","port":443,"network":"xhttp"}}`
-	n, w := mustEntry(t, tlsXHTTP+"&host=xh.example.test&path=%2Fxh&mode=stream-up&headerType=http&extra="+url.QueryEscape(extra), Policy{})
+	n, w := mustEntry(t, tlsXHTTP+"&host=xh.example.test&path=%2Fxh&mode=stream-up&headerType=http&extra="+url.QueryEscape(extra), Policy{TagPrefix: "vless"})
 	if w != nil || n.Profile != "xhttp-tls" {
 		t.Fatalf("profile %s warnings %v", n.Profile, w)
 	}
@@ -119,13 +119,13 @@ func TestXHTTPFields(t *testing.T) {
 		t.Fatalf("extra %s", n.XHTTPExtra)
 	}
 	// mode is left to conf; leading whitespace before the object is fine.
-	n, _ = mustEntry(t, tlsXHTTP+"&mode=bogus&extra="+url.QueryEscape(" \n{}"), Policy{})
+	n, _ = mustEntry(t, tlsXHTTP+"&mode=bogus&extra="+url.QueryEscape(" \n{}"), Policy{TagPrefix: "vless"})
 	if n.XHTTPMode != "bogus" || string(n.XHTTPExtra) != " \n{}" {
 		t.Fatalf("mode %q extra %q", n.XHTTPMode, n.XHTTPExtra)
 	}
 	// An empty extra is unset; extra/mode do not apply to ws (O16).
 	for _, q := range []string{tlsXHTTP + "&extra=", tlsWS + "&mode=auto&extra=%5B1%5D"} {
-		n, w := mustEntry(t, q, Policy{})
+		n, w := mustEntry(t, q, Policy{TagPrefix: "vless"})
 		if w != nil || n.XHTTPExtra != nil || n.XHTTPMode != "" {
 			t.Fatalf("%s: extra %q mode %q warnings %v", q, n.XHTTPExtra, n.XHTTPMode, w)
 		}
@@ -142,7 +142,7 @@ func TestXHTTPBadExtra(t *testing.T) {
 		{"long", long, "extra=" + truncate(long, 40)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mustSkip(t, tlsXHTTP+"&path=%2Fxh&extra="+url.QueryEscape(tc.value), Policy{},
+			mustSkip(t, tlsXHTTP+"&path=%2Fxh&extra="+url.QueryEscape(tc.value), Policy{TagPrefix: "vless"},
 				vless.CodeUnsupportedValue, wantExtra, tc.detail)
 		})
 	}
@@ -151,12 +151,12 @@ func TestXHTTPBadExtra(t *testing.T) {
 func TestFinalMaskKept(t *testing.T) {
 	fm := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","interval":"10-20"}}]}`
 	for _, q := range []string{tlsTCP, tlsWS, tlsXHTTP, realityQuery} {
-		n, w := mustEntry(t, q+"&fm="+url.QueryEscape(fm), Policy{})
+		n, w := mustEntry(t, q+"&fm="+url.QueryEscape(fm), Policy{TagPrefix: "vless"})
 		if w != nil || string(n.FinalMask) != fm {
 			t.Fatalf("%s: finalmask %s warnings %v", q, n.FinalMask, w)
 		}
 	}
-	n, _ := mustEntry(t, tlsTCP+"&fm=", Policy{})
+	n, _ := mustEntry(t, tlsTCP+"&fm=", Policy{TagPrefix: "vless"})
 	if n.FinalMask != nil {
 		t.Fatalf("empty fm mapped to %q", n.FinalMask)
 	}
@@ -170,7 +170,7 @@ func TestFinalMaskInvalid(t *testing.T) {
 		{realityQuery, "1"},
 	} {
 		t.Run(tc.value, func(t *testing.T) {
-			mustSkip(t, tc.query+"&fm="+url.QueryEscape(tc.value), Policy{},
+			mustSkip(t, tc.query+"&fm="+url.QueryEscape(tc.value), Policy{TagPrefix: "vless"},
 				vless.CodeUnsupportedValue, wantFM, "fm="+tc.value)
 		})
 	}
@@ -219,7 +219,7 @@ func TestNormalizeRealShapes(t *testing.T) {
 		t.Fatalf("remnawave.txt: %d links", len(links))
 	}
 	for _, l := range links {
-		n, w, skip := Normalize(l, Policy{})
+		n, w, skip := Normalize(l, Policy{TagPrefix: "vless"})
 		if skip != nil || w != nil {
 			t.Fatalf("remnawave line %d: skip %+v warnings %v", l.Line, skip, w)
 		}
@@ -237,7 +237,7 @@ func TestNormalizeRealShapes(t *testing.T) {
 			t.Fatalf("%s: %d links", name, len(links))
 		}
 		for _, l := range links {
-			n, w, skip := Normalize(l, Policy{})
+			n, w, skip := Normalize(l, Policy{TagPrefix: "vless"})
 			if skip != nil || w != nil {
 				t.Fatalf("%s line %d: skip %+v warnings %v", name, l.Line, skip, w)
 			}

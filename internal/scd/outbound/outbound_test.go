@@ -54,7 +54,7 @@ func parseRaw(t *testing.T, raw string, n int) vlesslink.Link {
 
 func normalizeLink(t *testing.T, l vlesslink.Link) normalize.Normalized {
 	t.Helper()
-	n, _, skip := normalize.Normalize(l, normalize.Policy{AllowInsecure: true})
+	n, _, skip := normalize.Normalize(l, normalize.Policy{AllowInsecure: true, TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("line %d skipped by normalize: %+v", l.Line, *skip)
 	}

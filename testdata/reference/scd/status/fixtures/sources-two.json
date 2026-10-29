@@ -1,0 +1,231 @@
+{
+  "now": "2026-08-15T10:00:00.000Z",
+  "config": {
+    "instanceId": "local-main",
+    "subscriptions": [
+      {
+        "id": "sub-1",
+        "enabled": true,
+        "address": "127.0.0.1:8080",
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "sources": [
+          {
+            "id": "main",
+            "type": "vless",
+            "enabled": true
+          },
+          {
+            "id": "spare",
+            "type": "vless",
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "remoteInstances": [
+      {
+        "id": "edge-old",
+        "apiUrl": "https://edge-old.example.test/api/instance-status",
+        "schedule": "* * * * *"
+      }
+    ],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "sub-1",
+      "targetAddress": "127.0.0.1:8080",
+      "balancerMonitor": {
+        "state": "healthy",
+        "remotePingState": "idle",
+        "consecutiveFailures": 0,
+        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+        "lastStatusCode": 204,
+        "lastLatencyMs": 17,
+        "lastSuccessStatusCode": 204,
+        "lastSuccessLatencyMs": 17
+      },
+      "sources": [
+        {
+          "sourceId": "spare",
+          "warnings": [
+            {
+              "code": "port_range_exhausted",
+              "message": "2 lines were skipped: the source portRange has no free port for them."
+            }
+          ]
+        }
+      ],
+      "tunnels": [
+        {
+          "sourceId": "main",
+          "baseTunnelId": "main-at-x-tcp-tls-1",
+          "displayName": "🇦🇹 Vienna",
+          "countryIso2": "AT",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-main-at-x-tcp-tls-1",
+          "outboundTagCurrent": "x-observe-main-at-x-tcp-tls-1",
+          "outboundWithoutPrefixTag": "main-at-x-tcp-tls-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "consecutiveFailures": 0,
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 42,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 42
+          }
+        },
+        {
+          "sourceId": "main",
+          "baseTunnelId": "main-de-x-tcp-tls-1",
+          "displayName": "🇩🇪 Frankfurt",
+          "countryIso2": "DE",
+          "listen": "127.0.0.1",
+          "port": 20001,
+          "outboundTagInitial": "x-observe-main-de-x-tcp-tls-1",
+          "outboundTagCurrent": "x-observe-main-de-x-tcp-tls-1",
+          "outboundWithoutPrefixTag": "main-de-x-tcp-tls-1",
+          "monitor": {
+            "state": "healthy",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "consecutiveFailures": 0,
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 58,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 58
+          }
+        },
+        {
+          "sourceId": "spare",
+          "baseTunnelId": "spare-nl-x-tcp-tls-1",
+          "displayName": "🇳🇱 Amsterdam",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 21000,
+          "outboundTagInitial": "x-observe-spare-nl-x-tcp-tls-1",
+          "outboundTagCurrent": "x-observe-spare-nl-x-tcp-tls-1",
+          "outboundWithoutPrefixTag": "spare-nl-x-tcp-tls-1",
+          "monitor": {
+            "state": "degraded",
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "consecutiveFailures": 2,
+            "lastFailureAt": "2026-08-15T09:59:00.000Z",
+            "lastError": "probe failed"
+          }
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "id": "edge-old",
+      "apiUrl": "https://edge-old.example.test/api/instance-status",
+      "lastAttemptAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+      "lastError": "",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "edge-old",
+        "capturedAt": "2026-08-15T10:00:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-1",
+            "targets": [
+              {
+                "subscriptionId": "sub-1",
+                "targetAddress": "127.0.0.1:8080",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-1",
+                    "targetAddress": "127.0.0.1:8080",
+                    "displayName": "🇦🇹 Вена",
+                    "countryIso2": "AT",
+                    "endpoint": "127.0.0.1:20000",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 42,
+                    "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 42,
+                    "balanced": true,
+                    "balancerMonitorState": "healthy",
+                    "balancerMonitorLastStatusCode": 204,
+                    "balancerMonitorLastLatencyMs": 17,
+                    "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorLastSuccessStatusCode": 204,
+                    "balancerMonitorLastSuccessLatencyMs": 17,
+                    "balancerMonitorRemotePingState": "ok",
+                    "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "balancerMonitorRemotePingLastStatusCode": 200,
+                    "balancerMonitorRemotePingLastReportedStatus": "up",
+                    "balancerMonitorRemotePingLastReportedMsg": "OK",
+                    "balancerMonitorRemotePingLastReportedPingMs": 17
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "healthy",
+                  "lastStatusCode": 204,
+                  "lastLatencyMs": 17,
+                  "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                  "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                  "lastSuccessStatusCode": 204,
+                  "lastSuccessLatencyMs": 17,
+                  "remotePingState": "ok",
+                  "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                  "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                  "remotePingLastStatusCode": 200,
+                  "remotePingLastReportedStatus": "up",
+                  "remotePingLastReportedMsg": "OK",
+                  "remotePingLastReportedPingMs": 17
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": [
+          {
+            "subscriptionId": "sub-1",
+            "targetAddress": "127.0.0.1:8080",
+            "displayName": "🇦🇹 Вена",
+            "countryIso2": "AT",
+            "endpoint": "127.0.0.1:20000",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 42,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 42,
+            "balanced": true,
+            "balancerMonitorState": "healthy",
+            "balancerMonitorLastStatusCode": 204,
+            "balancerMonitorLastLatencyMs": 17,
+            "balancerMonitorLastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorLastSuccessStatusCode": 204,
+            "balancerMonitorLastSuccessLatencyMs": 17,
+            "balancerMonitorRemotePingState": "ok",
+            "balancerMonitorRemotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "balancerMonitorRemotePingLastStatusCode": 200,
+            "balancerMonitorRemotePingLastReportedStatus": "up",
+            "balancerMonitorRemotePingLastReportedMsg": "OK",
+            "balancerMonitorRemotePingLastReportedPingMs": 17
+          }
+        ]
+      }
+    }
+  ]
+}

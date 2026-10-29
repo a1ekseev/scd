@@ -19,45 +19,134 @@ type AppConfig struct {
 	StatusServer  StatusServerConfig   `json:"statusServer"`
 }
 
-// SubscriptionConfig is one subscription and the Xray target it is applied to.
+// SubscriptionConfig is one subscription: its sources and the Xray target
+// they are applied to.
 type SubscriptionConfig struct {
-	ID string `json:"id"`
-	// Input is "-" (stdin), an http(s) URL or an absolute file path.
-	Input          string `json:"input"`
-	Enabled        bool   `json:"enabled"`
-	Format         string `json:"format"` // auto|plain|base64
-	FetchTimeoutMs int    `json:"fetchTimeoutMs"`
+	ID      string                   `json:"id"`
+	Enabled bool                     `json:"enabled"`
+	Sources []SourceConfig           `json:"sources"`
+	Target  SubscriptionTargetConfig `json:"target"`
+}
+
+// Source types.
+const (
+	SourceVLESS     = "vless"
+	SourceWireGuard = "wireguard"
+	SourceMasque    = "masque"
+)
+
+// CandidateType reports whether a source type reads a candidate file
+// (wireguard, masque): a local private file, maxActive and selection.
+func CandidateType(t string) bool { return t == SourceWireGuard || t == SourceMasque }
+
+// Selection strategies of a wireguard or masque source (selection.strategy).
+const (
+	StrategyScore = "score"
+	StrategyLoad  = "load"
+	StrategyLabel = "label"
+)
+
+// SourceConfig is one source of a subscription. Its id prefixes every tag
+// it generates and is unique across the config.
+type SourceConfig struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // vless|wireguard|masque
+	// Input is "-" (stdin), an http(s) URL or an absolute file path; a
+	// wireguard or masque source has an absolute file path only.
+	Input   string `json:"input"`
+	Enabled bool   `json:"enabled"`
+	// Format, FetchTimeoutMs and AllowInsecure are set for vless only.
+	Format         string `json:"format,omitempty"` // auto|plain|base64
+	FetchTimeoutMs int    `json:"fetchTimeoutMs,omitempty"`
 	// AllowInsecure is the policy for links with allowInsecure=1 and neither
 	// pcs nor vcn (D15): "deny" (skip the link, default) or "allow".
-	AllowInsecure string `json:"allowInsecure"`
+	AllowInsecure string `json:"allowInsecure,omitempty"`
 	// FetchUserAgent is empty when not configured (the fetcher then uses its
 	// default, D27 O9).
 	FetchUserAgent string `json:"fetchUserAgent,omitempty"`
 	// FetchHeaders are extra request headers (D33); nil when not configured.
 	// Values are printed as "<redacted>".
-	FetchHeaders inputsrc.Headers           `json:"fetchHeaders,omitempty"`
-	Filters      *SubscriptionFiltersConfig `json:"filters,omitempty"`
-	Target       SubscriptionTargetConfig   `json:"target"`
+	FetchHeaders inputsrc.Headers `json:"fetchHeaders,omitempty"`
+	// MaxInputBytes limits the input size (file, http(s) and stdin).
+	MaxInputBytes int64 `json:"maxInputBytes"`
+	// PortRange holds the ports of the source's SOCKS inbounds; nil when not
+	// configured.
+	PortRange *PortRange           `json:"portRange,omitempty"`
+	Filters   *SourceFiltersConfig `json:"filters,omitempty"`
+	// MaxActive and Selection are set for wireguard and masque only,
+	// WireGuard for wireguard only.
+	MaxActive int              `json:"maxActive,omitempty"`
+	Selection *SelectionConfig `json:"selection,omitempty"`
+	// Monitor overrides target.monitor for the source's tunnels; nil when
+	// not configured.
+	Monitor   *SourceMonitorConfig `json:"monitor,omitempty"`
+	WireGuard *WireGuardConfig     `json:"wireguard,omitempty"`
 }
 
-// SubscriptionFiltersConfig selects manifest entries by country and label.
+// SelectionConfig chooses the active candidates of a wireguard or masque
+// source.
+type SelectionConfig struct {
+	Strategy                string `json:"strategy"` // score|load|label
+	SwitchMarginPercent     int    `json:"switchMarginPercent"`
+	SwitchConfirmChecks     int    `json:"switchConfirmChecks"`
+	DeadPairCooldownMinutes int    `json:"deadPairCooldownMinutes"`
+	ReplaceAfterFailures    int    `json:"replaceAfterFailures"`
+}
+
+// SourceMonitorConfig overrides target.monitor.request.timeoutMs and
+// target.monitor.retry for the tunnels of one source; unset values keep the
+// target's.
+type SourceMonitorConfig struct {
+	Request *SourceMonitorRequestConfig `json:"request,omitempty"`
+	Retry   *SourceRetryConfig          `json:"retry,omitempty"`
+}
+
+// SourceMonitorRequestConfig is sources[].monitor.request.
+type SourceMonitorRequestConfig struct {
+	TimeoutMs int `json:"timeoutMs"`
+}
+
+// SourceRetryConfig is sources[].monitor.retry; 0 and nil are unset.
+type SourceRetryConfig struct {
+	Attempts int  `json:"attempts,omitempty"`
+	DelayMs  *int `json:"delayMs,omitempty"`
+}
+
+// WireGuardConfig is the wireguard section of a wireguard source.
+type WireGuardConfig struct {
+	// EndpointDomainStrategy is the outbound
+	// streamSettings.sockopt.domainStrategy.
+	EndpointDomainStrategy string `json:"endpointDomainStrategy"`
+}
+
+// EndpointDomainStrategies are the values of
+// wireguard.endpointDomainStrategy.
+var EndpointDomainStrategies = []string{"AsIs", "UseIP", "UseIPv4", "UseIPv6", "UseIPv4v6", "UseIPv6v4"}
+
+// SourceFiltersConfig selects manifest entries by country and label.
 // It is printed by MarshalJSON with the label filter keys labelIncludeRegex
 // and labelExcludeRegex in place of Label.
-type SubscriptionFiltersConfig struct {
+type SourceFiltersConfig struct {
 	// CountryAllowlist holds upper-case ISO2 codes; nil or empty means no
-	// country filter.
-	CountryAllowlist []string           `json:"countryAllowlist,omitempty"`
-	Label            labelfilter.Filter `json:"-"`
+	// country filter. For a wireguard or masque source it is the exit
+	// country.
+	CountryAllowlist []string `json:"countryAllowlist,omitempty"`
+	// EntryCountryAllowlist is the entry country filter of a wireguard or
+	// masque source.
+	EntryCountryAllowlist []string           `json:"entryCountryAllowlist,omitempty"`
+	Label                 labelfilter.Filter `json:"-"`
 }
 
 // MarshalJSON prints the filters in config form: countryAllowlist,
-// labelIncludeRegex, labelExcludeRegex; empty keys are omitted.
-func (f SubscriptionFiltersConfig) MarshalJSON() ([]byte, error) {
+// labelIncludeRegex, labelExcludeRegex, entryCountryAllowlist; empty keys
+// are omitted.
+func (f SourceFiltersConfig) MarshalJSON() ([]byte, error) {
 	return jsonout.Marshal(struct {
 		CountryAllowlist []string `json:"countryAllowlist,omitempty"`
 		Include          []string `json:"labelIncludeRegex,omitempty"`
 		Exclude          []string `json:"labelExcludeRegex,omitempty"`
-	}{f.CountryAllowlist, f.Label.IncludeSrc, f.Label.ExcludeSrc})
+		Entry            []string `json:"entryCountryAllowlist,omitempty"`
+	}{f.CountryAllowlist, f.Label.IncludeSrc, f.Label.ExcludeSrc, f.EntryCountryAllowlist})
 }
 
 // SubscriptionTargetConfig describes the Xray instance (gRPC API address)
@@ -78,10 +167,10 @@ type SubscriptionTargetConfig struct {
 	ObservatorySubjectSelectorPrefix string `json:"observatorySubjectSelectorPrefix,omitempty"`
 }
 
-// InboundSocksConfig configures the generated per-tunnel SOCKS inbounds.
+// InboundSocksConfig configures the generated per-tunnel SOCKS inbounds;
+// the ports come from each source's portRange.
 type InboundSocksConfig struct {
-	Listen    string    `json:"listen"`
-	PortRange PortRange `json:"portRange"`
+	Listen string `json:"listen"`
 }
 
 // PortRange is an inclusive port range.

@@ -3582,16 +3582,22 @@
     },
     {
       "kind": "outbound",
-      "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+      "tag": "vless-ng-nigeria-tcp-tls-c71897ac",
       "label": "🇳🇬 Nigeria, Lagos",
       "profile": "tcp-tls",
       "line": 50,
+      "country": {
+        "emoji": "🇳🇬",
+        "iso2": "NG",
+        "nameEn": "Nigeria",
+        "nameRu": "Нигерия"
+      },
       "city": "Nigeria",
       "normalized": {
         "kind": "outbound",
         "protocol": "vless",
         "profile": "tcp-tls",
-        "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+        "tag": "vless-ng-nigeria-tcp-tls-c71897ac",
         "line": 50,
         "raw": "vless://00000000-0000-4000-8000-000000000002@dkh-vtq.example.com:8443?type=tcp&path=%2F&security=tls&alpn=h2#%F0%9F%87%B3%F0%9F%87%AC%20Nigeria%2C%20Lagos",
         "label": "🇳🇬 Nigeria, Lagos",
@@ -3605,6 +3611,12 @@
           "h2"
         ],
         "path": "/",
+        "country": {
+          "emoji": "🇳🇬",
+          "iso2": "NG",
+          "nameEn": "Nigeria",
+          "nameRu": "Нигерия"
+        },
         "city": "Nigeria",
         "query": {
           "type": "tcp",
@@ -3614,7 +3626,7 @@
         }
       },
       "jsonOutbound": {
-        "tag": "vless-xx-nigeria-tcp-tls-c71897ac",
+        "tag": "vless-ng-nigeria-tcp-tls-c71897ac",
         "protocol": "vless",
         "settings": {
           "vnext": [

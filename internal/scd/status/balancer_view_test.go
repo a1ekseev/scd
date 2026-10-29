@@ -18,7 +18,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
 
-var update = flag.Bool("update", false, "regenerate the Go golden dashboards of the balancer selection fixtures")
+var update = flag.Bool("update", false, "regenerate the Go golden files (selection dashboards, visual PNGs)")
 
 // goldenDir holds the Go golden dashboards of the selection fixtures (no TS
 // reference exists, D22).
@@ -470,7 +470,7 @@ func TestRuntimeStateBalancerSelection(t *testing.T) {
 func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
 	l := loadFixture(t, "empty")
 	l.cfg.Config.Subscriptions = []config.SubscriptionConfig{{
-		ID: "sub-1", Input: "/fixture/sub.txt", Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+		ID: "sub-1", Enabled: true, Sources: []config.SourceConfig{testSource("/fixture/sub.txt")},
 		Target: config.SubscriptionTargetConfig{
 			Address: "127.0.0.1:8080", TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: "x-observe-",
 			FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},

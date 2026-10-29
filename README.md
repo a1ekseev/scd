@@ -1,14 +1,15 @@
 # scd
 
-`scd` is one Go binary with three services:
+`scd` is one Go binary with four services:
 
 | Command | Service | What it does |
 |---|---|---|
 | `scd …` | **scd** — Subscription Control Daemon | Turns VLESS subscriptions into Xray outbounds (plus SOCKS inbounds and routing rules per tunnel), applies them to Xray over the gRPC API, monitors and repairs tunnels, and serves a read-only status dashboard and JSON API. |
 | `scd sfc …` | **sfc** — Subscription Filter Control | Downloads upstream subscriptions, keeps VLESS lines whose label matches per-output filters, repacks them to base64 and serves them by public URL. Does not talk to Xray. |
 | `scd gtl …` | **gtl** — Gen Test Load | HTTP server that streams a random payload of the requested size, for download/load tests. |
+| `scd wgp …` | **wgp** — WireGuard provider | Keeps VPN provider accounts and keys and publishes WireGuard and MASQUE candidate files for scd sources. Does not talk to Xray or scd. |
 
-There is one image, `ghcr.io/a1ekseev/scd`, for all three. The target Xray version is **v26.10.21**.
+There is one image, `ghcr.io/a1ekseev/scd`, for all four. The target Xray version is **v26.10.21**.
 
 Upgrading from the pre-Go version: config keys changed. See
 [Migration notes](#migration-notes).
@@ -23,6 +24,7 @@ Upgrading from the pre-Go version: config keys changed. See
 - [Balancer selection](#balancer-selection)
 - [scd sfc](#scd-sfc)
 - [scd gtl](#scd-gtl)
+- [scd wgp](#scd-wgp)
 - [Cron schedules](#cron-schedules)
 - [Logging](#logging)
 - [Known limitations](#known-limitations)
@@ -51,11 +53,12 @@ output goes to stdout and logs go to stderr.
 |---|---|
 | `scd validate-config --config f` | Validate. Prints `{"configPath": "<abs>", "valid": true}`. Warnings go to stderr as `warning: <path>: <text>`, exit code 0. |
 | `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
-| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
+| `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`; orphans are checked first, so an unreachable Xray fails the sync even when no manifest changed. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
-| `scd generate --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one subscription without touching Xray. |
+| `scd generate --source-id <id> [--type vless\|wireguard\|masque] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; `--type masque` reads a MASQUE candidate file the same way, without `--endpoint-domain-strategy`. Keys are written as `<redacted>`. |
 | `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input`, `fetchHeaders` and output ids redacted unless `--include-secrets`; an output id is the secret part of its public URL, so the `refresh` report and logs name outputs by `name` instead). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
+| `scd wgp serve\|validate-config\|print-config --config f`, `scd wgp login\|logout --provider <id> --config f` (`login` also `[--hv-token t]`) | wgp: serve / validate (like `scd validate-config`) / print (paths of secret files, never their contents) / interactive login and logout of a provider that supports them; other providers fail with `provider "<id>" (type "<type>") does not support login`. See [scd wgp](#scd-wgp). |
 
 None of the services hot-reload the config. Restart after a change.
 `SIGINT`/`SIGTERM` stop all loops right away. Operations already in flight
@@ -76,18 +79,46 @@ service with `command:`:
 | scd | default CMD |
 | sfc | `["scd", "sfc", "serve", "--config", "/app/config/config.yml"]` |
 | gtl | `["scd", "gtl", "serve", "--config", "/app/config/config.yml"]` |
+| wgp | `["scd", "wgp", "serve", "--config", "/app/config/config.yml"]` |
 
 The config only needs to be readable. sfc writes its source cache to
 `/app/config/.sfc-cache`: a new named volume gets the right owner from the
 image, but a bind mount or a volume created by an older root image must be
 owned by `65532:65532` (`chown -R 65532:65532 <dir>`). Otherwise sfc keeps
 serving but logs `subscription_source_cache_write_failed` and has no fallback
-cache. Ports below 1024 are not available to the non-root user.
+cache. wgp writes its state to `/app/state` (mode `0700`) and its candidate
+outputs to `/app/out`; the image creates both owned by `65532:65532`, the same
+rule applies to bind mounts. Ports below 1024 are not available to the
+non-root user.
 
 The root `docker-compose.yml` runs Xray `ghcr.io/xtls/xray-core:26.10.21` and
-all three services on one locally built image. It mounts the git-ignored
+all four services on one locally built image. It mounts the git-ignored
 `docker/<svc>/config.yml` files. To start from the examples, run
 `cp docker/<svc>/config.example.yml docker/<svc>/config.yml`.
+
+wgp and scd share only the named volume `wgp-out`: wgp mounts it read-write
+at `/app/out`, scd read-only at `/app/wgp` (the `input` of its `wireguard` and
+`masque` sources). Both run as `65532`, so the `0600` files wgp writes there
+are readable by scd and by nobody else. wgp is on its own network
+`wgp-egress` (internet only, nothing shared with scd or Xray) and runs with a
+read-only root, no capabilities and `no-new-privileges`. Its status page is
+published on `127.0.0.1:9093`. Before the first start, on the host:
+
+```bash
+mkdir -p secrets docker/wgp/state docker/wgp/static
+head -c 32 /dev/urandom | base64 > secrets/wgp_state_key
+chmod 0400 secrets/wgp_state_key && chmod 0700 docker/wgp/state
+chmod 0600 docker/wgp/static/*.conf
+sudo chown 65532:65532 secrets/wgp_state_key docker/wgp/state docker/wgp/static/*.conf
+```
+
+The state key is the compose secret `wgp_state_key`. Outside swarm, compose
+bind-mounts a secret file with its host owner and mode, so it must be owned
+by `65532` with mode `0400` or `0600`; the same goes for the state directory
+(`0700`) and the static `.conf` files (no access for others). Docker Desktop
+on macOS shows bind-mounted files as owned by the reading user, so there the
+`chown` is not needed. `secrets/`, `docker/wgp/state/` and
+`docker/wgp/static/` (the `.conf` files hold private keys) are git-ignored.
 
 ```bash
 docker compose up -d --build
@@ -96,8 +127,15 @@ docker compose down
 bash scripts/compose-smoke.sh   # self-contained smoke test on the example configs
 ```
 
+wgp is in the compose profile `wgp`: a plain `docker compose up -d` starts
+Xray, scd, sfc and gtl only and needs no wgp config, state or key (scd then
+sees an empty `wgp-out` volume). Start wgp with
+`docker compose --profile wgp up -d` or `COMPOSE_PROFILES=wgp`; the smoke
+enables the profile itself.
+
 Published ports: the scd dashboard at <http://127.0.0.1:9090/>, sfc at
-<http://127.0.0.1:9091/s/test-all>, and gtl at <http://127.0.0.1:9092/load/32>.
+<http://127.0.0.1:9091/s/test-all>, gtl at <http://127.0.0.1:9092/load/32>,
+and the wgp status page at <http://127.0.0.1:9093/>.
 See [`docker/README.md`](docker/README.md) for details. To validate a config
 with the image:
 `docker run --rm -v "$PWD/docker/scd/config.yml":/app/config/config.yml:ro ghcr.io/a1ekseev/scd scd validate-config --config /app/config/config.yml`.
@@ -111,18 +149,24 @@ Complete example: [`docker/scd/config.example.yml`](docker/scd/config.example.ym
 ```yaml
 subscriptions:
   - id: main
-    input: https://panel.example.com/sub/<token>   # file path, http(s) URL or "-" (stdin)
     enabled: true
-    format: auto                 # auto | plain | base64
-    fetchTimeoutMs: 5000
-    allowInsecure: deny          # deny | allow (links with allowInsecure=1)
-    # fetchUserAgent: scd/1.0    # default scd/<version>; read the warning below
-    # fetchHeaders:
-    #   x-hwid: "${SCD_HWID}"    # values are secrets
-    filters:
-      countryAllowlist: [DE, NL]
-      labelIncludeRegex: '/,\s*Extra\s*$/i'
-      labelExcludeRegex: '/WhiteList/i'
+    sources:                     # each source is loaded, filtered and applied on its own
+      - id: vless                # tag prefix: vless-…, in-vless-…, route-vless-…
+        type: vless
+        input: https://panel.example.com/sub/<token>   # file path, http(s) URL or "-" (stdin)
+        enabled: true
+        format: auto             # auto | plain | base64
+        fetchTimeoutMs: 5000
+        allowInsecure: deny      # deny | allow (links with allowInsecure=1)
+        # fetchUserAgent: scd/1.0  # default scd/<version>; read the warning below
+        # fetchHeaders:
+        #   x-hwid: "${SCD_HWID}"  # values are secrets
+        maxInputBytes: 67108864  # 1 KiB..64 MiB
+        portRange: {start: 20000, end: 20099}
+        filters:
+          countryAllowlist: [DE, NL]
+          labelIncludeRegex: '/,\s*Extra\s*$/i'
+          labelExcludeRegex: '/WhiteList/i'
     target:
       address: 127.0.0.1:8080    # Xray gRPC API
       timeoutMs: 5000
@@ -133,7 +177,6 @@ subscriptions:
       observatorySubjectSelectorPrefix: x-observe-
       inboundSocks:
         listen: 127.0.0.1
-        portRange: {start: 20000, end: 20099}
       monitor:
         enabled: true
         schedule: "*/2 * * * *"
@@ -173,20 +216,29 @@ statusServer:
 
 | Key | Meaning | Default |
 |---|---|---|
-| `subscriptions[]` | Subscription sources. At least one must be enabled. Every `target.address` must be unique. | — |
-| `.id` | Source id used in logs, reports and the dashboard. | required |
-| `.input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. | required |
-| `.enabled` / `.format` / `.fetchTimeoutMs` | On/off; decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). | `true` / `auto` / `5000` |
-| `.allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
-| `.fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
-| `.filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. | no filter |
-| `.filters.labelIncludeRegex`, `.filters.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
+| `subscriptions[]` | Subscriptions: a list of sources and one Xray target. At least one must be enabled. `target.address` is unique, so a subscription is one Xray; a source `id` is unique within its subscription. An enabled subscription without an enabled source gets a warning: sync removes every non-fixed resource of its target. | — |
+| `.id` / `.enabled` | Subscription id used in logs (`subscriptionId`), reports and the dashboard; on/off. | required / `true` |
+| `.sources[]` | At least one source. Each is loaded, filtered and applied separately; its tunnels join the same target. | required |
+| `.sources[].id` | Source id: `[a-z0-9-]`, 1..16 characters, no `-` at either end. It prefixes every generated tag and is `sourceId` in logs and reports. `target.address` is unique; a source `id` is unique within its subscription (one Xray), and there no `<id>-` may start another id or overlap `observatorySubjectSelectorPrefix`. | required |
+| `.sources[].type` | `vless`, `wireguard` ([WireGuard sources](#wireguard-sources)) or `masque` ([MASQUE sources](#masque-sources)). | required |
+| `.sources[].input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. A `wireguard` or `masque` source takes an absolute file path only. | required |
+| `.sources[].enabled` / `.format` / `.fetchTimeoutMs` | On/off (a disabled source's resources are removed as orphans); decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). `format`, `fetchTimeoutMs`, `allowInsecure`, `fetchUserAgent` and `fetchHeaders` are `vless` only. | `true` / `auto` / `5000` |
+| `.sources[].allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
+| `.sources[].fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
+| `.sources[].maxInputBytes` | Size limit of the input (file, `http(s)` and stdin), `1024..67108864`. | 64 MiB |
+| `.sources[].portRange.start/end` | Inclusive port range (`1..65535`) of the source's SOCKS inbounds. Required when inbounds or routing are enabled. The ranges of one subscription must not overlap. | — |
+| `.sources[].filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. For `wireguard` and `masque`, the exit country. | no filter |
+| `.sources[].filters.entryCountryAllowlist` | `wireguard` and `masque` only: ISO2 codes of the entry country. | no filter |
+| `.sources[].maxActive`, `.selection` | `wireguard` and `masque` only, required, see [WireGuard sources](#wireguard-sources). | — |
+| `.sources[].wireguard` | `wireguard` only, required. | — |
+| `.sources[].monitor.request.timeoutMs`, `.monitor.retry.{attempts,delayMs}` | Any type: override `target.monitor` for the source's tunnels. See [Monitoring and repair](#monitoring-and-repair). | the target's |
+| `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
-| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. | `[]` |
+| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. A fixed tag must not lie in a source namespace (`<id>-…`, `in-<id>-…`, `route-<id>-…`). | `[]` |
 | `.target.visionUdp443Override` | Rewrite REALITY `xtls-rprx-vision` to `xtls-rprx-vision-udp443` on this target. | `false` |
 | `.target.observatorySubjectSelectorPrefix` | Prefix added to every applied outbound tag, so that the static `observatory.subjectSelector` / `balancers[].selector` match them. | none |
-| `.target.inboundSocks.listen`, `.portRange.start/end` | IP address or `localhost` for the generated SOCKS inbounds, and an inclusive port range (`1..65535`). Required when inbounds or routing are enabled or the monitor is on. | — |
+| `.target.inboundSocks.listen` | IP address or `localhost` for the generated SOCKS inbounds; the ports come from `sources[].portRange`. Required when inbounds or routing are enabled or the monitor is on. | — |
 | `.target.monitor` | Per-tunnel HTTP check through each generated SOCKS inbound: `enabled`, `schedule`, `maxParallel`, `retry.{attempts,delayMs}`, `request.{url,method GET\|HEAD\|POST,expectedStatus,timeoutMs}`. Requires all three resource kinds. | off; `10`; `1`/`250`; `GET`, `5000` |
 | `.target.balancerMonitor` | Observe-only check of the Xray balancer through an external SOCKS5: `enabled`, `schedule`, `socks5.{host,port}`, `request`, `retry`, `remotePing.{enabled,url,timeoutMs,viaSocks}`. | off |
 | `.target.balancerSelection` | Dashboard view of the outbound the Xray balancer selects, see [Balancer selection](#balancer-selection). | `{enabled: false, observatory: true}` |
@@ -200,36 +252,202 @@ statusServer:
 Values can reference environment variables with `${NAME}`. Only values are
 expanded, not keys or comments, and an undefined variable is an error. Unknown
 keys are errors in every object, so a typo such as `statusServer: {enable: true}`
-is reported instead of silently ignored.
+is reported instead of silently ignored. The subscription form without
+`sources` is gone: `input`, `format`, `filters`, `fetchTimeoutMs`,
+`fetchUserAgent`, `fetchHeaders` and `allowInsecure` directly in a
+subscription, and `target.inboundSocks.portRange`, are unknown keys.
 Validation errors list every problem with its field path, for example:
 `subscriptions.0.target.inboundSocks.listen: must be an IP address or "localhost" (Xray cannot listen on a domain)`.
 
+### WireGuard sources
+
+A source with `type: wireguard` reads a local candidate file with one
+`wireguard://` line per candidate and puts at most `maxActive` of them into
+Xray as WireGuard outbounds.
+
+```yaml
+      - id: wg
+        type: wireguard
+        input: /app/wgp/wg     # absolute path, mode 0600 (no group or other access)
+        portRange: {start: 20100, end: 20109}   # at least maxActive ports
+        maxActive: 2
+        selection:
+          strategy: score          # score | load | label
+          switchMarginPercent: 20  # 0..100
+          switchConfirmChecks: 2   # 1..10
+          deadPairCooldownMinutes: 10   # >= 4
+          replaceAfterFailures: 2  # 1..10
+        monitor:                   # optional, any type
+          request: {timeoutMs: 10000}
+          retry: {attempts: 2, delayMs: 2000}
+        filters:
+          countryAllowlist: [NL]       # exit country
+          entryCountryAllowlist: [NL]  # entry country, checked first
+        wireguard:
+          endpointDomainStrategy: UseIPv4   # AsIs | UseIP | UseIPv4 | UseIPv6 | UseIPv4v6 | UseIPv6v4
+```
+
+- **Input.** An absolute path to a regular file that group and others cannot
+  access; `http(s)`, `-` and relative paths are errors. Otherwise the source
+  fails with `reasonCode: wireguard_input_refused` in `subscription_fetch_failed`
+  and its tunnels stay as they are. `wireguard` sources need
+  `resources.inbounds` and `resources.routing`.
+- **Line format.** `wireguard://<privateKey>@<host>:<port>?<params>#<label>`.
+  `provider` comes first and selects the required parameters; every line needs
+  `publickey`, `address`, `mtu` (576..1500) and `allowedips`; optional are
+  `dns` (IPs only), `reserved` (3 numbers), `keepalive`, `presharedkey` and
+  the metadata `server`, `entry`, `exit`, `load`, `score`, `expires`. A line
+  with an unknown provider or parameter, a repeated or empty parameter or a
+  broken rule is skipped as `wireguard_invalid`; the detail names the field,
+  never the value. Lines of other schemes are `unsupported_scheme`, and
+  `wireguard://` and `masque://` lines in a `vless` source are `unsupported_scheme` too, with `raw` cut to `<scheme>://<redacted>`.
+- **Tags.** `<id>-<cc>-<city>-wg-<sha8>`; `cc` and `city` come from the label
+  (the endpoint host without a city), `sha8` from the public tunnel fields
+  only (the interface public key instead of the private key, a hash of the
+  preshared key). The label and the metadata are not part of `sha8`.
+- **Selection.** Candidates are filtered by entry country (`entry`, else the
+  label flag), then exit country (`exit`, else the label flag), then label;
+  a candidate without a country fails a non-empty country filter. They are
+  ranked by `selection.strategy`: `score` (score, load, label, tag), `load`
+  (load, score, label, tag) or `label` (label, tag); a candidate without the
+  sort key comes after those with it. The first `maxActive` are active, never
+  two with the same private key; slot `i` of the ranking gets port
+  `portRange.start + i`. The others stay out of Xray.
+- **Apply.** The source is applied in full (remove the source's resources,
+  then add, kind by kind, like a VLESS source) on the first sync after a
+  start, when `type`, `portRange`, `inboundSocks.listen`, the observatory
+  prefix, `endpointDomainStrategy` or `maxActive` change, after a failed
+  replacement, on `xray_state_drift`, and after the monitor found a tunnel's
+  inbound missing in Xray (`xray_state_lost`). While the source waits for
+  that full apply, the monitor does not replace its candidates after
+  `replaceAfterFailures`; it only repairs them. Otherwise each sync changes single
+  slots only (see "Monitoring and repair"). Xray never holds more than `maxActive`
+  outbounds of the source, at any RPC of a sync, a rollback, a repair, a
+  rejoin or a replacement: before each `AddOutbound` of the source scd lists
+  Xray's outbounds and does not add when the source already has `maxActive`
+  of them (both tags count, with and without the observatory prefix), so
+  this holds even after a lost RPC answer. Such a refusal, and a failed full
+  apply, make the next sync apply the source in full; after a failed full
+  apply the source's tunnels are not repaired or replaced until then.
+- **Outbound.** `noKernelTun: true` always (Xray never touches the host's
+  routes), `streamSettings.sockopt.domainStrategy` from
+  `wireguard.endpointDomainStrategy`, `reserved` as an array.
+- **Secrets.** The private and preshared keys never appear in logs, sync
+  reports, `generate` output, `print-config`, the status API or the dashboard:
+  JSON shows `<redacted>`, the manifest `raw` has `redacted` in their place,
+  skipped lines have no `raw`. `/api/runtime-state` never returns `rawBase64`
+  or keys of a WireGuard outbound, even with `includeRaw` and
+  `includeSecrets`; its `expected` part is the active set of the last sync.
+- **Status.** A WireGuard tunnel has `protocol: "wireguard"` in `/api/status`
+  and `/api/instance-status`; `targets[].sources[]` of a `wireguard` source
+  adds `maxActive`, `activeCount` and `candidateCount`.
+
+### MASQUE sources
+
+A source with `type: masque` reads a local candidate file with one
+`masque://` line per candidate and puts at most `maxActive` of them into
+Xray as MASQUE outbounds (CONNECT-IP over HTTP/3 or HTTP/2). Everything not
+listed here works as for [WireGuard sources](#wireguard-sources): input rules
+(`masque_input_refused`), filters, ranking, apply, the `maxActive` limit,
+replacement, quarantine and hysteresis, secrets and status
+(`protocol: "masque"`). A `masque` source has no `wireguard` section.
+
+```yaml
+      - id: mq
+        type: masque
+        input: /app/wgp/warpmq # absolute path, mode 0600
+        portRange: {start: 20110, end: 20119}
+        maxActive: 1
+        selection:
+          strategy: label          # score | load | label
+          switchMarginPercent: 20
+          switchConfirmChecks: 2
+          deadPairCooldownMinutes: 10
+          replaceAfterFailures: 2
+        monitor:
+          request: {timeoutMs: 10000}
+          retry: {attempts: 2, delayMs: 2000}
+```
+
+- **Line format.**
+  `masque://<privateKey>@<ip>:<port>?provider=…&peerkey=…&address=…&sni=…&transport=h3|h2&dns=…&priority=<n>[&entry=…&exit=…&expires=…]#<label>`.
+  The device key is an ECDSA P-256 PKCS #8 key and `peerkey` the PKIX P-256
+  key of the endpoint, both base64url without padding; `address` holds at
+  most one IPv4 and one IPv6; `sni` is a hostname or the endpoint IP (then no
+  SNI is sent); `dns` are IPs. A broken line is skipped as `masque_invalid`
+  (the detail names the field, never the value).
+- **Transports.** One device key has one line per transport (`h3`, `h2`),
+  on the same endpoint, that differ only in `transport` and `priority`
+  (0 first). One tunnel per device key is active. A new tunnel for a key (the
+  first sync, a replacement) takes the line with the lowest `priority` whose
+  key + endpoint + transport triple is not in quarantine. When the monitor
+  replaces a failed `h3` tunnel (UDP blocked, for example), its triple goes
+  into quarantine and the `h2` line of the key takes the slot. A healthy
+  tunnel is never switched to another transport of its key: `h2` stays after
+  the `h3` quarantine expires, until it fails or changes. Between keys,
+  `selection.strategy` ranks as usual. A full apply (see WireGuard sources)
+  keeps the active transport of a key; only a restart picks again by
+  `priority`.
+- **Tags.** `<id>-<cc>-<city>-mq-<sha8>`; `sha8` covers the device public
+  key, `peerkey`, endpoint, `address`, `sni`, `transport` and `dns`, not the
+  label and the metadata (`priority` included).
+- **Outbound.** `protocol` and `streamSettings.network` `masque` with the
+  device key (std base64 SEC 1), the endpoint key (PEM PKIX, pinned by Xray)
+  and the addresses in `masqueSettings`; always `security: tls` with
+  `tlsSettings.serverName` = `sni` (Xray checks `security` only when the
+  outbound is added), `alpn: ["h2"]` for `h2` only. No `fingerprint`,
+  headers or `pinnedPeerCertSha256` (the latter would turn off the key
+  pinning).
+- **Monitor.** A failure shows only as a reset or a timeout, up to 10 s
+  while the tunnel is set up: use `timeoutMs` ≥ 10000 and `attempts` ≥ 2.
+- **Secrets.** The device key never appears in any output; the
+  runtime-state `parsed` object of a MASQUE outbound has no private key and
+  there is no `rawBase64`, even with `includeRaw` and `includeSecrets`.
+
 ### Sync
 
-- scd owns every non-fixed outbound, inbound and routing rule on a target.
-  Apply order is outbound → inbound → routing. Each kind is fully replaced.
-  Fixed resources are kept. If an add fails, the outbound kind is rolled back
-  best-effort. Resource hashes are stored only when all kinds succeed.
-- When the manifest hash is unchanged, sync still lists the target's
-  outbounds, inbounds and rules (read-only). If a managed resource is missing,
-  for example after an Xray restart, it logs warning `xray_state_drift` with
-  per-kind counts and applies again. A repaired outbound (without the
-  observatory prefix) is not a loss.
+- Every source owns four tag namespaces on its target:
+  `<observatorySubjectSelectorPrefix><id>-…` and `<id>-…` (outbounds, in and
+  out of the balancer), `in-<id>-…` (SOCKS inbounds) and `route-<id>-…`
+  (routing rules). Tags are `<id>-<cc>-<city>-<profile>-<sha8>`; a source with
+  `id: vless` keeps the tags of earlier scd versions.
+- Every sync first removes **orphans** on each target: non-fixed resources
+  outside the namespace of every enabled source (tags of a removed or
+  disabled source, tags from before a source id change), in the order
+  routing rules → inbounds → outbounds, for the enabled resource kinds.
+  Routing rules without a `ruleTag` are never touched. If an orphan cannot be
+  removed (or Xray cannot be reached), scd logs `orphan_remove_failed` and
+  applies nothing to that target on this sync; removed orphans are logged as
+  `orphans_removed`. Because of this check, `scd sync` exits with an error
+  when Xray is unreachable, even if no manifest changed.
+- Then each enabled source is applied on its own, in id order: outbound →
+  inbound → routing. In each kind scd removes only that source's resources,
+  then adds the new ones. Fixed resources and other sources' resources are
+  never touched. If an add fails, the source's outbounds are rolled back
+  best-effort. A source's hashes are stored only when all its kinds succeed.
+- When a source's manifest hash is unchanged, sync still lists the target's
+  outbounds, inbounds and rules (read-only). If a resource of that source is
+  missing, for example after an Xray restart, it logs warning
+  `xray_state_drift` with per-kind counts and applies the source again; the
+  other sources of the same target log it at debug. A sync that loaded and
+  applied every source that lost its resources logs `xray_state_restored`. A
+  repaired outbound (without the observatory prefix) is not a loss.
 - Topology: one outbound per filtered entry. With inbounds and routing
   enabled, each outbound also gets one SOCKS inbound (`in-…`) and one routing
-  rule (`route-…`). Ports are allocated sequentially from `portRange`. If the
-  range is too small, only that target fails, with a message naming the
-  capacity.
-- A target whose manifest did not change during this process lifetime is
-  skipped with no Xray calls. This state is memory-only, so the first sync
-  after a restart always talks to Xray.
+  rule (`route-…`). Ports are allocated sequentially from the source's
+  `portRange` in tag order. If the range is too small, the first entries in
+  tag order get the ports and the rest are skipped with reason code
+  `port_range_exhausted` (in the sync report, plus warning
+  `manifest_entry_warning` per line); the source itself is applied.
+- Hashes are memory-only, so the first sync after a restart always applies
+  every source.
 - Empty input, or input with no parsed lines, fails closed for that source:
-  its target is marked failed and gets no API calls. Failures stay local to
-  one target.
+  it is marked failed, its resources in Xray stay as they are and it gets no
+  mutating API calls. A failed source does not touch the other sources.
 - Filters run once per source after parsing, in this order: `countryAllowlist`,
   `labelIncludeRegex`, `labelExcludeRegex`. The report counts `filtered`
   separately from `skipped` (parse/validation).
-- Sync, repair and rejoin share one per-target mutex. A cron slot that
+- Sync, repair, rejoin and candidate replacement share one per-target mutex. A cron slot that
   arrives while the previous tick is still running is skipped with
   `*_tick_skipped_overrun`.
 - Subscription URLs appear in logs and in the sync report as
@@ -247,6 +465,39 @@ Validation errors list every problem with its field path, for example:
   `observatorySubjectSelectorPrefix`. This takes the tunnel out of the
   balancer. After the next successful check, scd restores the prefixed
   outbound and rule (rejoin).
+- Repair and rejoin, like sync, remove before they add: first the tunnel's
+  rule and outbound, then the new outbound and rule. Xray never holds two
+  copies of a tunnel at once (some providers limit simultaneous connections
+  per key); for that moment the tunnel has no outbound. If the old outbound
+  cannot be removed, scd adds nothing, restores the old rule (best effort)
+  and logs `tunnel_repair_failed` or `tunnel_rejoin_failed`; an outbound
+  that is already gone is not an error. If a rejoin add
+  fails, scd restores the unprefixed outbound and rule (best effort) and
+  logs `tunnel_rejoin_failed`.
+- A repair first lists Xray's inbounds (read-only). If the tunnel's inbound
+  is missing (Xray restarted), it is not repaired: scd changes nothing in
+  Xray, resets the hashes of that source and logs `xray_state_lost` (warn
+  for the first tunnel of the target, then debug); the next sync applies the
+  source in full and logs `xray_state_restored`. Sources whose inbounds are
+  in place are repaired as usual. After a loss of Xray state the tunnels of
+  a source come back only once its input loads again: while it does not,
+  scd logs `xray_state_restore_blocked` (warn once per source, then debug).
+- Flapping: a successful repair of the first failed check of a series is a
+  flap. After 3 flaps within 60 minutes scd logs `tunnel_flapping` once;
+  then the tunnel's `tunnel_repaired`, `tunnel_rejoined_balancer` and
+  `tunnel_recovered` are debug until `tunnel_stable` (60 minutes without a
+  failed check) or `tunnel_down` (3 failed checks in a row). Without
+  `observatorySubjectSelectorPrefix` a tunnel is repaired on every failed
+  check; only the first `tunnel_repaired` of a series is warn.
+- While the Xray API of a target does not answer (gRPC Unavailable or a
+  timeout), scd logs one `xray_unavailable` and, after the first successful
+  API call of the monitor, the balancer selection or the orphan removal,
+  one `xray_recovered` (`failedForMs`). It may come up to a sync or monitor
+  interval after Xray is back: only a successful API call ends it. The
+  failures of repair, rejoin, replacement, balancer selection and orphan
+  removal in between are debug, and so is the recovery of a failure logged
+  only at debug.
+  A good probe does not end it: probes do not use the API.
 - A tunnel that is already out of the balancer is not repaired again: further
   failed checks only update its monitor state (`degraded`, `lastError` = the
   probe error, the failure counter) and log `tunnel_repair_skipped` at debug.
@@ -255,6 +506,64 @@ Validation errors list every problem with its field path, for example:
   failure repairs it once again. A failed repair is retried at the next failed
   check. Without `observatorySubjectSelectorPrefix` there is no balancer to
   leave, so every final failure still recreates the outbound.
+- `sources[].monitor.request.timeoutMs` and `sources[].monitor.retry.{attempts,
+  delayMs}` override the target's values for the tunnels of that source (any
+  type); unset keys keep the target's. A WireGuard failure shows only as a
+  timeout or reset and the first handshake can be slow, so for `wireguard`
+  sources use `timeoutMs` ≥ 10000 and `attempts` ≥ 2.
+- **Candidate replacement** (`wireguard`, `masque`). Once `replaceAfterFailures` is
+  reached, a failed tunnel is replaced instead of repaired; it is repaired
+  only when no replacement exists. A slot keeps its port; the
+  replacement is the first ranked candidate that is not active, does not
+  share a private key with another active one and whose key + endpoint pair
+  (key + endpoint + transport for `masque`) is not in quarantine. A tunnel
+  whose inbound is missing in Xray is not replaced (as for a repair). It removes the old tunnel first (rule, outbound,
+  inbound; both outbound tags, with and without the observatory prefix,
+  are removed), then adds the new one (outbound with the observatory prefix,
+  inbound, rule), under the same per-target mutex as sync, repair and
+  rejoin. A slot is replaced:
+  - on a sync, when its candidate is gone from the file or changed
+    (`reasonCode: gone|changed`);
+  - after `replaceAfterFailures` failed checks in a row (a repair does not
+    reset this count, only a successful check does; not while the source's
+    hashes are reset and it waits for a full apply, so a source that does
+    not load gets no replacement until it loads): the pair goes into
+    quarantine for `deadPairCooldownMinutes` (`reasonCode: failed`); while a
+    tunnel without a replacement keeps failing, every failed check puts its
+    pair into quarantine again, so the pair stays out as long as it fails;
+  - on a sync, when a healthy active candidate is beaten by at least
+    `switchMarginPercent` % on `switchConfirmChecks` syncs in a row
+    (`reasonCode: better`). The metric is `score` (`load` for `strategy: load`),
+    the other one if either candidate lacks it; without a metric, and always
+    with `strategy: label`, nothing switches. A full apply starts these
+    series over.
+  An empty slot (fewer tunnels than `maxActive`) is filled on a sync by the
+  first allowed candidate, on the lowest free port: outbound, inbound, rule
+  are added, the source's other tunnels are not touched (`reasonCode: vacant`,
+  no `fromTag`; a failed step removes what it added).
+  Each replacement logs `candidate_replaced` (`fromTag`, `toTag`, `reasonCode`).
+  If the old outbound cannot be removed, nothing is added. A failed removal
+  of the old rule does not stop a replacement; it is logged at warn as
+  `candidate_replace_failed` with `stage: remove_rule`. Any failed step
+  logs `candidate_replace_failed`, leaves the slot empty and makes the next
+  sync apply the source in full.
+- **No replacement.** A failed tunnel with no candidate outside quarantine
+  stays in repair (out of the balancer, still checked, rejoined when it
+  recovers); a candidate gone from the file with none to replace it is
+  removed (`candidate_removed`) and its slot stays empty. Both show the
+  source warning `no_replacement` in `targets[].sources[]` and on the
+  dashboard; `candidate_no_replacement` is warn. A `candidate_no_replacement`
+  while the source has no other healthy tunnel starts an episode without a
+  live tunnel: until any tunnel of the source passes a check
+  (`source_recovered`, `failedForMs`), its `candidate_replaced` (`failed`),
+  `candidate_no_replacement` and `tunnel_repaired` are debug. Quarantine
+  and the hysteresis and failure counts are in memory only.
+- **Empty file.** An empty candidate file (no lines at all; wgp writes one
+  when a provider has no live candidate) is not a source failure: every
+  tunnel of the source is removed as above, the slots stay empty with
+  `no_replacement`, and candidates coming back fill them again. A file with
+  lines none of which is accepted still fails the source
+  (`manifest_validation_failed`) and its tunnels stay.
 - `balancerMonitor` checks the balancer end-to-end through an external SOCKS5.
   It never repairs or applies anything. `remotePing` then pushes one group
   result (`status`, `msg`, `ping` query parameters) to an Uptime-Kuma-style
@@ -271,26 +580,57 @@ Validation errors list every problem with its field path, for example:
 | Path | Content |
 |---|---|
 | `/`, `/status` (any other path) | HTML dashboard: instance tabs (local first), then subscription → target, balancer cards first, tunnel cards sorted by latency. |
-| `/api/status` | `{tunnels}` |
+| `/api/status` | `{tunnels, wgp?}` |
 | `/api/instance-status` | Local snapshot `{version: 1, instanceId, capturedAt, subscriptions, tunnels, …}`, which remote collectors poll. |
 | `/api/instances` | Local snapshot plus the last successful snapshot of each remote instance (`lastError` on failure). |
-| `/api/runtime-state?subscriptionId=…&targetAddress=…` | Diagnostic view from the loaded config and live Xray API data. |
+| `/api/runtime-state?subscriptionId=…&targetAddress=…` | Diagnostic view from the loaded config and live Xray API data. `expected` is the union of the enabled sources; with several sources `expected.sources[]` gives `{sourceId, source, error?}` per source. |
 
 Routing looks only at the path, so `/api/status?x=1` returns JSON. The JSON
 schemas are a contract and grow only by adding fields; `version` stays `1`. A
 panic in a handler returns 500 and logs `http_handler_panic`. The dashboard is
 read-only and has no links to the JSON endpoints.
 
+A target whose subscription has several sources, a `wireguard` or `masque` source or a
+source with a warning, gets `targets[].sources[]` =
+`{sourceId, type, enabled, maxActive?, activeCount?, candidateCount?, warnings?[]{code, message}}`
+in source id order, and its tunnels get `sourceId`; a WireGuard or MASQUE
+tunnel also has `protocol: "wireguard"` or `"masque"` (VLESS tunnels have no `protocol`). The dashboard then shows a
+Sources card with the warnings (for example `port_range_exhausted`) and a
+colored badge with the source id in the title of each tunnel card (the color
+follows the id). A subscription with one source and no
+warning has neither key, as before.
+
+Each enabled `wireguard` or `masque` source has its input directory checked
+for `status.json` (written by wgp) on every request to `/api/status`,
+`/api/instance-status` and the dashboard: a private regular file (no access
+for group or others) of at most 64 KiB. Each directory with the file adds a
+block to `wgp[]` of `/api/status` and `/api/instance-status`:
+`{sources[]{subscriptionId, sourceId}, updatedAt?, error?, providers?[]{id, output, type, state, error?, lastTickAt?, lastSuccessAt?, issued, limit?, expiresAt?}}`.
+Without the file there is no block and no key. A file that cannot be read
+(wrong mode, too large, invalid JSON, a `version` other than `1`) gives a block
+with only `error`, a text without the host path; the response is still 200 and
+complete. The dashboard shows a wgp section above the subscriptions with a card
+per provider (state, issued of limit, expiry, last success, error) and a card
+per unreadable file. `needs_login`, `error`, an unknown state,
+an expiry within 2 hours of the snapshot time (below the renewal window, so
+only a missed renewal; with `renewBeforeMinutes` under 120 a healthy
+certificate shows as degraded too) and an unreadable file are shown
+as degraded. A central scd gets the blocks of remote instances through
+`remoteInstances` and never reads their files. `/api/runtime-state` has no wgp
+data.
+
 `/api/runtime-state` hides secrets unless `includeSecrets: true`. Hidden values
 include subscription and monitor/push URLs (shown as `<scheme>://<host>/<redacted>`),
 `fetchHeaders` values, UUIDs and keys, outbound `path` and the xhttp `host`,
-which are `<redacted>`. **`includeRaw: true` adds `rawBase64` protobuf blobs
-that contain everything unredacted**, whatever `includeSecrets` says.
+which are `<redacted>`. `includeRaw: true` adds `rawBase64` protobuf blobs
+only together with `includeSecrets: true`, because the blobs contain everything
+unredacted. WireGuard and MASQUE outbounds never get `rawBase64`, and their
+`parsed` never shows the private or preshared key.
 
 ## Label filters
 
 Filters use Go `regexp` (RE2: linear time, no lookaround). They apply the same
-way in scd (`subscriptions[].filters`) and sfc (`outputs[]`):
+way in scd (`subscriptions[].sources[].filters`) and sfc (`outputs[]`):
 
 - `labelIncludeRegex` is a string or a list. A label is kept only if it
   matches **all** of them.
@@ -394,7 +734,7 @@ URL-decoded):
 
 ## Fetching subscriptions
 
-`subscriptions[].fetchUserAgent` (scd and sfc) sets the `User-Agent` for
+`fetchUserAgent` (scd `subscriptions[].sources[]`, sfc `subscriptions[]`) sets the `User-Agent` for
 downloads from `http(s)` URLs. The default is `scd/<version>`.
 
 > **Warning:** some panels choose the response format by User-Agent. With
@@ -404,7 +744,7 @@ downloads from `http(s)` URLs. The default is `scd/<version>`.
 > city and the tag. `clash*`, `mihomo`, `stash` and `sfa…`/`singbox` get
 > YAML or JSON instead of share links, and the source then yields no entries.
 
-`subscriptions[].fetchHeaders` (scd and sfc) adds request headers. An example
+`fetchHeaders` (scd `subscriptions[].sources[]`, sfc `subscriptions[]`) adds request headers. An example
 is `x-hwid` for a Remnawave HWID device limit. `User-Agent` (use
 `fetchUserAgent`), `Host`, `Content-Length`, `Transfer-Encoding` and
 `Connection` are not allowed. **Values are secrets**: `print-config` (unless
@@ -455,8 +795,10 @@ What is shown, per strategy:
   tools. A typo sends all balancer traffic nowhere, and the override survives
   rule changes until Xray restarts. The dashboard shows it, and marks it
   degraded when it points outside the tunnels.
-- Logs: `balancer_selection_changed`, `balancer_selection_failed`,
-  `balancer_selection_recovered`, `balancer_observatory_unavailable`.
+- Logs: `balancer_selection_changed` (`info` for the first pick, a mode
+  change or a move to or from no pick; Xray moving its pick within a mode
+  is `debug`), `balancer_selection_failed`, `balancer_selection_recovered`,
+  `balancer_observatory_unavailable`.
 
 ## scd sfc
 
@@ -533,6 +875,412 @@ logging: {level: info, format: json}
   (e.g. a TLS-terminating CDN) sees repeated content. Streaming stops when the
   client disconnects.
 
+## scd wgp
+
+wgp keeps provider accounts, keys and certificates and publishes
+**candidates**: one file per output with one `wireguard://` or `masque://`
+line per candidate (see [WireGuard sources](#wireguard-sources) and
+[MASQUE sources](#masque-sources)), plus `status.json` in the same
+directory. An scd source of type `wireguard` or `masque` reads the file; scd
+and wgp share only that directory (read-only for scd). wgp holds no tunnels
+and never talks to Xray.
+
+```yaml
+server:
+  listen: 0.0.0.0:8080            # required
+logging: {level: info, format: json}
+state:
+  dir: /app/state                 # required, absolute
+  keyFile: /run/secrets/wgp_state_key  # required, absolute; a Docker secret
+deviceNamePrefix: wgp-a-          # required, [a-z0-9-]+, one per host
+keys:
+  revokeOldAfterMinutes: 30       # optional, >= 1; required by provider types that revoke
+api:                              # optional
+  timeoutMs: 15000
+  retry: {attempts: 3, minDelayMs: 3000, maxDelayMs: 8000}
+identification:                   # identification.<type> for the provider types in use
+  <type>: {…}
+providers:
+  - id: a                         # [a-z0-9]+, unique
+    type: <type>                  # a registered provider type
+    enabled: true                 # default true
+    schedule: "*/15 * * * *"      # required cron
+    # …keys of the provider type
+outputs:
+  - id: a                         # [a-z0-9]+, unique
+    path: /app/out/a          # absolute; every output in one directory
+    provider: a                   # exactly one output per enabled provider
+    candidates: 4                 # required or forbidden, by provider type
+```
+
+- The config is strict: unknown keys are errors and the important keys have
+  no defaults. `${NAME}` is not expanded; the file holds no secrets.
+- The core keys are checked by wgp, the rest of each provider entry and its
+  `identification.<type>` by the provider type. An unknown `type` is an error.
+- Outputs and providers are 1:1: an output names one provider, a provider
+  feeds at most one output, and an enabled provider must have one. An output
+  path must not be named `status.json`.
+- `print-config` prints `state.keyFile` as a path; wgp never prints the key.
+- Provider API calls verify the server certificate and present a fixed TLS
+  ClientHello and header set per provider. WARP API requests use a TLS 1.2
+  ClientHello (ECDHE AES-256-GCM suites c02c and c030, fixed extension order,
+  no GREASE), HTTP/1.1 and JSON with sorted keys; the app strings
+  (`identification.warp`) are those of the 1.1.1.1 Android app.
+  Proton API requests reproduce the ClientHello, headers and JSON of the
+  official Proton VPN Linux client (TLS 1.3 with X25519MLKEM768, HTTP/1.1 with
+  one connection per request, JSON in insertion order with `", "` and `": "`
+  separators and `\uXXXX` escapes).
+- **State.** `state.dir` holds one encrypted record per provider,
+  `<provider id>.state` (AES-256-GCM, bound to the provider id: a record
+  renamed to another id does not open). `state.keyFile` holds the key: the
+  standard base64 of 32 random bytes, for example
+  `head -c 32 /dev/urandom | base64 > secrets/wgp_state_key`, mode `0600` or
+  stricter. Logs show the key only as `keySha8` (event `state_opened`).
+- `serve`, `login` and `logout` refuse to start unless `state.dir` is a
+  directory (not a symlink) owned by the process uid with no group or other
+  access (`0700`), every file in it is a regular file owned by that uid with
+  no group or other access (`0600`), and the key file has no group or other
+  access. They also open every record first: a wrong key or a damaged record
+  stops the command with an error naming the file. wgp never replaces an
+  unreadable record with a new one; restore the file or the key, or remove
+  the record to start that provider over (its sessions and devices are then
+  lost).
+- `serve`, `login` and `logout` lock `state.dir` (`flock` on `wgp.lock`,
+  which holds the pid of the holder), so `login` runs only while `serve` is
+  stopped. A second command fails at once with `state dir … is in use by
+  another wgp process (pid N in its own pid namespace)`. The kernel drops the
+  lock when the holder exits, even when it is killed, so a leftover
+  `wgp.lock` never blocks a restart and must not be removed by hand.
+- `login`/`logout` need `--provider <id>` of a configured provider. `login`
+  prompts on the terminal for what the provider needs (for Proton: username,
+  password and, if the account has one, the TOTP code); the password and the
+  code are read without echo and never stored or logged, only the session
+  goes into the state record. When the provider asks for a CAPTCHA, `login`
+  prints a `https://verify.proton.me/…` link and stops; solve it and run
+  `login` again with `--hv-token <token>`. A provider session is renewed
+  only when the API answers `401` (one renewal for concurrent requests), and
+  the rotated tokens are saved before they are used. `logout` revokes what
+  the provider issued, closes the session (a `401` counts as closed) and
+  removes it from the state record.
+- **`needs_login`.** When the API rejects the session renewal, every tick of
+  that provider fails with `state: needs_login` in `status.json` (and the
+  scd dashboard) and logs `provider_tick_failed`. wgp issues and rotates
+  nothing and leaves the output file as it is, so scd keeps the current
+  candidates until their certificates expire. wgp never signs in again by
+  itself: stop `serve` and run `scd wgp login`.
+- **Schedule.** `serve` runs every enabled provider on its `schedule`: the
+  first tick at start, then on each slot; a slot that arrives while the
+  previous tick of that provider still runs is skipped
+  (`provider_tick_skipped_overrun`). On SIGINT/SIGTERM the loops stop at
+  once, an active tick is cancelled and waited for, then the status page
+  drains (up to 10 s). There is no hot reload.
+- **Outputs.** Every tick writes the provider's lines to its output `path`,
+  one line per candidate, in the order the provider returns them. The write
+  is atomic (temporary file, fsync, rename, mode `0600`), and a file that
+  already holds the same bytes is not rewritten (a file with a wider mode is
+  rewritten and logged as `changed: candidates`), so its mtime changes only
+  when a candidate changes. Each line is checked with the parser scd uses
+  for the provider's kind (`wireguard://` or `masque://`). A failed tick or a
+  bad line fails the output, and the previous file stays (event
+  `provider_tick_failed`; `output_published` when a file changed: `info`
+  with `changed: candidates` when the candidate list or its order changed,
+  `debug` with `changed: metadata` when only metadata or labels did). A tick
+  that returns no lines and no error means "no live candidate": the output
+  becomes an empty file, and scd removes the source's tunnels.
+- **`status.json`.** After every tick wgp rewrites `status.json` in the
+  output directory (atomic, `0600`) with the status of every provider that
+  has ticked: `id`, `output`, `type`, `state` (`ok`, `needs_login` or
+  `error`), `error`, `lastTickAt`, `lastSuccessAt`, `issued`, `limit`,
+  `expiresAt`. A provider or output error goes into `state: error` (or
+  `needs_login`, above) and `error`; it never stops the service. The file
+  holds no secrets.
+- **Status page.** `server.listen` serves `GET /healthz` (`ok`),
+  `GET /api/status` (the `status.json` document from memory) and `GET /` (the
+  same as an HTML page, refreshed every 30 s). Other paths are `404`, other
+  methods `405`. The page is for the owner on the host: publish the port
+  only on `127.0.0.1`. scd never uses it.
+- `providers` needs at least one entry.
+
+### Provider `static`
+
+Publishes ready WireGuard configs: every `*.conf` file in `dir`, in file name
+order, becomes one `wireguard://` line with `provider=static`. It has no
+login, no state and no `identification`; its output takes no `candidates`
+(the number of active tunnels is the scd source's `maxActive`).
+
+```yaml
+providers:
+  - id: static
+    type: static
+    dir: /app/static              # required, absolute; mount it read-only
+    schedule: "*/5 * * * *"       # required; files are read again on each tick
+    maxFileBytes: 65536           # default 64 KiB
+    defaults:                     # for fields a file leaves out
+      mtu: 1420                   # default 1420, 576..1500
+      allowedIPs: [0.0.0.0/0, "::/0"]  # default 0.0.0.0/0, ::/0
+      dns: []                     # default none: no dns in the line
+outputs:
+  - {id: wg, path: /app/out/wg, provider: static}
+```
+
+- The files use the `wg-quick` format, keys case-insensitive:
+  `[Interface]` with `PrivateKey`, `Address`, `DNS` (IP addresses only),
+  `MTU`, and exactly one `[Peer]` with `PublicKey`, `PresharedKey`,
+  `Endpoint`, `AllowedIPs`, `PersistentKeepalive`. `Address`, `DNS` and
+  `AllowedIPs` may be comma lists or repeated lines.
+- Comments `# Label = 🇳🇱 Amsterdam` (otherwise the file name without
+  `.conf`) and `# Reserved = 1,2,3` set the label and the 3 reserved bytes.
+- `ListenPort`, `Table`, `FwMark`, `SaveConfig`, `PreUp`, `PostUp`,
+  `PreDown` and `PostDown` are ignored with a warning (`provider_warning`) and
+  never run. Any other key, a second `[Interface]` or `[Peer]`, or a missing
+  `[Peer]` rejects the file.
+- A file must be a regular file of at most `maxFileBytes` with no access for
+  others (`0600` or `0640`). The values get the same checks as in scd
+  ([WireGuard sources](#wireguard-sources)).
+- A rejected file is logged (`provider_error`) and shown in `status.json`
+  (`state: error`, `error` names the file and the field, never a value); the
+  other files are still published. With no accepted file the tick fails and
+  the previous output stays.
+
+### Provider `proton`
+
+Issues Proton VPN WireGuard configs and publishes one `wireguard://` line
+with `provider=proton` per candidate. Every candidate has its own key, its
+own persistent certificate and its own logical server: one key works
+reliably on one server at a time. Its output takes `candidates`: the number
+of certificates. Proton cuts tunnels silently above the plan's `MaxConnect`,
+so the `maxActive` of the scd sources of all hosts on one account must add
+up to at most `MaxConnect` (shown as `limit` in `status.json`).
+
+```yaml
+identification:
+  proton:                         # required with a proton provider; all strings required
+    appVersion: "linux-vpn-gui@5.8.11+x86-64"  # the x-pm-appversion header; +aarch64 on arm64
+    userAgent: "ProtonVPN/5.8.11 (Linux; ubuntu/26.04)"
+    timezone: Europe/Istanbul     # IANA name, the x-pm-timezone header
+deviceNamePrefix: wgp-a-          # one per host on the account
+keys:
+  revokeOldAfterMinutes: 30       # required with an enabled proton provider; >= the scd sync interval
+providers:
+  - id: proton
+    type: proton
+    tier: free                    # required: free | plus
+    schedule: "*/15 * * * *"      # required
+    keys:
+      rotateOnStart: true         # required: a new key generation at start
+    certificate:
+      durationMinutes: 1440       # required, 10..525600
+      renewBeforeMinutes: 360     # required, < durationMinutes
+      features:                   # all required
+        netShield: 0              # 0 off | 1 malware | 2 malware, ads and trackers
+        vpnAccelerator: true
+        moderateNat: false
+    servers:
+      exitCountries: [NL, CH]     # default []: all
+      entryCountries: []          # default []: all
+      cities: []                  # default []: all
+      requireFeatures: []         # default []; secureCore | tor | p2p | streaming | ipv6
+      excludeFeatures: [secureCore, tor]  # required, may be []
+      maxLoad: 80                 # required, 0..100
+      maxScore: 999               # default 999, at most 999
+      switchMarginPercent: 20     # required, 0..100
+      switchConfirmChecks: 2      # required, 1..10 ticks
+    wireguard:                    # optional
+      port: 51820                 # default 51820; 443 | 88 | 1224 | 51820 | 500 | 4500
+      dns: [10.2.0.1]             # default 10.2.0.1; IPs only
+      mtu: 1420                   # default 1420, 576..1500
+      allowedIPs: [0.0.0.0/0]     # default 0.0.0.0/0, plus ::/0 on an IPv6 server
+      keepalive: 0                # default 0 (not written)
+    label: "{flag} {city}, Proton {name}"  # default this; must start with {flag}
+outputs:
+  - {id: proton, path: /app/out/proton, provider: proton, candidates: 4}
+```
+
+- **Login.** Sign in once per host, with `serve` stopped (the state lock):
+
+  ```bash
+  docker compose --profile wgp stop wgp
+  docker compose --profile wgp run --rm -it wgp scd wgp login --provider proton --config /app/config/config.yml
+  docker compose --profile wgp start wgp
+  ```
+
+  `run` uses the same volumes, network and secret as the service. When the
+  host's IP gets a CAPTCHA that cannot be solved from it, sign in on another
+  machine with the same image and state key and copy the state record over.
+- **Tick.** Every tick reads the plan (`GET /vpn/v2`: `MaxTier` and
+  `MaxConnect` only; the OpenVPN credentials in that answer are never read)
+  and the server list, then issues, renews and revokes certificates and
+  writes the lines.
+- **Tier.** `free` takes only free servers (`Tier 0`), `plus` only paid ones
+  (`Tier 1..2`); a server above the account's `MaxTier` is never taken, and
+  `plus` on an account without it fails the tick (`state: error`).
+- **Servers.** A logical server qualifies when it is online, its tier fits,
+  its entry country (the Secure Core entry, the Smart Routing host country,
+  else the exit country) and exit country, city and features pass the
+  filters, `Load ≤ maxLoad` and `Score ≤ maxScore`; `Score ≥ 1000` never
+  qualifies. Its physical server is the online one with the smallest `ID`.
+  The best (`Score`, then `Load`, then name) go to the candidates, one
+  server per candidate. A candidate whose server no longer qualifies moves
+  to the best free one at once; a healthy one moves only when a free server
+  has a `Score` lower by `switchMarginPercent` on `switchConfirmChecks`
+  ticks in a row (counted in memory). The key stays, so scd replaces the
+  tunnel. A candidate without a free server is reported and has no line.
+- **Certificates.** Only `persistent` ones, named
+  `<deviceNamePrefix><output id>-<generation>-<candidate number>`, for
+  example `wgp-a-proton-3-1`. A new key gets a new certificate; it is renewed
+  with the same key `renewBeforeMinutes` before its expiry, or at the
+  refresh time Proton gives if that comes first, and the tunnel stays as it
+  is. The answer must be for the candidate's key (`ClientKeyFingerprint`).
+  A short `durationMinutes` limits the damage of a leaked key: a revoked
+  certificate keeps working for about 40–50 minutes.
+- **Rotation.** With `keys.rotateOnStart` every start begins a new
+  generation: every candidate gets a new key and certificate (a failed one
+  keeps its old key and tries again on the next tick).
+  `revokeOldAfterMinutes` after the rotation wgp revokes the certificates of
+  the older generations, giving scd time to switch. Revocation only touches
+  names that are exactly `<deviceNamePrefix><output id>-<generation>-<n>`:
+  other hosts (another prefix), other outputs and certificates without a
+  name (such as the one-off certificate of `login`) are never touched. The
+  certificate list is read in full, page by page. A certificate the API
+  reports as not found when revoked (already revoked) is counted
+  (`certificates_revoked.alreadyRevoked`), not an error.
+- **`logout`** revokes every certificate of that template, forgets the keys
+  and closes the session.
+- `status.json`: `issued` is the number of candidates with a live
+  certificate, `limit` is `MaxConnect`, `expiresAt` the earliest expiry. A
+  failing candidate makes `state: error` with `candidate N: …`, never a key
+  or token; no line at all fails the tick and the previous output stays.
+- Logs: `candidate_server_changed` (`fromServer`, `toServer`, `reasonCode`
+  `gone|better|vacant`, `detail` of `gone`), `certificate_issued` (`mode`
+  `new|rotation|renew`, `deviceName`, `expiresAt`), `keys_rotated`,
+  `certificates_revoked` and `session_refreshed`. A dead session is one
+  `provider_tick_failed` line with `state: needs_login` (repeats are
+  `debug`); the text is the same on every tick.
+
+### Provider `warp`
+
+Registers Cloudflare WARP devices and publishes, with `provider=warp`, one
+`wireguard://` line per device (`tunnel: wireguard`) or one `masque://` line
+per device and transport (`tunnel: masque`, see [WARP MASQUE](#warp-masque)). It has no login (`login --provider` fails with
+`does not support login`); the devices register themselves. Its output takes
+`candidates`: the number of devices. All devices leave through the Cloudflare
+colo nearest to the host, so more devices give spares, not other countries.
+
+```yaml
+identification:
+  warp:                           # required with a warp provider; all strings required
+    userAgent: "1.1.1.1/6.38.9-5641 (Android 16.0.0)"
+    clientVersion: a-6.38.9-5641  # the CF-Client-Version header
+    apiVersion: v0a5641           # the first path segment of the API
+    model: PC                     # model, locale, os_version of POST /reg
+    locale: en_US
+    osVersion: "16.0.0"
+providers:
+  - id: warp
+    type: warp
+    tunnel: wireguard             # required: wireguard | masque
+    schedule: "0 */6 * * *"       # required; every tick checks every device
+    keys:
+      rotateOnStart: true         # required: a new key for every device at start
+    deviceLostAfterChecks: 2      # default 2, >= 1
+    reRegisterMinIntervalMinutes: 1440  # required, >= 1
+    label: "WARP"                 # required; put a flag here for scd country filters
+    wireguard:                    # optional; only with tunnel: wireguard
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # default these
+      mtu: 1280                   # default 1280, 576..1500
+      allowedIPs: [0.0.0.0/0, "::/0"]  # default 0.0.0.0/0, ::/0
+      port: 2408                  # default the API port; 2408 | 500 | 1701 | 4500
+outputs:
+  - {id: warp, path: /app/out/warp, provider: warp, candidates: 1}
+```
+
+- **Registration.** A device slot without a device registers once
+  (`POST /reg` with a new X25519 key, `tunnel_type: wireguard`). The device
+  id, its token and the private key go only into the encrypted state.
+- **Check.** Every tick sends `GET /reg/{id}` for every device. `200` with
+  `enabled: true` is healthy and resets the loss counter. `404` with code
+  `1006`, `401` with code `1012` and `enabled: false` count as one loss.
+  Other answers (`5xx`, `429`, timeouts, network errors) neither count nor
+  reset the counter. Until the device is lost its line stays published;
+  every counted answer is shown in `status.json`.
+- **Loss.** After `deviceLostAfterChecks` losses in a row (the counter is in
+  the state, so a restart keeps it) the device is dropped and its line is
+  withdrawn (`device_lost`; each counted answer logs `device_check_lost`
+  with the counter). The slot registers a new device, but not
+  earlier than `reRegisterMinIntervalMinutes` after its last `POST /reg`
+  attempt, failed ones included (the time is saved in the state before the
+  request; a restart does not reset it). Only a slot that never tried goes at
+  once. Until then the slot reports `re-registration not before <time>`,
+  or, after a failed attempt of this process, the text of that attempt:
+  `register: status 429 (next attempt not before <time>)`.
+- **Rotation.** With `keys.rotateOnStart` every existing device gets a new
+  key once per process (`PATCH /reg/{id}`), after a healthy check; a failed
+  rotation is tried again on the next tick. A device registered in this
+  process is not rotated. The old key keeps working for a few minutes, so
+  scd has time to switch.
+- **Line.** `reserved` is the base64-decoded `config.client_id` of the last
+  registration or key change (it changes with the key) and must be exactly 3
+  bytes; the addresses, the peer key and the endpoint come from the same
+  answer (a check answer for the current key refreshes them). With
+  `wireguard.port` the endpoint host is kept and the port replaced. DNS, MTU
+  and allowed IPs come from the config.
+- `status.json`: `issued` is the number of published lines; a failing device
+  makes `state: error` with `error` naming the device by its number
+  (`device 1: check: device lost: status 404, code 1006`), never its id,
+  token or key. With no device left (all lost, or none registered yet) the
+  tick returns no lines and no error, so the output becomes an empty file and
+  scd drops the tunnels; `state: error` still says why. No line while a
+  device exists (its answer cannot make a line) fails the tick and the
+  previous output stays.
+- More devices than `candidates` in the state (the key was lowered) are
+  forgotten, not deleted at Cloudflare.
+
+#### WARP MASQUE
+
+A device works with one tunnel type only, so WARP over MASQUE is its own
+`warp` provider with its own devices and its own output, read by an scd
+source of type `masque` ([MASQUE sources](#masque-sources)).
+
+```yaml
+providers:
+  - id: warpmq
+    type: warp
+    tunnel: masque
+    schedule: "0 */6 * * *"
+    keys:
+      rotateOnStart: true         # a new P-256 key for every device at start
+    reRegisterMinIntervalMinutes: 1440
+    label: "WARP MASQUE"
+    masque:                       # required with tunnel: masque
+      transports: [h3, h2]        # required, h3 | h2 without repeats; the order is the priority
+      sni: consumer-masque.cloudflareclient.com  # required: a hostname, or the endpoint IP (no SNI sent)
+      port: 443                   # default 443: the endpoint port, UDP for h3, TCP for h2
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # default these; IPs only
+outputs:
+  - {id: warpmq, path: /app/out/warpmq, provider: warpmq, candidates: 1}
+```
+
+- `wireguard` with `tunnel: masque` and `masque` with `tunnel: wireguard`
+  are `validate-config` errors.
+- Registration, check, loss, re-registration limit and `status.json` are
+  the same as above. Right after `POST /reg` (still X25519, `tunnel_type:
+  wireguard`) the device gets a new ECDSA P-256 key with `PATCH /reg/{id}`
+  (`key_type: secp256r1`, `tunnel_type: masque`); a failed PATCH leaves the
+  device without lines and is tried again on the next tick, without a new
+  registration. `keys.rotateOnStart` repeats that PATCH with a new key once
+  per process. A replaced MASQUE key stops working at once, so a restart with
+  rotation can break the tunnel until the next scd sync.
+- The P-256 private key is kept only in the encrypted state, like the token.
+- **Lines.** From the PATCH answer (or a check answer for the current key):
+  the endpoint key (`config.peers[0].public_key`, PEM, must be a PKIX P-256
+  key) as `peerkey`, `endpoint.v4` with its port replaced by `masque.port`
+  as the endpoint (h3 and h2 use the same address), and the device
+  addresses. One line per `masque.transports` entry, `priority` = its index
+  (`0` first); the lines of one device differ only in `transport` and
+  `priority`, and scd activates one of them. An IP `sni` must be the
+  endpoint IP of the answer, or the device has no lines (`status.json`
+  names the field).
+
 ## Cron schedules
 
 All schedules use one parser (`internal/common/cron`, `github.com/robfig/cron/v3`
@@ -561,10 +1309,42 @@ as is). The same parser validates configs and drives the scheduler.
   `msg`, `event`, then fields). `pretty` is `key=value` text with nested
   values as JSON strings.
 - Levels: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`.
-- Event names are stable, for example scd `config_loaded`, `sync_started`,
-  `subscription_fetched`, `manifest_built`, `apply_finished`, `daemon_tick`,
-  `tunnel_repaired`, `tunnel_rejoined_balancer`, `sync_failed`, and sfc
-  `refresh_tick`, `subscription_refreshed`.
+- Event names are stable, for example scd `config_loaded`, `sync_finished`,
+  `orphans_removed`, `orphan_remove_failed`, `apply_finished`,
+  `tunnel_repaired`, `tunnel_recovered`, `tunnel_rejoined_balancer`,
+  `tunnel_flapping`, `tunnel_down`, `tunnel_stable`, `xray_unavailable`,
+  `xray_recovered`, `xray_state_drift`, `xray_state_lost`,
+  `xray_state_restored`, `xray_state_restore_blocked`, `source_recovered`,
+  `sync_failed`, sfc `subscription_refreshed`, and wgp `output_published`.
+- One line per decision or change of state. Steps, per-kind lines and
+  repeats are `debug` (`sync_started`, `subscription_fetched`,
+  `daemon_tick`, `manifest_built`, `skipped_no_changes`,
+  `resource_apply_started`, `apply_finished`,
+  `remote_status_collected`, sfc `refresh_tick`): `logging.level: debug`
+  shows them all. `sync_finished` sums up every sync (`durationMs`,
+  `sourcesApplied` (sources whose apply changed Xray), `sourcesUnchanged`,
+  `sourcesFailed`, `resourcesAdded`, `resourcesReplaced`,
+  `resourcesRemoved`, `skippedLines`, and `appliedSourceIds`
+  (`<subscriptionId>/<sourceId>`) when a source was applied).
+- One cause, one line: while the Xray API of a target is unavailable
+  (`xray_unavailable`), the errors of tunnel repair and rejoin, candidate
+  replacement, balancer selection and orphan removal are `debug`, and so is
+  `balancer_observatory_unavailable` when `GetBalancerInfo` failed in the
+  same tick.
+- Errors and warnings are logged when they appear or their text changes; a
+  repeat of the same state is `debug`, and the way back is a `*_recovered`
+  event (`failedForMs` where it applies; a tunnel that goes back into the
+  balancer logs only `tunnel_rejoined_balancer` with `failedForMs`). The
+  memory is the process: after a restart the current state is logged once
+  again. Network error texts (fetch, probe, push and Xray API errors, also
+  `lastError` in the status API) leave out the local address, which changes
+  with every connection.
+- `config_loaded` carries `version`. A failure after the start
+  (`service_failed`) is one JSON line, not printed again as text; errors
+  before the logger exists (flags, config) are plain text.
+- Logs never hold keys, tokens, candidate or VLESS lines, URL paths,
+  queries or userinfo (also inside error texts), `fetchHeaders` values, sfc
+  output ids or tunnel endpoint addresses.
 
 ## Known limitations
 
@@ -581,11 +1361,6 @@ Of Xray v26.10.21, documented rather than worked around in code:
 
 Of scd:
 
-- A static routing rule **without** `ruleTag` cannot be listed in
-  `fixedRouting`, so scd tries `RemoveRule("")` on it. Xray rejects that with
-  `app/router: empty tag name!` and routing apply for that target fails. This
-  behaviour is kept on purpose. Give every static rule a `ruleTag` and list it
-  in `fixedRouting`.
 - Ownership, hash and monitor state is memory-only. Overlap protection does
   not coordinate separate processes.
 
@@ -595,6 +1370,16 @@ Of scd:
   `ghcr.io/a1ekseev/gtl` images are no longer published; their last tags are
   the old version. Use `ghcr.io/a1ekseev/scd` with the `command:` values from
   [Docker](#docker).
+- Subscriptions now have `sources` (breaking, no compatibility layer): move
+  `input`, `format`, `fetchTimeoutMs`, `fetchUserAgent`, `fetchHeaders`,
+  `allowInsecure` and `filters` into `sources[0]` with `id: vless` and
+  `type: vless`, and `target.inboundSocks.portRange` into
+  `sources[0].portRange`. With `id: vless` the tags and ports stay the same;
+  with another id the old resources are removed as orphans by the first sync.
+  The source input is now limited to 64 MiB for files and stdin too
+  (`maxInputBytes`). `scd generate` needs `--source-id`. In logs and sync
+  reports `sourceId` is now the source id (the subscription id stays in
+  `subscriptionId`).
 - Config changes: label filters use RE2 with `labelExcludeRegex` (rewrite
   lookahead filters). New keys are `allowInsecure` (default `deny`),
   `fetchUserAgent` (default UA is now `scd/<version>`), `fetchHeaders` and
@@ -604,7 +1389,8 @@ Of scd:
   Manifest `jsonOutbound` now uses the Xray v26.10.21 form, so hashes change.
   Tags of the old profiles stay the same.
 - Tunnel SOCKS ports may be reassigned. They are internal to scd. Make sure
-  `portRange` is big enough, otherwise that target fails with a clear message.
+  `portRange` is big enough, otherwise the entries beyond it are skipped
+  (`port_range_exhausted`).
 - Cron: see [Cron schedules](#cron-schedules). The formats that changed
   compared with the previous parser are `@minutely`, dow `7`, `L`/`#`/`H`, and
   an empty sfc schedule.
@@ -617,7 +1403,7 @@ Of scd:
 ## Development
 
 ```bash
-go vet ./... && go vet -tags 'xraylive visual' ./...
+go vet ./... && go vet -tags 'xraylive visual warplive' ./...
 go test -race ./...
 golangci-lint run                      # v2.15.0, config .golangci.yml
 go build -o bin/scd ./cmd/scd
@@ -626,9 +1412,25 @@ bash scripts/check-no-node.sh          # Go-only repository
 
 # Live tests against a real Xray v26.10.21 binary
 SCD_XRAY_BIN=/path/to/xray go test -tags xraylive -count=1 ./internal/scd/livetest/...
-# Dashboard visual regression (headless Chromium)
+# Dashboard visual regression (headless Chromium; local only, not run in CI)
 SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/...
+# Live WARP check against the real Cloudflare API (not run in CI)
+SCD_WARP_LIVE=1 go test -tags warplive -count=1 ./internal/wgp/provider/warp/...
 ```
+
+Dashboard blocks without a reference of the previous implementation are
+compared with local screenshots in `internal/scd/status/testdata/visual/`
+(gitignored, never committed); add `-update` to the visual test command to
+create them. A test without its screenshot is skipped.
+
+The live tests need no network: besides the Xray API checks, a second test
+Xray on `127.0.0.1` (a WireGuard peer, an RFC 9484 MASQUE server with a
+self-signed certificate) carries HTTP requests through the tunnels scd builds,
+across sync, repair, rejoin and candidate replacement.
+
+The live WARP check registers a new temporary device, switches it to MASQUE,
+checks it with `GET /reg/{id}` and deletes it at the end; keys and tokens stay
+in memory.
 
 Without the environment variable, the tagged tests skip. Reference outputs of
 the previous implementation are in [`testdata/reference/`](testdata/reference/README.md).

@@ -40,13 +40,36 @@ func readJSON(t *testing.T, path string) map[string]any {
 }
 
 // addNewKeys adds the Go-only defaults (D15, D22) to every subscription of
-// a TS reference.
+// a TS reference and converts it to the sources form with one source
+// "vless" (sourcesForm).
 func addNewKeys(want map[string]any) {
 	for _, s := range want["subscriptions"].([]any) {
 		sub := s.(map[string]any)
 		sub["allowInsecure"] = "deny"
 		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{"enabled": false, "observatory": true}
+		sourcesForm(sub)
 	}
+}
+
+// sourceKeys are the TS subscription keys that moved to the source.
+var sourceKeys = []string{"input", "format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "filters"}
+
+// sourcesForm converts a printed TS subscription to the sources form: its
+// source keys and target.inboundSocks.portRange move to one enabled source
+// {id: vless, type: vless} with the default maxInputBytes.
+func sourcesForm(sub map[string]any) {
+	src := map[string]any{"id": "vless", "type": "vless", "enabled": true, "maxInputBytes": float64(64 << 20)}
+	for _, k := range sourceKeys {
+		if v, ok := sub[k]; ok {
+			src[k] = v
+			delete(sub, k)
+		}
+	}
+	if socks, ok := sub["target"].(map[string]any)["inboundSocks"].(map[string]any); ok {
+		src["portRange"] = socks["portRange"]
+		delete(socks, "portRange")
+	}
+	sub["sources"] = []any{src}
 }
 
 // comparePrintConfig runs print-config on config and compares it with the
@@ -69,11 +92,13 @@ func comparePrintConfig(t *testing.T, config, reference string, edit ...func(sub
 	for _, e := range edit {
 		e(ws)
 	}
-	gotInput, wantInput := gs["input"].(string), ws["input"].(string)
+	gsrc := gs["sources"].([]any)[0].(map[string]any)
+	wsrc := ws["sources"].([]any)[0].(map[string]any)
+	gotInput, wantInput := gsrc["input"].(string), wsrc["input"].(string)
 	if !filepath.IsAbs(gotInput) || !strings.HasSuffix(gotInput, string(filepath.Separator)+wantInput) {
 		t.Fatalf("input %q, want suffix %q", gotInput, wantInput)
 	}
-	gs["input"] = wantInput
+	gsrc["input"] = wantInput
 	if !reflect.DeepEqual(got, want) {
 		w, _ := json.MarshalIndent(want, "", "  ")
 		t.Fatalf("got %s\nwant %s", out, w)
@@ -85,13 +110,27 @@ func comparePrintConfig(t *testing.T, config, reference string, edit ...func(sub
 }
 
 func TestPrintConfigMinimal(t *testing.T) {
-	out := comparePrintConfig(t, refDir+"minimal.yml", refDir+"minimal.json")
-	if strings.Contains(out, "fetchUserAgent") || strings.Contains(out, "fetchHeaders") {
+	out := comparePrintConfig(t, refDir+"minimal.sources.yml", refDir+"minimal.json")
+	if strings.Contains(out, "fetchUserAgent") || strings.Contains(out, "fetchHeaders") || strings.Contains(out, "portRange") {
 		t.Fatalf("optional keys printed: %s", out)
 	}
-	// Key order of a subscription and its target (01 §2.6 + new keys).
+	// The Go-side reference, byte for byte, with the input made repo-relative.
+	abs, err := filepath.Abs(refDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(abs))))
+	want, err := os.ReadFile(refDir + "minimal.sources.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Replace(out, root+string(filepath.Separator), "", 1); got != string(want) {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+	// Key order of a subscription, its source and its target (01 §2.6 + new keys).
 	order := []string{
-		`"id"`, `"input"`, `"enabled"`, `"format"`, `"fetchTimeoutMs"`, `"allowInsecure"`, `"target"`,
+		`"id"`, `"enabled"`, `"sources"`, `"id"`, `"type"`, `"input"`, `"enabled"`, `"format"`, `"fetchTimeoutMs"`,
+		`"allowInsecure"`, `"maxInputBytes"`, `"target"`,
 		`"address"`, `"timeoutMs"`, `"fixedOutbounds"`, `"visionUdp443Override"`, `"monitor"`, `"balancerMonitor"`, `"balancerSelection"`,
 		`"runtime"`, `"logging"`, `"resources"`, `"statusServer"`,
 	}
@@ -107,15 +146,31 @@ func TestPrintConfigMinimal(t *testing.T) {
 
 func TestPrintConfigDockerExample(t *testing.T) {
 	// The example enables the balancer selection (task 6.6, D22).
+	// It also has disabled wireguard and masque sources, which the TS
+	// reference lacks.
+	var wg, mq map[string]any
+	if err := json.Unmarshal([]byte(`{"id":"wg","type":"wireguard","input":"/app/wgp/wg","enabled":false,"maxInputBytes":67108864,
+		"portRange":{"start":20100,"end":20109},"filters":{"countryAllowlist":["NL","CH"],"entryCountryAllowlist":["NL","CH"]},"maxActive":2,
+		"selection":{"strategy":"score","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
+		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}},"wireguard":{"endpointDomainStrategy":"UseIPv4"}}`), &wg); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(`{"id":"mq","type":"masque","input":"/app/wgp/warpmq","enabled":false,"maxInputBytes":67108864,
+		"portRange":{"start":20110,"end":20119},"maxActive":1,
+		"selection":{"strategy":"label","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
+		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}}}`), &mq); err != nil {
+		t.Fatal(err)
+	}
 	comparePrintConfig(t, exampleConfig, refDir+"docker-example.json", func(sub map[string]any) {
 		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{
 			"enabled": true, "balancerTag": "x-balancer", "schedule": "*/15 * * * * *", "observatory": true,
 		}
+		sub["sources"] = append(sub["sources"].([]any), wg, mq)
 	})
 }
 
 func TestValidateConfigJSON(t *testing.T) {
-	for _, p := range []string{exampleConfig, realShapeGo, refDir + "minimal.yml"} {
+	for _, p := range []string{exampleConfig, realShapeGo, refDir + "minimal.sources.yml"} {
 		abs, err := filepath.Abs(p)
 		if err != nil {
 			t.Fatal(err)
@@ -133,10 +188,12 @@ func TestSCDRealShapeGoFormValid(t *testing.T) {
 	if code != 0 || !strings.Contains(out, `"valid": true`) || errs != "" {
 		t.Fatalf("code %d out %q err %q", code, out, errs)
 	}
-	// The TS form is rejected with an ordinary regex error (D29, D31).
-	code, _, errs = run("validate-config", "--config", "../../../docker/scd/config.real-shape.yml")
-	if code != 1 || !strings.Contains(errs, "subscriptions.0.filters.labelIncludeRegex: lookahead") {
-		t.Fatalf("TS form: code %d err %q", code, errs)
+	// The TS form (no sources) is rejected: its subscription keys are unknown.
+	for _, p := range []string{"../../../docker/scd/config.real-shape.yml", refDir + "minimal.yml"} {
+		code, _, errs = run("validate-config", "--config", p)
+		if code != 1 || !strings.Contains(errs, `subscriptions.0: unknown key "input"`) {
+			t.Fatalf("%s: code %d err %q", p, code, errs)
+		}
 	}
 }
 
@@ -144,7 +201,7 @@ func TestValidateConfigWarnings(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yml")
 	body := `subscriptions:
   - id: s1
-    input: ./sub.txt
+    sources: [{id: vless, type: vless, input: ./sub.txt}]
     target:
       address: 127.0.0.1:8080
       balancerSelection: {enabled: true, balancerTag: x-balancer, schedule: "*/15 * * * * *"}
@@ -188,8 +245,11 @@ func TestPrintConfigRedactsFetchHeaders(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yml")
 	body := `subscriptions:
   - id: s1
-    input: https://sub.example.com/x
-    fetchHeaders: {x-hwid: "${SCD_TEST_HWID}"}
+    sources:
+      - id: vless
+        type: vless
+        input: https://sub.example.com/x
+        fetchHeaders: {x-hwid: "${SCD_TEST_HWID}"}
     target:
       address: 127.0.0.1:8080
 runtime: {}
@@ -200,7 +260,7 @@ resources: {}
 		t.Fatal(err)
 	}
 	code, out, errs := run("print-config", "--config", p)
-	if code != 0 || !strings.Contains(out, "\"fetchHeaders\": {\n        \"x-hwid\": \"<redacted>\"\n      }") ||
+	if code != 0 || !strings.Contains(out, "\"fetchHeaders\": {\n            \"x-hwid\": \"<redacted>\"\n          }") ||
 		strings.Contains(out+errs, "s3cr3t") {
 		t.Fatalf("code %d out %s err %s", code, out, errs)
 	}
@@ -216,11 +276,15 @@ resources: {}
 const secretConfig = `
 subscriptions:
   - id: s1
-    input: https://sub.example.com/sub/INPUTTOKEN?k=INPUTQUERY
-    fetchHeaders: {x-hwid: "${SCD_TEST_HWID}"}
+    sources:
+      - id: vless
+        type: vless
+        input: https://sub.example.com/sub/INPUTTOKEN?k=INPUTQUERY
+        fetchHeaders: {x-hwid: "${SCD_TEST_HWID}"}
+        portRange: {start: 20000, end: 20010}
     target:
       address: 127.0.0.1:8080
-      inboundSocks: {listen: 127.0.0.1, portRange: {start: 20000, end: 20010}}
+      inboundSocks: {listen: 127.0.0.1}
       monitor:
         enabled: true
         schedule: "* * * * *"

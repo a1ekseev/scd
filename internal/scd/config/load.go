@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/a1ekseev/scd/internal/common/configload"
@@ -66,36 +67,145 @@ func intRange(lo, hi int, req bool) schema.IntOpt {
 }
 
 func parseSubscription(n *schema.Node, dir string) SubscriptionConfig {
-	n.Strict("id", "input", "enabled", "format", "fetchTimeoutMs", "allowInsecure",
-		"fetchUserAgent", "fetchHeaders", "filters", "target")
+	n.Strict("id", "enabled", "sources", "target")
 	var s SubscriptionConfig
 	s.ID, _ = n.String("id", required)
-	if input, ok := n.String("input", required); ok {
-		s.Input = configload.ResolveInput(dir, input)
-	}
 	s.Enabled = n.Bool("enabled", true)
-	s.Format = n.Enum("format", []string{"auto", "plain", "base64"}, "auto")
-	s.FetchTimeoutMs = n.Int("fetchTimeoutMs", positive(defaultTimeoutMs))
-	s.AllowInsecure = n.Enum("allowInsecure", []string{"deny", "allow"}, "deny")
-	s.FetchUserAgent, _ = n.String("fetchUserAgent", schema.StrOpt{Trim: true, MinLen: 1})
-	if h := n.StringMap("fetchHeaders"); len(h) > 0 {
-		for _, is := range inputsrc.CheckHeaders(h) {
-			n.Addf("fetchHeaders."+is.Key, "%s", is.Message)
+	for _, sn := range n.Array("sources", true, 1) {
+		if sn != nil {
+			s.Sources = append(s.Sources, parseSource(sn, dir))
 		}
-		s.FetchHeaders = inputsrc.Headers(h)
-	}
-	if fn := n.Object("filters", false); fn != nil {
-		s.Filters = parseFilters(fn)
 	}
 	s.Target = parseTarget(n.Object("target", true))
 	return s
 }
 
-// parseFilters reads the filters object.
-func parseFilters(n *schema.Node) *SubscriptionFiltersConfig {
-	n.Strict("countryAllowlist", "labelIncludeRegex", "labelExcludeRegex")
-	f := &SubscriptionFiltersConfig{Label: labelfilter.Parse(n)}
-	for _, e := range n.StringListElems("countryAllowlist", schema.StrOpt{Trim: true, AllowEmptyList: true}) {
+// Input size limits of a source (sources[].maxInputBytes).
+const (
+	minInputBytes     = 1 << 10
+	defaultInputBytes = 64 << 20
+)
+
+// foreignKeys are the source keys not allowed for each type.
+var foreignKeys = map[string][]string{
+	SourceVLESS:     {"maxActive", "selection", "wireguard"},
+	SourceWireGuard: {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders"},
+	SourceMasque:    {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "wireguard"},
+}
+
+// parseSource reads one sources[] object; the keys of another type are
+// errors.
+func parseSource(n *schema.Node, dir string) SourceConfig {
+	n.Strict("id", "type", "input", "enabled", "format", "fetchTimeoutMs", "allowInsecure",
+		"fetchUserAgent", "fetchHeaders", "maxInputBytes", "portRange", "filters",
+		"maxActive", "selection", "monitor", "wireguard")
+	var s SourceConfig
+	s.ID, _ = n.String("id", required)
+	s.Type = n.Enum("type", []string{SourceVLESS, SourceWireGuard, SourceMasque}, "")
+	for _, k := range foreignKeys[s.Type] {
+		if n.Has(k) {
+			n.Addf(k, "not allowed for type %q", s.Type)
+		}
+	}
+	if input, ok := n.String("input", required); ok {
+		if CandidateType(s.Type) && !filepath.IsAbs(input) {
+			n.Addf("input", "must be an absolute file path for type %q", s.Type)
+		}
+		s.Input = configload.ResolveInput(dir, input)
+	}
+	s.Enabled = n.Bool("enabled", true)
+	if s.Type == SourceVLESS {
+		s.Format = n.Enum("format", []string{"auto", "plain", "base64"}, "auto")
+		s.FetchTimeoutMs = n.Int("fetchTimeoutMs", positive(defaultTimeoutMs))
+		s.AllowInsecure = n.Enum("allowInsecure", []string{"deny", "allow"}, "deny")
+		s.FetchUserAgent, _ = n.String("fetchUserAgent", schema.StrOpt{Trim: true, MinLen: 1})
+		if h := n.StringMap("fetchHeaders"); len(h) > 0 {
+			for _, is := range inputsrc.CheckHeaders(h) {
+				n.Addf("fetchHeaders."+is.Key, "%s", is.Message)
+			}
+			s.FetchHeaders = inputsrc.Headers(h)
+		}
+	}
+	limit := defaultInputBytes
+	s.MaxInputBytes = int64(n.Int("maxInputBytes", schema.IntOpt{Default: &limit, Min: new(minInputBytes), Max: new(defaultInputBytes)}))
+	if pn := n.Object("portRange", false); pn != nil {
+		s.PortRange = parsePortRange(pn)
+	}
+	if fn := n.Object("filters", false); fn != nil {
+		s.Filters = parseFilters(fn, s.Type)
+	}
+	if mn := n.Object("monitor", false); mn != nil {
+		s.Monitor = parseSourceMonitor(mn)
+	}
+	if CandidateType(s.Type) {
+		s.MaxActive = n.Int("maxActive", schema.IntOpt{Required: true, Min: new(1)})
+		s.Selection = parseSelection(n.Object("selection", true))
+	}
+	if s.Type == SourceWireGuard {
+		wn := n.Object("wireguard", true)
+		wn.Strict("endpointDomainStrategy")
+		s.WireGuard = &WireGuardConfig{EndpointDomainStrategy: wn.Enum("endpointDomainStrategy", EndpointDomainStrategies, "")}
+	}
+	return s
+}
+
+// parseSelection reads the selection object of a wireguard or masque
+// source; n may be nil (already reported as required).
+func parseSelection(n *schema.Node) *SelectionConfig {
+	if n == nil {
+		return nil
+	}
+	n.Strict("strategy", "switchMarginPercent", "switchConfirmChecks", "deadPairCooldownMinutes", "replaceAfterFailures")
+	return &SelectionConfig{
+		Strategy:                n.Enum("strategy", []string{StrategyScore, StrategyLoad, StrategyLabel}, ""),
+		SwitchMarginPercent:     n.Int("switchMarginPercent", intRange(0, 100, true)),
+		SwitchConfirmChecks:     n.Int("switchConfirmChecks", intRange(1, 10, true)),
+		DeadPairCooldownMinutes: n.Int("deadPairCooldownMinutes", schema.IntOpt{Required: true, Min: new(4)}),
+		ReplaceAfterFailures:    n.Int("replaceAfterFailures", intRange(1, 10, true)),
+	}
+}
+
+// parseSourceMonitor reads sources[].monitor: request.timeoutMs and
+// retry.{attempts,delayMs}, each optional.
+func parseSourceMonitor(n *schema.Node) *SourceMonitorConfig {
+	n.Strict("request", "retry")
+	m := &SourceMonitorConfig{}
+	if rn := n.Object("request", false); rn != nil {
+		rn.Strict("timeoutMs")
+		m.Request = &SourceMonitorRequestConfig{TimeoutMs: rn.Int("timeoutMs", schema.IntOpt{Required: true, Min: new(1)})}
+	}
+	if rn := n.Object("retry", false); rn != nil {
+		rn.Strict("attempts", "delayMs")
+		m.Retry = &SourceRetryConfig{Attempts: rn.Int("attempts", schema.IntOpt{Min: new(1)})}
+		if rn.Has("delayMs") {
+			m.Retry.DelayMs = new(rn.Int("delayMs", schema.IntOpt{Min: new(0)}))
+		}
+	}
+	return m
+}
+
+func parsePortRange(n *schema.Node) *PortRange {
+	n.Strict("start", "end")
+	port := intRange(1, 65535, true)
+	return &PortRange{Start: n.Int("start", port), End: n.Int("end", port)}
+}
+
+// parseFilters reads the filters object of a source of type typ;
+// entryCountryAllowlist is for wireguard and masque only.
+func parseFilters(n *schema.Node, typ string) *SourceFiltersConfig {
+	n.Strict("countryAllowlist", "labelIncludeRegex", "labelExcludeRegex", "entryCountryAllowlist")
+	f := &SourceFiltersConfig{Label: labelfilter.Parse(n), CountryAllowlist: countryList(n, "countryAllowlist")}
+	if n.Has("entryCountryAllowlist") && typ != "" && !CandidateType(typ) {
+		n.Addf("entryCountryAllowlist", "not allowed for type %q", typ)
+	}
+	f.EntryCountryAllowlist = countryList(n, "entryCountryAllowlist")
+	return f
+}
+
+// countryList reads a list of ISO2 codes, upper-cased.
+func countryList(n *schema.Node, key string) []string {
+	var out []string
+	for _, e := range n.StringListElems(key, schema.StrOpt{Trim: true, AllowEmptyList: true}) {
 		code := strings.ToUpper(e.Value)
 		switch {
 		case len(code) != 2:
@@ -103,10 +213,10 @@ func parseFilters(n *schema.Node) *SubscriptionFiltersConfig {
 		case !country.Supported(code):
 			n.Addf(e.Key, "unsupported ISO2 country code %q", code)
 		default:
-			f.CountryAllowlist = append(f.CountryAllowlist, code)
+			out = append(out, code)
 		}
 	}
-	return f
+	return out
 }
 
 // parseTarget reads the target object; n may be nil (missing target).
@@ -139,14 +249,9 @@ func tagList(n *schema.Node, key string) []string {
 }
 
 func parseInboundSocks(n *schema.Node) *InboundSocksConfig {
-	n.Strict("listen", "portRange")
+	n.Strict("listen")
 	s := &InboundSocksConfig{}
 	s.Listen, _ = n.String("listen", required)
-	pr := n.Object("portRange", true)
-	pr.Strict("start", "end")
-	port := intRange(1, 65535, true)
-	s.PortRange.Start = pr.Int("start", port)
-	s.PortRange.End = pr.Int("end", port)
 	return s
 }
 

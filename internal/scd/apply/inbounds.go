@@ -10,20 +10,21 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// Inbounds replaces every non-fixed inbound of the target with the SOCKS
+// Inbounds replaces the inbounds that owns reports with the SOCKS
 // inbounds of tunnels (02 §2.3, D2):
 //
 //  1. a tunnel inbound tag listed in fixed fails the report without any RPC;
 //  2. ListInbounds; its error is returned as is (the caller turns it into a
 //     FailedReport);
-//  3. every listed inbound that is not fixed is removed;
+//  3. every listed inbound that owns reports for KindInbound is removed;
+//     fixed ones are never removed;
 //  4. every tunnel inbound is added: "replaced" when its tag was listed in 2,
 //     else "added".
 //
 // A failure in 3 or 4 ends the report with one failed item whose id is the
 // first tunnel's inbound tag (or "inbound"); there is no rollback. The
 // report's Skipped is empty, as in TS.
-func Inbounds(ctx context.Context, c xrayapi.InboundAPI, fixed []string, tunnels []topology.Tunnel, m Meta) (Report, error) {
+func Inbounds(ctx context.Context, c xrayapi.InboundAPI, fixed []string, owns Owner, tunnels []topology.Tunnel, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindInbound, m, startedAt, nil)
 
@@ -52,7 +53,7 @@ func Inbounds(ctx context.Context, c xrayapi.InboundAPI, fixed []string, tunnels
 	apply := func() error {
 		for _, h := range existing {
 			tag := h.GetTag()
-			if slices.Contains(fixed, tag) {
+			if slices.Contains(fixed, tag) || !owns(KindInbound, tag) {
 				continue
 			}
 			if err := c.RemoveInbound(ctx, tag); err != nil {

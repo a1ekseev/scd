@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks that the Xray version pinned in .xray-version matches both the
 # xray-core Go dependency in go.mod (by commit) and the Xray image tag in
-# docker-compose.yml (D4: they are updated only together).
+# docker-compose.yml (D4: they are updated only together), and that uTLS is a
+# direct dependency at exactly the version xray-core requires.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,8 +43,18 @@ if ! grep -qE "image:[[:space:]]*[\"']?${image//./\\.}[\"']?[[:space:]]*(#.*)?$"
   status=1
 fi
 
+utls=github.com/refraction-networking/utls
+xray_mod="$(cd "$root" && go list -m -f '{{.Path}}@{{.Version}}' github.com/xtls/xray-core)"
+utls_want="$(cd "$root" && go mod graph | awk -v from="$xray_mod" -v to="$utls@" '$1 == from && index($2, to) == 1 { print substr($2, length(to) + 1) }')"
+utls_have="$(cd "$root" && go list -m -f '{{.Version}} {{.Indirect}}' "$utls")"
+if [[ -z "$utls_want" || "$utls_have" != "$utls_want false" ]]; then
+  printf 'check-xray-version: go.mod must require %s %s directly (the version %s requires), found: %s\n' \
+    "$utls" "${utls_want:-<none>}" "$xray_mod" "${utls_have:-<none>}" >&2
+  status=1
+fi
+
 if [[ $status -ne 0 ]]; then
   printf 'check-xray-version: update go.mod, docker-compose.yml and .xray-version together (D4)\n' >&2
   exit "$status"
 fi
-printf 'check-xray-version: ok (Xray %s, commit %s)\n' "$version" "$commit"
+printf 'check-xray-version: ok (Xray %s, commit %s, uTLS %s)\n' "$version" "$commit" "$utls_want"

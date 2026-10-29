@@ -31,7 +31,7 @@
   tabindex="0"{{if $i}} hidden{{end}}
 >
   <div class="instance-head"><div><h2>{{$in.ID}}</h2><p>{{$in.Source}} · {{$in.Freshness}}</p></div></div>
-  {{if $in.Snapshot}}{{template "subscriptions" $in.Snapshot.Subscriptions}}{{else}}<section class="subscription-card"><p class="empty-state">No snapshot available.</p></section>{{end}}
+  {{if $in.Snapshot}}{{template "wgp" $in.Snapshot}}{{template "subscriptions" $in.Snapshot.Subscriptions}}{{else}}<section class="subscription-card"><p class="empty-state">No snapshot available.</p></section>{{end}}
 </section>
 {{- else}}<section class="subscription-card"><div class="subscription-head"><h2>No subscriptions</h2></div></section>{{end}}
   </main>
@@ -80,6 +80,18 @@
         {{- end}}
       </div>
     </div>
+  </article>{{end}}{{with sourcesCard .}}
+  <article class="balancer-card state-{{.Class}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">Sources</div>
+      <div class="node-title">{{.Title}}</div>
+      <div class="node-metrics">
+        {{- range .Metrics}}
+        {{template "metric" .}}
+        {{- end}}
+      </div>
+    </div>
   </article>{{end}}
   <div class="nodes-grid">
     {{range $i, $tn := tunnelCards .}}{{if $i}}
@@ -90,7 +102,7 @@
 {{- define "tunnel"}}<article class="node-card state-{{stateClass .State}}{{if .Selected}} is-selected{{end}}">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-title">{{with .Badge}}<span class="node-badge">{{.}}</span>{{end}}{{.DisplayName}}</div>
+    <div class="node-head"><div class="node-title">{{with .Badge}}<span class="node-badge">{{.}}</span>{{end}}{{.DisplayName}}</div>{{with .SourceID}}<span class="source-badge {{sourceColor .}}">{{.}}</span>{{end}}</div>
     <div class="node-meta">{{orDash .CountryISO2}} · {{.Endpoint}}</div>
     <div class="node-metrics">
       {{template "metric" (metric "State" .State)}}
@@ -103,4 +115,24 @@
   </div>
 </article>
 {{- end}}
-{{- define "metric"}}<span class="metric{{metricClass .Label .Value}}"{{with .Title}} title="{{.}}"{{end}}><span class="metric-label">{{.Label}}</span><span class="metric-value">{{.Value}}</span></span>{{end}}
+{{- define "wgp"}}{{with wgpCards .}}<section class="subscription-card">
+  <div class="subscription-head">
+    <h2>wgp</h2>
+  </div>
+  {{- range .}}
+  <article class="balancer-card state-{{.Class}}">
+    <div class="node-orb" aria-hidden="true"></div>
+    <div class="node-main">
+      <div class="node-kicker">{{.Kicker}}</div>
+      <div class="node-title">{{.Title}}</div>
+      <div class="node-metrics">
+        {{- range .Metrics}}
+        {{template "metric" .}}
+        {{- end}}
+      </div>
+    </div>
+  </article>
+  {{- end}}
+</section>
+{{end}}{{end}}
+{{- define "metric"}}<span class="metric{{metricClass .Label .Value}}{{.Class}}"{{with .Title}} title="{{.}}"{{end}}><span class="metric-label">{{.Label}}</span><span class="metric-value">{{.Value}}</span></span>{{end}}

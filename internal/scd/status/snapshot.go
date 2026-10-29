@@ -17,6 +17,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 )
@@ -95,6 +96,27 @@ type StatusTunnel struct {
 	ObservatoryHealthPingFail        *int64   `json:"observatoryHealthPingFail,omitempty"`
 	ObservatoryHealthPingAverageMs   *float64 `json:"observatoryHealthPingAverageMs,omitempty"`
 	ObservatoryHealthPingDeviationMs *float64 `json:"observatoryHealthPingDeviationMs,omitempty"`
+
+	// SourceID is the id of the tunnel's source, set only when its target
+	// has sources (GroupedStatusTarget.Sources).
+	SourceID string `json:"sourceId,omitempty"`
+	// Protocol is the tunnel protocol, set only when it is not VLESS
+	// ("wireguard").
+	Protocol string `json:"protocol,omitempty"`
+}
+
+// SourceView is one source of a grouped target, in source id order.
+type SourceView struct {
+	SourceID string `json:"sourceId"`
+	Type     string `json:"type"`
+	Enabled  bool   `json:"enabled"`
+	// MaxActive, ActiveCount and CandidateCount are set for a wireguard or masque
+	// source; the counts after its first successful sync.
+	MaxActive      int `json:"maxActive,omitempty"`
+	ActiveCount    int `json:"activeCount,omitempty"`
+	CandidateCount int `json:"candidateCount,omitempty"`
+	// Warnings are the source-level warnings of its last successful sync.
+	Warnings []normalize.Warning `json:"warnings,omitempty"`
 }
 
 // BalancerSelectionView is the balancer selection of a grouped target
@@ -162,6 +184,9 @@ type GroupedStatusTarget struct {
 	BalancerMonitor BalancerMonitorView `json:"balancerMonitor"`
 	// BalancerSelection is nil when the feature is off (D3: no key).
 	BalancerSelection *BalancerSelectionView `json:"balancerSelection,omitempty"`
+	// Sources is nil (no key, D3) for a subscription with one source and no
+	// source warning: the form of the TS snapshots.
+	Sources []SourceView `json:"sources,omitempty"`
 }
 
 // GroupedSubscription is a subscription with its targets, sorted by address.
@@ -178,6 +203,8 @@ type InstanceSnapshot struct {
 	CapturedAt    string                `json:"capturedAt"`
 	Subscriptions []GroupedSubscription `json:"subscriptions"`
 	Tunnels       []StatusTunnel        `json:"tunnels"`
+	// WGP holds the wgp status.json blocks; nil (no key, D3) without any.
+	WGP []WGPBlock `json:"wgp,omitzero"`
 }
 
 // RemoteView is the collection state of one remote instance for the
@@ -223,20 +250,30 @@ func clone[T any](p *T) *T {
 
 // BuildTunnels returns the flat tunnel list of every target in m, sorted by
 // subscription id, target address and display name (strings.Compare, D23).
-// Only targets with state (after a successful sync) contribute.
-func BuildTunnels(m *state.Memory) []StatusTunnel {
+// Only targets with state (after a successful sync) contribute. A tunnel
+// gets its sourceId when its target has sources (sourceViews with cfg).
+func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 	tunnels := []StatusTunnel{}
 	for _, key := range m.Keys() {
 		subID, addr, ok := strings.Cut(key, "::")
 		if !ok {
 			addr = key
 		}
+		var sub config.SubscriptionConfig
+		if i := slices.IndexFunc(cfg.Subscriptions, func(s config.SubscriptionConfig) bool { return s.ID == subID }); i >= 0 {
+			sub = cfg.Subscriptions[i]
+		}
 		m.View(key, func(t *state.Target) {
+			withSource := sourceViews(sub, t) != nil
 			for _, tn := range t.Tunnels {
 				st := statusTunnel(subID, addr, tn, &t.Balancer)
 				if t.BalancerSelection.State != "" {
 					addSelection(&st, tn, &t.BalancerSelection)
 				}
+				if withSource {
+					st.SourceID = tn.Mapping.SourceID
+				}
+				st.Protocol = tn.Mapping.Protocol
 				tunnels = append(tunnels, st)
 			}
 		})
@@ -247,6 +284,33 @@ func BuildTunnels(m *state.Memory) []StatusTunnel {
 			strings.Compare(a.DisplayName, b.DisplayName))
 	})
 	return tunnels
+}
+
+// sourceViews is the sources[] of target t (nil before any state) of sub:
+// every source of sub in id order with its warnings and, for wireguard and masque, its
+// counts; nil when sub has one VLESS source without warnings (D3: the TS
+// snapshot form).
+func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
+	views := make([]SourceView, 0, len(sub.Sources))
+	shown := len(sub.Sources) > 1
+	for _, src := range sub.Sources {
+		v := SourceView{SourceID: src.ID, Type: src.Type, Enabled: src.Enabled, MaxActive: src.MaxActive}
+		if t != nil {
+			if s := t.Sources[src.ID]; s != nil {
+				v.Warnings = s.AllWarnings()
+				if config.CandidateType(src.Type) && s.Topology != nil {
+					v.ActiveCount, v.CandidateCount = len(s.Topology.Tunnels), s.CandidateCount
+				}
+			}
+		}
+		shown = shown || len(v.Warnings) > 0 || src.Type != config.SourceVLESS
+		views = append(views, v)
+	}
+	if !shown {
+		return nil
+	}
+	slices.SortStableFunc(views, func(a, b SourceView) int { return strings.Compare(a.SourceID, b.SourceID) })
+	return views
 }
 
 // statusTunnel copies the state of tn and its target's balancer monitor.
@@ -445,7 +509,7 @@ func sortGroups(subs []GroupedSubscription) {
 // memory state (TS buildConfiguredStatusGroups). A configured target's
 // balancer monitor is its memory state, else the group's, else idle; with
 // balancerSelection enabled it also gets the selection view (idle until
-// polled).
+// polled), and its sources when sourceViews has them.
 func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *state.Memory) []GroupedSubscription {
 	subs := GroupTunnels(tunnels)
 	index := make(map[string]int, len(subs))
@@ -469,6 +533,7 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			bm  *BalancerMonitorView
 			sel *BalancerSelectionView
 		)
+		srcs := sourceViews(c, nil)
 		bs := c.Target.BalancerSelection
 		if bs.Enabled {
 			sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, nil, nil))
@@ -478,6 +543,7 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 				v := balancerView(&t.Balancer)
 				bm = &v
 			}
+			srcs = sourceViews(c, t)
 			if bs.Enabled {
 				sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, &t.BalancerSelection, t.Tunnels))
 			}
@@ -486,25 +552,26 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			if bm != nil {
 				subs[i].Targets[j].BalancerMonitor = *bm
 			}
-			subs[i].Targets[j].BalancerSelection = sel
+			subs[i].Targets[j].BalancerSelection, subs[i].Targets[j].Sources = sel, srcs
 			continue
 		}
 		if bm == nil {
 			bm = &BalancerMonitorView{State: state.BalancerIdle}
 		}
 		subs[i].Targets = append(subs[i].Targets, GroupedStatusTarget{
-			SubscriptionID: c.ID, TargetAddress: addr, Tunnels: []StatusTunnel{}, BalancerMonitor: *bm, BalancerSelection: sel,
+			SubscriptionID: c.ID, TargetAddress: addr, Tunnels: []StatusTunnel{}, BalancerMonitor: *bm, BalancerSelection: sel, Sources: srcs,
 		})
 	}
 	sortGroups(subs)
 	return subs
 }
 
-// BuildInstanceSnapshot is the local /api/instance-status snapshot.
+// BuildInstanceSnapshot is the local /api/instance-status snapshot. It reads
+// the wgp status.json files on every call.
 func BuildInstanceSnapshot(m *state.Memory, cfg config.AppConfig, instanceID string, now time.Time) InstanceSnapshot {
-	tunnels := BuildTunnels(m)
+	tunnels := BuildTunnels(m, cfg)
 	return InstanceSnapshot{
 		Version: SnapshotVersion, InstanceID: instanceID, CapturedAt: formatTime(now),
-		Subscriptions: BuildConfiguredGroups(tunnels, cfg, m), Tunnels: tunnels,
+		Subscriptions: BuildConfiguredGroups(tunnels, cfg, m), Tunnels: tunnels, WGP: buildWGP(cfg),
 	}
 }

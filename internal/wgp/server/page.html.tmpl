@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>wgp status</title>
+<style>
+:root { color-scheme: light; --bg: #f2efe7; --panel: #fffaf0; --ink: #1f1a14; --muted: #766b5c; --line: #dfd3c0; --healthy: #16864d; --degraded: #c53931; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: linear-gradient(135deg, #f8f5ed, var(--bg)); }
+main { max-width: 1100px; margin: 0 auto; padding: 28px 16px; }
+h1 { margin: 0 0 4px; font-size: clamp(28px, 4vw, 40px); letter-spacing: -.04em; }
+p { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+.card { margin: 0 0 16px; padding: 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); overflow-x: auto; }
+.card h2 { margin: 0 0 8px; font-size: 20px; }
+.ok { color: var(--healthy); } .bad { color: var(--degraded); }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 14px; }
+dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+<h1>wgp</h1>
+<p>Updated {{.UpdatedAt.Format "2006-01-02 15:04:05 MST"}}</p>
+{{range .Providers}}
+<section class="card">
+<h2>{{.ID}} <span class="{{if eq .State "ok"}}ok{{else}}bad{{end}}">{{.State}}</span></h2>
+<dl>
+<dt>type</dt><dd>{{.Type}}</dd>
+<dt>output</dt><dd>{{.Output}}</dd>
+<dt>issued</dt><dd>{{.Issued}}{{if .Limit}} of {{.Limit}}{{end}}</dd>
+{{if not .ExpiresAt.IsZero}}<dt>expires</dt><dd>{{.ExpiresAt.Format "2006-01-02 15:04 MST"}}</dd>{{end}}
+{{if not .LastTickAt.IsZero}}<dt>last tick</dt><dd>{{.LastTickAt.Format "2006-01-02 15:04:05 MST"}}</dd>{{end}}
+{{if not .LastSuccessAt.IsZero}}<dt>last success</dt><dd>{{.LastSuccessAt.Format "2006-01-02 15:04:05 MST"}}</dd>{{end}}
+{{if .Error}}<dt>error</dt><dd class="bad">{{.Error}}</dd>{{end}}
+</dl>
+</section>
+{{else}}
+<section class="card"><p>No provider has ticked yet.</p></section>
+{{end}}
+</main>
+</body>
+</html>

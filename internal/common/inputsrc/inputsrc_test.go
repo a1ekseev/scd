@@ -364,3 +364,74 @@ func TestLoadRedirectDowngradeStripsHeaders(t *testing.T) {
 		t.Fatalf("header sent over the downgraded redirect: %q", got)
 	}
 }
+
+func TestLoadMaxBytes(t *testing.T) {
+	const limit = 16
+	body := func(n int) string { return "vless://" + strings.Repeat("a", n-len("vless://")) }
+	kinds := map[string]func(t *testing.T, content string) (input string, o Options){
+		"file": func(t *testing.T, c string) (string, Options) { return writeFile(t, c), Options{} },
+		"stdin": func(_ *testing.T, c string) (string, Options) {
+			return "-", Options{Stdin: strings.NewReader(c)}
+		},
+		"http": func(t *testing.T, c string) (string, Options) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, c)
+			}))
+			t.Cleanup(srv.Close)
+			return srv.URL, Options{}
+		},
+	}
+	cases := []struct {
+		name     string
+		size     int
+		maxBytes int64
+		wantErr  bool
+	}{
+		{"below", limit - 1, limit, false},
+		{"equal", limit, limit, false},
+		{"above", limit + 1, limit, true},
+		{"zero", 1 << 10, 0, false},
+	}
+	for kind, mk := range kinds {
+		for _, tc := range cases {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				input, o := mk(t, body(tc.size))
+				o.Format, o.MaxBytes = "plain", tc.maxBytes
+				got, err := Load(context.Background(), input, o)
+				if tc.wantErr {
+					if err == nil || !strings.HasSuffix(err.Error(), " exceeds 16 bytes") {
+						t.Fatalf("err = %v", err)
+					}
+					return
+				}
+				if err != nil || len(got.Content) != tc.size {
+					t.Fatalf("got %d bytes, err = %v", len(got.Content), err)
+				}
+			})
+		}
+	}
+}
+
+func TestTooLargeUnits(t *testing.T) {
+	for limit, want := range map[int64]string{
+		512 << 10: "input from x exceeds 512 KiB",
+		64 << 20:  "input from x exceeds 64 MiB",
+		1536:      "input from x exceeds 1536 bytes",
+		1:         "input from x exceeds 1 bytes",
+	} {
+		if got := tooLarge("x", limit).Error(); got != want {
+			t.Errorf("tooLarge(%d) = %q, want %q", limit, got, want)
+		}
+	}
+}
+
+func TestLoadMaxBytesKiBMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "vless://"+strings.Repeat("a", 1<<10))
+	}))
+	defer srv.Close()
+	_, err := Load(context.Background(), srv.URL, Options{MaxBytes: 1 << 10})
+	if err == nil || err.Error() != "input from "+srv.URL+" exceeds 1 KiB" {
+		t.Fatalf("err = %v", err)
+	}
+}

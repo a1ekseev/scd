@@ -1,0 +1,55 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "api": {
+    "tag": "api",
+    "listen": "127.0.0.1:{{API_PORT}}",
+    "services": [
+      "HandlerService"
+    ]
+  },
+  "inbounds": [
+    {
+      "tag": "wg-peer",
+      "protocol": "wireguard",
+      "listen": "127.0.0.1",
+      "port": {{WG_PORT}},
+      "settings": {
+        "secretKey": "{{PEER_SECRET_KEY}}",
+        "address": [
+          "10.2.0.1/32"
+        ],
+        "mtu": 1420,
+        "peers": [
+          {
+            "publicKey": "{{CLIENT_A_PUBLIC_KEY}}",
+            "allowedIPs": [
+              "10.2.0.2/32"
+            ]
+          },
+          {
+            "publicKey": "{{CLIENT_B_PUBLIC_KEY}}",
+            "allowedIPs": [
+              "10.2.0.3/32"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "to-http",
+      "protocol": "freedom",
+      "settings": {
+        "redirect": "{{HTTP_ADDR}}",
+        "finalRules": [
+          {
+            "action": "allow"
+          }
+        ]
+      }
+    }
+  ]
+}

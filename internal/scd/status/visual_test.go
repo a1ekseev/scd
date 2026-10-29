@@ -28,24 +28,12 @@ var visualWidths = []int64{1280, 390}
 // the TS reference HTML and the Go HTML are rendered by the same headless
 // Chrome (SCD_CHROME) at each width and compared pixel by pixel.
 func TestDashboardVisualMatchesTS(t *testing.T) {
-	chrome := os.Getenv("SCD_CHROME")
-	if chrome == "" {
-		t.Skip("SCD_CHROME is not set")
-	}
+	bctx := startChrome(t)
 	names := fixtureNames(t)
 	pages := make(map[string][2]string, len(names))
 	for _, name := range names {
 		tsPage, goPage := writePages(t, name)
 		pages[name] = [2]string{tsPage, goPage}
-	}
-
-	actx, cancelAlloc := chromedp.NewExecAllocator(t.Context(),
-		append(chromedp.DefaultExecAllocatorOptions[:], chromedp.ExecPath(chrome), chromedp.NoSandbox)...)
-	defer cancelAlloc()
-	bctx, cancelBrowser := chromedp.NewContext(actx)
-	defer cancelBrowser()
-	if err := chromedp.Do(bctx); err != nil {
-		t.Fatalf("start %s: %v", chrome, err)
 	}
 
 	for _, name := range names {
@@ -65,6 +53,25 @@ func TestDashboardVisualMatchesTS(t *testing.T) {
 			}
 		})
 	}
+}
+
+// startChrome starts the headless Chrome of SCD_CHROME (the test is skipped
+// without it) and returns its browser context, closed with the test.
+func startChrome(t *testing.T) context.Context {
+	t.Helper()
+	chrome := os.Getenv("SCD_CHROME")
+	if chrome == "" {
+		t.Skip("SCD_CHROME is not set")
+	}
+	actx, cancelAlloc := chromedp.NewExecAllocator(t.Context(),
+		append(chromedp.DefaultExecAllocatorOptions[:], chromedp.ExecPath(chrome), chromedp.NoSandbox)...)
+	t.Cleanup(cancelAlloc)
+	bctx, cancelBrowser := chromedp.NewContext(actx)
+	t.Cleanup(cancelBrowser)
+	if err := chromedp.Do(bctx); err != nil {
+		t.Fatalf("start %s: %v", chrome, err)
+	}
+	return bctx
 }
 
 // writePages writes the TS reference HTML and the Go HTML of fixture name

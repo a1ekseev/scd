@@ -32,7 +32,7 @@ func corpusLink(t *testing.T, n int) vless.Link {
 
 func handler(t *testing.T, l vless.Link) *core.OutboundHandlerConfig {
 	t.Helper()
-	n, _, skip := normalize.Normalize(l, normalize.Policy{AllowInsecure: true})
+	n, _, skip := normalize.Normalize(l, normalize.Policy{AllowInsecure: true, TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("line %d: %+v", l.Line, *skip)
 	}

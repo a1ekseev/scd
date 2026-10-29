@@ -22,5 +22,5 @@ func RunServe(ctx context.Context, cfgPath string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return serve(ctx, cfg, stderr)
+	return serve(ctx, cfgPath, cfg, stderr)
 }

@@ -146,7 +146,7 @@ func checkCase(t *testing.T, c xrayapi.Client, lc liveCase) []string {
 	if skip != nil {
 		t.Fatalf("parse skip: %+v", *skip)
 	}
-	n, _, skip := normalize.Normalize(link, normalize.Policy{AllowInsecure: true})
+	n, _, skip := normalize.Normalize(link, normalize.Policy{AllowInsecure: true, TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("normalize skip: %+v", *skip)
 	}
@@ -310,7 +310,7 @@ func addInvalidKey(t *testing.T, c xrayapi.Client, good subscription.Line, badEn
 	if skip != nil {
 		t.Fatalf("%+v", *skip)
 	}
-	n, _, nskip := normalize.Normalize(link, normalize.Policy{})
+	n, _, nskip := normalize.Normalize(link, normalize.Policy{TagPrefix: "vless"})
 	if nskip != nil {
 		t.Fatalf("valid line skipped: %+v", *nskip)
 	}
@@ -344,7 +344,7 @@ func TestLiveRejectsInvalidMLKEMKeyLikeNormalize(t *testing.T) {
 	if skip != nil {
 		t.Fatalf("%+v", *skip)
 	}
-	_, _, nskip := normalize.Normalize(link, normalize.Policy{AllowInsecure: true})
+	_, _, nskip := normalize.Normalize(link, normalize.Policy{AllowInsecure: true, TagPrefix: "vless"})
 	if nskip == nil || nskip.Code != vless.CodeUnsupportedValue || nskip.Reason != reasonInvalidKey {
 		t.Fatalf("normalize = %+v, want %s %q", nskip, vless.CodeUnsupportedValue, reasonInvalidKey)
 	}

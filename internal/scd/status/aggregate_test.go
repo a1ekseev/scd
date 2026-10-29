@@ -61,7 +61,7 @@ func TestCollectStoresLatestSnapshot(t *testing.T) {
 		_, _ = w.Write([]byte(remoteSnapshotJSON))
 	})
 	var logs bytes.Buffer
-	log := slog.New(slog.NewJSONHandler(&logs, nil))
+	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	a := NewAggregator([]config.RemoteStatusInstanceConfig{r})
 	a.Collect(context.Background(), r, srv.Client(), log, clock(t0))
 
@@ -81,7 +81,8 @@ func TestCollectStoresLatestSnapshot(t *testing.T) {
 		t.Fatalf("lastError present: %v", got)
 	}
 	jsonEqual(t, got["snapshot"], decode(t, []byte(remoteSnapshotJSON)))
-	if !strings.Contains(logs.String(), `"event":"remote_status_collected"`) || !strings.Contains(logs.String(), `"remoteInstanceId":"edge-eu"`) {
+	if !strings.Contains(logs.String(), `"event":"remote_status_collected"`) || !strings.Contains(logs.String(), `"remoteInstanceId":"edge-eu"`) ||
+		!strings.Contains(logs.String(), `"level":"DEBUG"`) {
 		t.Errorf("logs: %s", logs.String())
 	}
 }

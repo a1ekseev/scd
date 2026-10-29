@@ -13,6 +13,7 @@ import (
 	gtlcli "github.com/a1ekseev/scd/internal/gtl/cli"
 	scdcli "github.com/a1ekseev/scd/internal/scd/cli"
 	sfccli "github.com/a1ekseev/scd/internal/sfc/cli"
+	wgpcli "github.com/a1ekseev/scd/internal/wgp/cli"
 )
 
 // NewRoot builds the root `scd` command with all service commands mounted.
@@ -28,7 +29,7 @@ func NewRoot() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(scdcli.Commands()...)
-	root.AddCommand(sfccli.New(), gtlcli.New())
+	root.AddCommand(sfccli.New(), gtlcli.New(), wgpcli.New())
 	return root
 }
 
@@ -49,7 +50,7 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	if ie, ok := errors.AsType[*cliutil.InterruptedError](err); ok {
 		return ie.ExitCode() // the command printed its report and logged the cancel
 	}
-	if !errors.Is(err, cliutil.ErrReportFailed) {
+	if !errors.Is(err, cliutil.ErrReportFailed) && !errors.Is(err, cliutil.ErrLogged) {
 		fmt.Fprintln(stderr, err.Error())
 	}
 	return 1

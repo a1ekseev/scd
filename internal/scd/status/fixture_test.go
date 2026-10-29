@@ -1,6 +1,7 @@
 package status
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -24,7 +26,10 @@ const refStatusDir = "../../../testdata/reference/scd/status/"
 
 // fixture is the task 0.4 fixture contract (testdata/reference/README.md).
 type fixture struct {
-	Now    time.Time `json:"now"`
+	Now time.Time `json:"now"`
+	// WGP extends the contract (wgp-*): status.json per wgpDir, written
+	// with mode 0600; a JSON string is written verbatim (broken files).
+	WGP    map[string]json.RawMessage `json:"wgp"`
 	Config struct {
 		InstanceID    string `json:"instanceId"`
 		Subscriptions []struct {
@@ -34,6 +39,17 @@ type fixture struct {
 			Prefix  string `json:"observatorySubjectSelectorPrefix"`
 			// BalancerSelection extends the 0.4 contract (task 6.6).
 			BalancerSelection config.BalancerSelectionConfig `json:"balancerSelection"`
+			// Sources extends the 0.4 contract (sources-*); empty = one
+			// source "vless".
+			Sources []struct {
+				ID        string `json:"id"`
+				Type      string `json:"type"`
+				Enabled   bool   `json:"enabled"`
+				MaxActive int    `json:"maxActive"`
+				// WGPDir extends the contract (wgp-*): the source input is
+				// <tmp>/<wgpDir>/<id>, next to the status.json of wgp[wgpDir].
+				WGPDir string `json:"wgpDir"`
+			} `json:"sources"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
 			ID       string `json:"id"`
@@ -48,7 +64,17 @@ type fixture struct {
 		BalancerMonitor fixtureBalancer `json:"balancerMonitor"`
 		// BalancerSelection extends the 0.4 contract (task 6.6).
 		BalancerSelection *fixtureSelection `json:"balancerSelection"`
-		Tunnels           []struct {
+		// Sources extends the 0.4 contract (sources-*): the source warnings.
+		Sources []struct {
+			SourceID       string              `json:"sourceId"`
+			Warnings       []normalize.Warning `json:"warnings"`
+			CandidateCount int                 `json:"candidateCount"`
+			// NoReplacement are the tunnels without a replacement candidate.
+			NoReplacement []string `json:"noReplacement"`
+		} `json:"sources"`
+		Tunnels []struct {
+			// SourceID extends the 0.4 contract (sources-*); "" = "vless".
+			SourceID                 string         `json:"sourceId"`
 			BaseTunnelID             string         `json:"baseTunnelId"`
 			DisplayName              string         `json:"displayName"`
 			CountryISO2              string         `json:"countryIso2"`
@@ -77,6 +103,13 @@ type fixtureMonitor struct {
 	LastSuccessStatusCode, LastSuccessLatencyMs *int
 	LastError                                   string
 	ConsecutiveFailures                         int
+	// FailuresInRow and the rest are not in the API; the fixtures never set
+	// them.
+	FailuresInRow   int             `json:"-"`
+	FailingSince    *time.Time      `json:"-"`
+	LastRepairError string          `json:"-"`
+	LastRejoinError string          `json:"-"`
+	Flap            state.FlapState `json:"-"`
 }
 
 type fixtureBalancer struct {
@@ -91,6 +124,7 @@ type fixtureBalancer struct {
 	RemotePingLastStatusCode                                              *int
 	RemotePingLastError                                                   string
 	ConsecutiveFailures                                                   int
+	FailingSince                                                          *time.Time `json:"-"`
 }
 
 // fixtureSelection is targets[].balancerSelection (task 6.6): the keys of
@@ -165,10 +199,19 @@ type loaded struct {
 // have no TS reference: the feature does not exist in TS (D22).
 const selectionPrefix = "selection-"
 
+// sourcesPrefix names the fixtures of several sources per subscription; they
+// have no TS reference either.
+const sourcesPrefix = "sources-"
+
+// wgpPrefix names the fixtures with wgp status files; no TS reference.
+const wgpPrefix = "wgp-"
+
 // fixtureNames lists the 0.4 fixtures (with a TS reference).
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
-	return globFixtures(t, func(name string) bool { return !strings.HasPrefix(name, selectionPrefix) })
+	return globFixtures(t, func(name string) bool {
+		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix) && !strings.HasPrefix(name, wgpPrefix)
+	})
 }
 
 // selectionFixtureNames lists the balancer selection fixtures.
@@ -209,10 +252,39 @@ func loadFixture(t *testing.T, name string) loaded {
 		t.Fatalf("%s: %v", name, err)
 	}
 
+	wgpRoot := ""
+	if len(f.WGP) > 0 {
+		wgpRoot = t.TempDir()
+	}
+	for dir, data := range f.WGP {
+		var verbatim string
+		if json.Unmarshal(data, &verbatim) == nil {
+			data = []byte(verbatim)
+		}
+		if err := os.MkdirAll(filepath.Join(wgpRoot, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(wgpRoot, dir, "status.json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	var cfg config.AppConfig
 	for _, s := range f.Config.Subscriptions {
+		sources := []config.SourceConfig{testSource("/fixture/sub.txt")}
+		if len(s.Sources) > 0 {
+			sources = nil
+			for _, fs := range s.Sources {
+				src := testSource("/fixture/" + fs.ID + ".txt")
+				if fs.WGPDir != "" {
+					src.Input = filepath.Join(wgpRoot, fs.WGPDir, fs.ID)
+				}
+				src.ID, src.Type, src.Enabled, src.MaxActive = fs.ID, fs.Type, fs.Enabled, fs.MaxActive
+				sources = append(sources, src)
+			}
+		}
 		cfg.Subscriptions = append(cfg.Subscriptions, config.SubscriptionConfig{
-			ID: s.ID, Input: "/fixture/sub.txt", Enabled: s.Enabled, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+			ID: s.ID, Enabled: s.Enabled, Sources: sources,
 			Target: config.SubscriptionTargetConfig{
 				Address: s.Address, TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: s.Prefix,
 				FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
@@ -232,9 +304,15 @@ func loadFixture(t *testing.T, name string) loaded {
 	mem := state.New()
 	for _, tg := range f.Targets {
 		key := state.Key(tg.SubscriptionID, tg.TargetAddress)
-		var topo topology.Topology
+		topos := map[string]*topology.Topology{}
+		monitors := map[string]state.TunnelMonitor{}
 		for _, tn := range tg.Tunnels {
-			topo.Tunnels = append(topo.Tunnels, topology.Tunnel{
+			id := cmp.Or(tn.SourceID, "vless")
+			if topos[id] == nil {
+				topos[id] = &topology.Topology{}
+			}
+			monitors[tn.OutboundTagInitial] = state.TunnelMonitor(tn.Monitor)
+			topos[id].Tunnels = append(topos[id].Tunnels, topology.Tunnel{
 				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
 				BaseOutboundTag:    tn.OutboundWithoutPrefixTag,
 				OutboundTagInitial: tn.OutboundTagInitial, OutboundTagCurrent: tn.OutboundTagCurrent,
@@ -244,14 +322,29 @@ func loadFixture(t *testing.T, name string) loaded {
 				OutboundWithoutPrefix: topology.PreparedOutbound{Tag: tn.OutboundWithoutPrefixTag},
 			})
 		}
-		mem.ReplaceTopology(key, topo, nil)
+		if len(topos) == 0 {
+			topos["vless"] = &topology.Topology{}
+		}
+		for id, topo := range topos {
+			mem.ReplaceSourceTopology(key, id, *topo, nil)
+		}
 		mem.Update(key, func(st *state.Target) {
 			st.Balancer = state.BalancerMonitor(tg.BalancerMonitor)
 			if tg.BalancerSelection != nil {
 				st.BalancerSelection = tg.BalancerSelection.selectionState()
 			}
-			for i, tn := range tg.Tunnels {
-				st.Tunnels[i].Monitor = state.TunnelMonitor(tn.Monitor)
+			for _, tn := range st.Tunnels {
+				tn.Monitor = monitors[tn.Mapping.OutboundTagInitial]
+			}
+			for _, s := range tg.Sources {
+				src := st.Sources[s.SourceID]
+				src.Warnings, src.CandidateCount = s.Warnings, s.CandidateCount
+				for _, tag := range s.NoReplacement {
+					if src.NoReplacement == nil {
+						src.NoReplacement = map[string]bool{}
+					}
+					src.NoReplacement[tag] = true
+				}
 			}
 		})
 	}

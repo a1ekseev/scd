@@ -10,13 +10,16 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
+	"github.com/a1ekseev/scd/internal/common/neterr"
 	"github.com/a1ekseev/scd/internal/scd/config"
 )
 
@@ -162,6 +165,7 @@ func (a *Aggregator) Collect(ctx context.Context, r config.RemoteStatusInstanceC
 	}
 
 	a.mu.Lock()
+	prevErr := cur.lastError
 	if err != nil {
 		cur.lastError = err.Error()
 	} else {
@@ -171,18 +175,48 @@ func (a *Aggregator) Collect(ctx context.Context, r config.RemoteStatusInstanceC
 	}
 	a.mu.Unlock()
 
+	apiURL := inputsrc.RedactURL(r.APIURL)
 	if err != nil {
-		log.LogAttrs(ctx, slog.LevelWarn, "Remote instance status collection failed; keeping the last successful snapshot.",
+		level := slog.LevelWarn
+		if err.Error() == prevErr {
+			level = slog.LevelDebug // the same failure as the last collection
+		}
+		log.LogAttrs(ctx, level, "Remote instance status collection failed; keeping the last successful snapshot.",
 			slog.String("event", "remote_status_collection_failed"), slog.String("remoteInstanceId", r.ID),
-			slog.String("apiUrl", r.APIURL), slog.String("error", err.Error()))
+			slog.String("apiUrl", apiURL), slog.String("error", err.Error()))
 		return
 	}
-	log.LogAttrs(ctx, slog.LevelInfo, "Remote instance status collected.",
-		slog.String("event", "remote_status_collected"), slog.String("remoteInstanceId", r.ID), slog.String("apiUrl", r.APIURL))
+	if prevErr != "" {
+		log.LogAttrs(ctx, slog.LevelInfo, "Remote instance status collection recovered.",
+			slog.String("event", "remote_status_recovered"), slog.String("remoteInstanceId", r.ID), slog.String("apiUrl", apiURL))
+	}
+	log.LogAttrs(ctx, slog.LevelDebug, "Remote instance status collected.",
+		slog.String("event", "remote_status_collected"), slog.String("remoteInstanceId", r.ID), slog.String("apiUrl", apiURL))
 }
 
-// fetchRemote performs one remote request and validates the response.
+// fetchRemote performs one remote request and validates the response. Its
+// errors name the URL only as inputsrc.RedactURL and have no local address
+// (neterr.Stable): they reach the edge-triggered log and lastError of
+// /api/instances.
 func fetchRemote(ctx context.Context, r config.RemoteStatusInstanceConfig, client *http.Client) (json.RawMessage, InstanceSnapshot, error) {
+	raw, parsed, err := fetchRemoteRaw(ctx, r, client)
+	if err == nil {
+		return raw, parsed, nil
+	}
+	// net/http quotes the URL with its password masked, so RedactInputIn
+	// alone would miss it.
+	if ue, ok := errors.AsType[*url.Error](err); ok {
+		ue.URL = inputsrc.RedactURL(r.APIURL)
+	}
+	err = neterr.Stable(err)
+	if msg := inputsrc.RedactInputIn(err.Error(), r.APIURL); msg != err.Error() {
+		err = errors.New(msg)
+	}
+	return nil, InstanceSnapshot{}, err
+}
+
+// fetchRemoteRaw is fetchRemote without the redaction.
+func fetchRemoteRaw(ctx context.Context, r config.RemoteStatusInstanceConfig, client *http.Client) (json.RawMessage, InstanceSnapshot, error) {
 	if r.TimeoutMs > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(r.TimeoutMs)*time.Millisecond)

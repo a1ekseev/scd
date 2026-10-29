@@ -53,7 +53,7 @@ func TestInboundsReplacesNonFixed(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticInbounds("api", "old", "in-a"))
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
 
-	r, err := apply.Inbounds(context.Background(), c, []string{"api"}, tunnels, meta())
+	r, err := apply.Inbounds(context.Background(), c, []string{"api"}, notFixed([]string{"api"}), tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestInboundsReplacesNonFixed(t *testing.T) {
 func TestInboundsEmptyTopologyRemovesAllNonFixed(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticInbounds("api", "in-a"))
 
-	r, err := apply.Inbounds(context.Background(), c, []string{"api"}, nil, meta())
+	r, err := apply.Inbounds(context.Background(), c, []string{"api"}, notFixed([]string{"api"}), nil, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestInboundsFixedConflictNoRPC(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
-	r, err := apply.Inbounds(context.Background(), c, []string{"in-b"}, tunnels, meta())
+	r, err := apply.Inbounds(context.Background(), c, []string{"in-b"}, notFixed([]string{"in-b"}), tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestInboundsAddFailureNoRollback(t *testing.T) {
 	tunnels := []topology.Tunnel{tunnel("a", 20000), tunnel("b", 20001)}
 
 	api := &failOnAddInbound{InboundAPI: c, srv: srv, tag: "in-b"}
-	r, err := apply.Inbounds(context.Background(), api, nil, tunnels, meta())
+	r, err := apply.Inbounds(context.Background(), api, nil, notFixed(nil), tunnels, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestInboundsFailedIDFallsBackToKind(t *testing.T) {
 	srv, c := xrayfake.Start(t, xrayfake.WithStaticInbounds("old"))
 	srv.FailNext("RemoveInbound", status.Error(codes.Unknown, "boom"))
 
-	r, err := apply.Inbounds(context.Background(), c, nil, nil, meta())
+	r, err := apply.Inbounds(context.Background(), c, nil, notFixed(nil), nil, meta())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestInboundsListErrorPropagates(t *testing.T) {
 	srv, c := xrayfake.Start(t)
 	srv.FailNext("ListInbounds", status.Error(codes.Unknown, "boom"))
 
-	_, err := apply.Inbounds(context.Background(), c, nil, []topology.Tunnel{tunnel("a", 20000)}, meta())
+	_, err := apply.Inbounds(context.Background(), c, nil, notFixed(nil), []topology.Tunnel{tunnel("a", 20000)}, meta())
 	var xe *xrayapi.Error
 	if !errors.As(err, &xe) || err.Error() != "boom" {
 		t.Fatalf("err = %v", err)

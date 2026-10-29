@@ -26,23 +26,37 @@ func testTarget() config.SubscriptionTargetConfig {
 	return config.SubscriptionTargetConfig{
 		Address: "127.0.0.1:8080", TimeoutMs: 5000,
 		FixedOutbounds: []string{"direct", "blocked"}, FixedInbounds: []string{}, FixedRouting: []string{},
-		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1", PortRange: config.PortRange{Start: 20000, End: 20010}},
+		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1"},
 		Monitor:                          config.TargetMonitorConfig{MaxParallel: 10, Retry: config.RetryConfig{Attempts: 1, DelayMs: 250}},
 		BalancerMonitor:                  config.TargetBalancerMonitorConfig{Retry: config.RetryConfig{Attempts: 1, DelayMs: 250}, RemotePing: config.TargetBalancerRemotePingConfig{TimeoutMs: 5000}},
 		ObservatorySubjectSelectorPrefix: "x-observe-",
 	}
 }
 
-// buildTopology builds the topology of text for target t as sync does.
+// testSource is the VLESS source "vless" of the test subscriptions, with
+// ports 20000..20010.
+func testSource(input string) config.SourceConfig {
+	return config.SourceConfig{
+		ID: "vless", Type: "vless", Input: input, Enabled: true, Format: "auto", FetchTimeoutMs: 5000, AllowInsecure: "deny",
+		MaxInputBytes: 64 << 20, PortRange: &config.PortRange{Start: 20000, End: 20010},
+	}
+}
+
+// buildTopology builds the topology of text for the first source of sub
+// (testSource without sources) as sync does.
 func buildTopology(t *testing.T, sub config.SubscriptionConfig, text string) topology.Topology {
 	t.Helper()
-	m, err := manifest.FromSubscription(manifest.LoadedSubscription{Config: sub, Source: "/x", Content: text, Encoding: "plain"}, time.Unix(0, 0))
+	src := testSource("/x")
+	if len(sub.Sources) > 0 {
+		src = sub.Sources[0]
+	}
+	m, err := manifest.FromSource(manifest.LoadedSource{Subscription: sub, Config: src, Source: "/x", Content: text, Encoding: "plain"}, time.Unix(0, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	topo, err := topology.Build(m, sub.Target)
-	if err != nil {
-		t.Fatal(err)
+	topo, skipped := topology.BuildSource(m, src, sub.Target)
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	return topo
 }
@@ -52,9 +66,9 @@ func buildTopology(t *testing.T, sub config.SubscriptionConfig, text string) top
 func TestBuildTunnelsExposesDisplayNameCountryEndpoint(t *testing.T) {
 	sub := config.SubscriptionConfig{ID: "source-1", Enabled: true, Target: testTarget()}
 	mem := state.New()
-	mem.ReplaceTopology(state.Key("source-1", "127.0.0.1:8080"), buildTopology(t, sub, linkAT), nil)
+	mem.ReplaceSourceTopology(state.Key("source-1", "127.0.0.1:8080"), "vless", buildTopology(t, sub, linkAT), nil)
 
-	got := BuildTunnels(mem)
+	got := BuildTunnels(mem, config.AppConfig{})
 	if len(got) != 1 {
 		t.Fatalf("tunnels %d", len(got))
 	}
@@ -75,15 +89,15 @@ func TestBalancedFollowsPrefix(t *testing.T) {
 	topo := buildTopology(t, sub, linkAT)
 	key := state.Key("source-1", "127.0.0.1:8080")
 	mem := state.New()
-	mem.ReplaceTopology(key, topo, nil)
+	mem.ReplaceSourceTopology(key, "vless", topo, nil)
 
-	if b := BuildTunnels(mem)[0].Balanced; b == nil || !*b {
+	if b := BuildTunnels(mem, config.AppConfig{})[0].Balanced; b == nil || !*b {
 		t.Fatalf("balanced before repair: %v", b)
 	}
 	mem.Update(key, func(st *state.Target) {
 		st.Tunnels[0].Mapping.OutboundTagCurrent = st.Tunnels[0].Mapping.OutboundWithoutPrefix.Tag
 	})
-	if b := BuildTunnels(mem)[0].Balanced; b == nil || *b {
+	if b := BuildTunnels(mem, config.AppConfig{})[0].Balanced; b == nil || *b {
 		t.Fatalf("balanced after repair: %v", b)
 	}
 }
@@ -116,14 +130,14 @@ func TestBuildTunnelsSortsBySubscriptionTargetName(t *testing.T) {
 		for i, n := range names {
 			topo.Tunnels = append(topo.Tunnels, topology.Tunnel{BaseTunnelID: n, DisplayName: n, Listen: "127.0.0.1", Port: 20000 + i})
 		}
-		mem.ReplaceTopology(state.Key(sub, addr), topo, nil)
+		mem.ReplaceSourceTopology(state.Key(sub, addr), "vless", topo, nil)
 	}
 	add("sub-b", "127.0.0.1:8080", "Zeta", "Alpha")
 	add("sub-a", "127.0.0.1:8082", "Beta")
 	add("sub-a", "127.0.0.1:8080", "Gamma")
 
 	var got []string
-	for _, tn := range BuildTunnels(mem) {
+	for _, tn := range BuildTunnels(mem, config.AppConfig{}) {
 		got = append(got, tn.SubscriptionID+"|"+tn.TargetAddress+"|"+tn.DisplayName)
 	}
 	want := []string{"sub-a|127.0.0.1:8080|Gamma", "sub-a|127.0.0.1:8082|Beta", "sub-b|127.0.0.1:8080|Alpha", "sub-b|127.0.0.1:8080|Zeta"}
@@ -187,14 +201,14 @@ func TestConfiguredGroupsIncludeTargetsWithoutTunnels(t *testing.T) {
 	}}
 	mem := state.New()
 	key := state.Key("sub-a", "127.0.0.1:8080")
-	mem.ReplaceTopology(key, topology.Topology{}, nil)
+	mem.ReplaceSourceTopology(key, "vless", topology.Topology{}, nil)
 	mem.Update(key, func(st *state.Target) {
 		st.Balancer.State = "healthy"
 		st.Balancer.LastLatencyMs = new(17)
 		st.Balancer.ConsecutiveFailures = 3
 	})
 
-	groups := BuildConfiguredGroups(BuildTunnels(mem), cfg, mem)
+	groups := BuildConfiguredGroups(BuildTunnels(mem, config.AppConfig{}), cfg, mem)
 	if len(groups) != 2 || groups[0].SubscriptionID != "sub-a" || groups[1].SubscriptionID != "sub-c" {
 		t.Fatalf("%+v", groups)
 	}

@@ -1,0 +1,61 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "api": {
+    "tag": "api",
+    "listen": "127.0.0.1:{{API_PORT}}",
+    "services": [
+      "HandlerService"
+    ]
+  },
+  "inbounds": [
+    {
+      "tag": "masque-peer",
+      "protocol": "masque",
+      "listen": "127.0.0.1",
+      "port": {{MASQUE_PORT}},
+      "settings": {
+        "users": [
+          {
+            "email": "user@example.com",
+            "pass": "{{MASQUE_PASS}}"
+          }
+        ],
+        "address": [
+          "10.14.0.1/24"
+        ]
+      },
+      "streamSettings": {
+        "network": "masque",
+        "security": "tls",
+        "tlsSettings": {
+          "alpn": [
+            "h3",
+            "h2"
+          ],
+          "certificates": [
+            {
+              "certificateFile": "{{CERT_FILE}}",
+              "keyFile": "{{KEY_FILE}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "to-http",
+      "protocol": "freedom",
+      "settings": {
+        "redirect": "{{HTTP_ADDR}}",
+        "finalRules": [
+          {
+            "action": "allow"
+          }
+        ]
+      }
+    }
+  ]
+}

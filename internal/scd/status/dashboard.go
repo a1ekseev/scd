@@ -28,9 +28,12 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"metricClass":            metricClass,
 	"metric":                 func(label, value string) metricView { return metricView{Label: label, Value: value} },
 	"selectionCard":          selectionCard,
+	"sourcesCard":            sourcesCard,
 	"tunnelCards":            tunnelCards,
+	"wgpCards":               wgpCards,
 	"orIdle":                 func(s string) string { return cmp.Or(s, state.BalancerIdle) },
 	"orDash":                 func(s string) string { return cmp.Or(s, "-") },
+	"sourceColor":            sourceColor,
 }).ParseFS(web, "web/dashboard.html.tmpl"))
 
 // dashboardCSS and dashboardJS are inlined into the page, as in TS: the
@@ -64,8 +67,9 @@ type instanceView struct {
 	Snapshot              *InstanceSnapshot
 }
 
-// metricView is one metric pill; Title, when set, becomes its tooltip.
-type metricView struct{ Label, Value, Title string }
+// metricView is one metric pill; Title, when set, becomes its tooltip;
+// Class, when set, is an extra CSS class with a leading space.
+type metricView struct{ Label, Value, Title, Class string }
 
 // RenderDashboard writes the HTML status dashboard of agg (03 §6.6): one
 // tab per instance (the local one, if stored, first and active), each with
@@ -193,6 +197,8 @@ func metricClass(label, value string) string {
 		}
 	case "Error":
 		return " metric-state-degraded"
+	case "Warning":
+		return " metric-state-repairing"
 	case "Remote Push":
 		switch {
 		case strings.Contains(value, "delivered up"):
@@ -344,6 +350,53 @@ func selectionClass(v *BalancerSelectionView, tunnels []StatusTunnel) string {
 		}
 	}
 	return state.TunnelHealthy
+}
+
+// sourcesCardView is the "Sources" card of a target with sources.
+type sourcesCardView struct {
+	// Class is repairing with a source warning, else idle.
+	Class   string
+	Title   string
+	Metrics []metricView
+}
+
+// sourcesCard is the sources card of t, nil without sources: a metric per
+// source ("<id>": "<type>", "· <active>/<maxActive> active of
+// <candidates>" for wireguard, "· disabled" when off), followed by its
+// warnings (the code as tooltip).
+func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
+	if len(t.Sources) == 0 {
+		return nil
+	}
+	c := &sourcesCardView{Class: state.TunnelIdle, Title: strconv.Itoa(len(t.Sources)) + " source(s)"}
+	for _, s := range t.Sources {
+		v := s.Type
+		if s.MaxActive > 0 {
+			v += " · " + strconv.Itoa(s.ActiveCount) + "/" + strconv.Itoa(s.MaxActive) + " active of " + strconv.Itoa(s.CandidateCount)
+		}
+		if !s.Enabled {
+			v += " · disabled"
+		}
+		c.Metrics = append(c.Metrics, metricView{Label: s.SourceID, Value: v, Class: " source-chip " + sourceColor(s.SourceID)})
+		for _, w := range s.Warnings {
+			c.Class = state.TunnelRepairing
+			c.Metrics = append(c.Metrics, metricView{Label: "Warning", Value: w.Message, Title: s.SourceID + ": " + w.Code})
+		}
+	}
+	return c
+}
+
+// sourceColors is the number of source colors (src-0 … in the CSS).
+const sourceColors = 7
+
+// sourceColor is the color class of source id: fixed by the id alone (a
+// byte sum, which keeps short ids apart), never by the source type.
+func sourceColor(id string) string {
+	n := 0
+	for i := range len(id) {
+		n += int(id[i])
+	}
+	return "src-" + strconv.Itoa(n%sourceColors)
 }
 
 // tunnelCard is a tunnel of the dashboard with its balancer selection

@@ -1,4 +1,4 @@
-# One image (ghcr.io/a1ekseev/scd, built from ./Dockerfile) runs all three
+# One image (ghcr.io/a1ekseev/scd, built from ./Dockerfile) runs all four
 # services with different `command:` (D10). Xray image version is pinned in
 # .xray-version together with go.mod (scripts/check-xray-version.sh, D4).
 services:
@@ -27,6 +27,7 @@ services:
     volumes:
       - ./docker/scd/config.yml:/app/config/config.yml:ro
       - ./docker/fixtures:/app/fixtures:ro
+      - wgp-out:/app/wgp:ro  # wgp candidate files and status.json, read-only
 
   sfc:
     build:
@@ -53,3 +54,43 @@ services:
       - "127.0.0.1:9092:8080"
     volumes:
       - ./docker/gtl/config.yml:/app/config/config.yml:ro
+
+  wgp:
+    build:
+      context: .
+    image: ghcr.io/a1ekseev/scd:local
+    command: ["scd", "wgp", "serve", "--config", "/app/config/config.yml"]
+    # Opt-in: `docker compose --profile wgp up -d` (or COMPOSE_PROFILES=wgp). A
+    # plain `docker compose up` needs no wgp config, state or key; scd then
+    # sees an empty wgp-out volume.
+    profiles: ["wgp"]
+    container_name: wgp
+    restart: unless-stopped
+    # Internet access only (provider APIs); no network shared with scd or xray.
+    networks: [wgp-egress]
+    ports:
+      - "127.0.0.1:9093:8080"  # local status page, host only
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./docker/wgp/config.yml:/app/config/config.yml:ro
+      # Encrypted state, wgp only: chown 65532:65532 and chmod 0700 on the host.
+      - ./docker/wgp/state:/app/state
+      # Candidate files and status.json (0600, owner 65532); rw only here.
+      - wgp-out:/app/out
+      # Ready .conf files of provider static: each 0600 (or 0640), owner 65532.
+      - ./docker/wgp/static:/app/static:ro
+    secrets: [wgp_state_key]
+
+networks:
+  wgp-egress: {}
+
+volumes:
+  wgp-out: {}
+
+secrets:
+  # Outside swarm the file is bind-mounted with its host owner and mode:
+  # chown 65532:65532 secrets/wgp_state_key && chmod 0400 secrets/wgp_state_key
+  wgp_state_key:
+    file: ./secrets/wgp_state_key

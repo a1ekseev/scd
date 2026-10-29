@@ -1,0 +1,73 @@
+{
+  "about": "WARP API ClientHello: a fresh TLS 1.2 hello to api.cloudflareclient.com (ECDHE AES-256-GCM suites c02c and c030, fixed extension order, no GREASE). normalized_hex is the record with the random and session_id bytes zeroed.",
+  "record_len": 161,
+  "legacy_version": "0x0303",
+  "session_id_len": 0,
+  "ciphers": [
+    "0xc02c",
+    "0xc030"
+  ],
+  "compression": [
+    0
+  ],
+  "extensions": [
+    {
+      "id": 0,
+      "name": "server_name",
+      "len": 29,
+      "data_hex": "001b0000186170692e636c6f7564666c617265636c69656e742e636f6d"
+    },
+    {
+      "id": 23,
+      "name": "extended_master_secret",
+      "len": 0,
+      "data_hex": ""
+    },
+    {
+      "id": 65281,
+      "name": "renegotiation_info",
+      "len": 1,
+      "data_hex": "00"
+    },
+    {
+      "id": 10,
+      "name": "supported_groups",
+      "len": 8,
+      "data_hex": "0006001d00170018"
+    },
+    {
+      "id": 11,
+      "name": "ec_point_formats",
+      "len": 2,
+      "data_hex": "0100"
+    },
+    {
+      "id": 35,
+      "name": "session_ticket",
+      "len": 0,
+      "data_hex": ""
+    },
+    {
+      "id": 16,
+      "name": "alpn",
+      "len": 11,
+      "data_hex": "000908687474702f312e31"
+    },
+    {
+      "id": 5,
+      "name": "status_request",
+      "len": 5,
+      "data_hex": "0100000000"
+    },
+    {
+      "id": 13,
+      "name": "signature_algorithms",
+      "len": 20,
+      "data_hex": "0012040308040401050308050501080606010201"
+    }
+  ],
+  "ja3": "771,49196-49200,0-23-65281-10-11-35-16-5-13,29-23-24,0",
+  "ja3_hash": "6eaf40472aeb512be220c1223aa66da0",
+  "ja4": "t12d0209h1_8e6a03d994ba_b39be8c56a14",
+  "normalized_hex": "16030100a10100009d03030000000000000000000000000000000000000000000000000000000000000000000004c02cc030010000700000001d001b0000186170692e636c6f7564666c617265636c69656e742e636f6d00170000ff01000100000a00080006001d00170018000b00020100002300000010000b000908687474702f312e31000500050100000000000d00140012040308040401050308050501080606010201"
+}

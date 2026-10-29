@@ -57,7 +57,7 @@ func realityOutbound(t *testing.T, line subscription.Line) *core.OutboundHandler
 	if skip != nil {
 		t.Fatalf("parse skip: %+v", *skip)
 	}
-	n, _, skip := normalize.Normalize(link, normalize.Policy{})
+	n, _, skip := normalize.Normalize(link, normalize.Policy{TagPrefix: "vless"})
 	if skip != nil {
 		t.Fatalf("normalize skip: %+v", *skip)
 	}

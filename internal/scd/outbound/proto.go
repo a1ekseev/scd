@@ -25,28 +25,40 @@ func init() {
 	xlog.RegisterHandler(discard{})
 }
 
+// Spec is an outbound in the Xray v26.10.21 config form: Outbound (VLESS),
+// WireGuard or Masque. Its JSON (json.Marshal) is what scd prints and hashes and
+// never holds a secret key; ToProto builds the handler from the full form.
+type Spec interface {
+	// GetTag returns the outbound tag.
+	GetTag() string
+	// WithTag returns a copy with tag.
+	WithTag(tag string) Spec
+	// xrayJSON is the JSON that ToProto builds, secrets included.
+	xrayJSON() ([]byte, error)
+}
+
 // ToProto converts o into the protobuf handler config of the Xray API by
 // building it with infra/conf, exactly as Xray builds a JSON config (D19).
 // A local build error (Xray is not contacted) is returned as "invalid outbound <tag>: <err>".
-func ToProto(o Outbound) (*core.OutboundHandlerConfig, error) {
-	raw, err := json.Marshal(o)
+func ToProto(o Spec) (*core.OutboundHandlerConfig, error) {
+	raw, err := o.xrayJSON()
 	if err != nil {
-		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.GetTag(), err)
 	}
 	var dc conf.OutboundDetourConfig
 	if err := json.Unmarshal(raw, &dc); err != nil {
-		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.GetTag(), err)
 	}
 	h, err := dc.Build()
 	if err != nil {
-		return nil, fmt.Errorf("invalid outbound %s: %w", o.Tag, err)
+		return nil, fmt.Errorf("invalid outbound %s: %w", o.GetTag(), err)
 	}
 	return h, nil
 }
 
 // Hash returns the hex sha256 of the JSON of list (the outbound manifest
 // hash, 09 §5).
-func Hash(list []Outbound) string {
+func Hash[S Spec](list []S) string {
 	b, err := json.Marshal(list)
 	if err != nil {
 		// Outbound holds only strings, numbers, slices, maps and RawMessages

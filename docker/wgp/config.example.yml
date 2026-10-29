@@ -1,0 +1,179 @@
+# Пример конфига scd wgp (example config, no secrets). Скопируйте в
+# docker/wgp/config.yml (файл в .gitignore).
+#   scd wgp serve|login|logout|validate-config|print-config --config <path>
+#
+# В файле нет секретов: ключ шифрования state — Docker secret (state.keyFile),
+# сессии, устройства и ключи провайдеров — только в зашифрованном state.
+#
+# В этой сборке есть провайдеры static (готовые .conf), proton (Proton VPN,
+# persistent-сертификаты) и warp (Cloudflare WARP, tunnel: wireguard или
+# masque). identification.<type> задаётся только для типов, которым он нужен;
+# у static его нет.
+
+server:
+  # Локальная страница для владельца.
+  listen: 0.0.0.0:8080
+
+logging:
+  level: info     # D=info
+  format: json    # D=json
+
+state:
+  dir: /app/state
+  keyFile: /run/secrets/wgp_state_key
+
+identification:
+  # Строки официального Linux-клиента Proton VPN: заголовки x-pm-appversion
+  # (linux-vpn-gui@<версия>+x86-64, на arm64 — +aarch64), User-Agent и
+  # x-pm-timezone (имя IANA). Все обязательны.
+  proton:
+    appVersion: "linux-vpn-gui@5.8.11+x86-64"
+    userAgent: "ProtonVPN/5.8.11 (Linux; ubuntu/26.04)"
+    timezone: Europe/Istanbul
+  # Строки Android-приложения 1.1.1.1 для API WARP: заголовки User-Agent и
+  # CF-Client-Version, версия API в пути, поля model/locale/os_version тела
+  # POST /reg. Все обязательны.
+  warp:
+    userAgent: "1.1.1.1/6.38.9-5641 (Android 16.0.0)"
+    clientVersion: a-6.38.9-5641
+    apiVersion: v0a5641
+    model: PC
+    locale: en_US
+    osVersion: "16.0.0"
+
+# Свой у wgp каждого хоста. DeviceName: <префикс><output id>-<gen>-<n>.
+deviceNamePrefix: wgp-a-
+
+keys:
+  # Отзыв сертификатов Proton прошлого поколения через столько минут после
+  # ротации. Обязателен при включённом провайдере proton; не меньше интервала
+  # sync scd, чтобы scd успел перейти на новых кандидатов.
+  revokeOldAfterMinutes: 30
+
+api:
+  timeoutMs: 15000    # D=15000
+  retry:
+    attempts: 3       # D=3
+    minDelayMs: 3000  # D=3000
+    maxDelayMs: 8000  # D=8000
+
+providers:
+  # ------------------------------------------------------------- готовые .conf
+  # Все *.conf каталога в порядке имён, по строке wireguard://…&provider=static
+  # на файл. Формат wg-quick: один [Interface] и ровно один [Peer]; DNS — только IP.
+  # Комментарии: "# Label = 🇳🇱 Amsterdam" (иначе имя файла без .conf) и
+  # "# Reserved = a,b,c". ListenPort, Table, FwMark, SaveConfig, Pre/PostUp,
+  # Pre/PostDown пропускаются с предупреждением и никогда не исполняются.
+  # Файл — обычный, без прав для «прочих» (0600 или 0640), не больше maxFileBytes.
+  # Ошибка в файле — ошибка в логе и status.json; остальные файлы публикуются.
+  - id: static
+    type: static
+    enabled: true                # D=true
+    dir: /app/static             # монтируется :ro
+    schedule: "*/5 * * * *"      # первый проход — при старте
+    maxFileBytes: 65536          # D=65536
+    defaults:                    # для полей, которых нет в .conf
+      mtu: 1420                  # D=1420
+      allowedIPs: [0.0.0.0/0, "::/0"]  # D=[0.0.0.0/0, ::/0]
+      dns: []                    # D=[]; пусто — dns не пишется
+
+  # ------------------------------------------------------------- Proton VPN
+  # Вход — один раз из TTY при остановленном serve:
+  #   docker compose run --rm -it wgp scd wgp login --provider proton --config /app/config/config.yml
+  # По persistent-сертификату на кандидата выхода, у каждого свой ключ и свой
+  # логический сервер. DeviceName: <deviceNamePrefix><output id>-<gen>-<n>.
+  # Выключен в примере: включённый ходит в API Proton и требует входа.
+  - id: proton
+    type: proton
+    enabled: false
+    tier: free                   # free | plus; plus без free-серверов; выше тарифа аккаунта — ошибка
+    schedule: "*/15 * * * *"     # GET /vpn/v2, GET /vpn/v1/logicals, продление, публикация
+    keys:
+      rotateOnStart: true        # новое поколение ключей и сертификатов при старте
+    certificate:
+      durationMinutes: 1440      # 10..525600; срок — граница ущерба при утечке ключа
+      renewBeforeMinutes: 360    # продление тем же ключом (Renew), не позже RefreshTime
+      features:
+        netShield: 0             # 0 выкл. | 1 malware | 2 + реклама и трекеры
+        vpnAccelerator: true
+        moderateNat: false       # port forwarding не поддерживается
+    servers:
+      exitCountries: [NL, CH, JP]  # D=[]; страна выхода
+      entryCountries: []         # D=[]; вход: Secure Core — EntryCountry, Smart Routing — HostCountry
+      cities: []                 # D=[]
+      requireFeatures: []        # D=[]; secureCore | tor | p2p | streaming | ipv6
+      excludeFeatures: [secureCore, tor]
+      maxLoad: 80                # 0..100
+      maxScore: 999              # D=999; Score >= 1000 не берётся никогда
+      switchMarginPercent: 20    # пересадка на сервер со Score меньше на 20 %…
+      switchConfirmChecks: 2     # …на 2 тиках подряд
+    wireguard:
+      port: 51820                # D=51820; 443 | 88 | 1224 | 51820 | 500 | 4500
+      dns: [10.2.0.1]            # D=[10.2.0.1]; только IP
+      mtu: 1420                  # D=1420
+      # allowedIPs: [0.0.0.0/0]  # D=0.0.0.0/0 (+ ::/0 на IPv6-сервере)
+      # keepalive: 0             # D=0
+    label: "{flag} {city}, Proton {name}"  # D=этот; начинается с {flag} (страна выхода)
+
+  # ------------------------------------------------------------- Cloudflare WARP, WireGuard
+  # Устройства регистрируются сами (POST /reg), по одному на кандидата выхода;
+  # id, токен и ключ — только в зашифрованном state. Каждый тик — GET /reg/{id}.
+  # Выключен в примере: включённый ходит в API Cloudflare.
+  - id: warp
+    type: warp
+    enabled: false
+    tunnel: wireguard            # masque — отдельный провайдер со своим устройством
+    schedule: "0 */6 * * *"      # GET /reg/{id}
+    keys:
+      rotateOnStart: true        # новый ключ при старте: PATCH /reg/{id}, reserved из ответа
+    deviceLostAfterChecks: 2     # D=2; 404/1006 или 401/1012 подряд → устройство потеряно
+    reRegisterMinIntervalMinutes: 1440  # новая регистрация не чаще (момент — в state)
+    label: "☁️ WARP"             # флаг страны для фильтра scd вписывается сюда
+    wireguard:
+      mtu: 1280                  # D=1280
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # D=эти
+      allowedIPs: [0.0.0.0/0, "::/0"]  # D=0.0.0.0/0, ::/0
+      # port: 2408               # D=порт из ответа API; 2408 | 500 | 1701 | 4500
+
+  # ------------------------------------------------------------- Cloudflare WARP, MASQUE
+  # Своё устройство: устройство работает либо по WireGuard, либо по MASQUE.
+  # После регистрации и при ротации — ключ P-256: PATCH /reg/{id}
+  # (key_type secp256r1, tunnel_type masque). Ключ — только в зашифрованном state.
+  # Выключен в примере: включённый ходит в API Cloudflare.
+  - id: warpmq
+    type: warp
+    enabled: false
+    tunnel: masque
+    schedule: "0 */6 * * *"
+    keys:
+      rotateOnStart: true        # новый ключ P-256 при старте; заменённый сразу перестаёт работать
+    deviceLostAfterChecks: 2     # D=2
+    reRegisterMinIntervalMinutes: 1440
+    label: "☁️ WARP"
+    masque:
+      transports: [h3, h2]       # по строке на транспорт, priority = позиция (h3 → 0, h2 → 1);
+                                 # scd ставит один на устройство: h3, после его замены — h2
+      sni: consumer-masque.cloudflareclient.com  # или IP endpoint'а из API (SNI не шлётся)
+      port: 443                  # D=443; порт endpoint'а для h3 (UDP) и h2 (TCP)
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # D=эти; только IP
+
+# Выход: один провайдер, один файл; все path в одном каталоге (там же status.json).
+# Файлы 0600, владелец 65532; scd читает каталог через том :ro (input источника).
+# У static ключа candidates нет: публикуются все принятые .conf; у proton
+# candidates — число сертификатов, у warp — число устройств.
+outputs:
+  - id: proton
+    path: /app/out/proton
+    provider: proton
+    candidates: 4                # число persistent-сертификатов (ключей); активных — maxActive в scd
+  - id: wg
+    path: /app/out/wg
+    provider: static
+  - id: warp
+    path: /app/out/warp
+    provider: warp
+    candidates: 1
+  - id: warpmq
+    path: /app/out/warpmq
+    provider: warpmq
+    candidates: 1                # число устройств; строк — устройств × transports

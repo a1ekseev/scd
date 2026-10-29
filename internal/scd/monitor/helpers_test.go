@@ -75,13 +75,11 @@ func newSub(mut func(c *config.SubscriptionConfig)) config.SubscriptionConfig {
 	c := config.SubscriptionConfig{
 		ID:      "source-1",
 		Enabled: true,
+		Sources: []config.SourceConfig{{ID: "vless", Type: "vless", Enabled: true, PortRange: &config.PortRange{Start: 20000, End: 20010}}},
 		Target: config.SubscriptionTargetConfig{
-			Address:   "127.0.0.1:8080",
-			TimeoutMs: 5000,
-			InboundSocks: &config.InboundSocksConfig{
-				Listen:    "127.0.0.1",
-				PortRange: config.PortRange{Start: 20000, End: 20010},
-			},
+			Address:      "127.0.0.1:8080",
+			TimeoutMs:    5000,
+			InboundSocks: &config.InboundSocksConfig{Listen: "127.0.0.1"},
 			Monitor: config.TargetMonitorConfig{
 				Enabled:     true,
 				Schedule:    "*/2 * * * *",
@@ -149,17 +147,21 @@ func newEnv(t *testing.T, sub config.SubscriptionConfig, links ...string) *env {
 	e.xray, e.client = xrayfake.Start(t)
 	e.mem.MarkSynced(e.key)
 	if len(links) > 0 {
-		m := manifest.Build(strings.Join(links, "\n"), "inline", normalize.Policy{}, time.Unix(0, 0))
+		m := manifest.Build(strings.Join(links, "\n"), "inline", normalize.Policy{TagPrefix: "vless"}, time.Unix(0, 0))
 		if len(m.Entries) != len(links) {
 			t.Fatalf("entries = %d, skipped = %+v", len(m.Entries), m.Skipped)
 		}
-		topo, err := topology.Build(m, sub.Target)
-		if err != nil {
-			t.Fatal(err)
+		topo, skipped := topology.BuildSource(m, sub.Sources[0], sub.Target)
+		if len(skipped) > 0 {
+			t.Fatalf("skipped = %+v", skipped)
 		}
-		e.mem.ReplaceTopology(e.key, topo, map[apply.Kind]string{
+		e.mem.ReplaceSourceTopology(e.key, "vless", topo, map[apply.Kind]string{
 			apply.KindOutbound: "hash-a", apply.KindInbound: "hash-b", apply.KindRouting: "hash-c",
 		})
+		// The inbounds exist in Xray: a repair checks them first.
+		for _, tn := range topo.Tunnels {
+			e.addInbound(tn)
+		}
 	}
 	e.deps = Deps{
 		Memory: e.mem,
@@ -240,6 +242,18 @@ func (e *env) install(m topology.Tunnel) {
 	}
 }
 
+// addInbound adds the tunnel's SOCKS inbound to the fake.
+func (e *env) addInbound(tn topology.Tunnel) {
+	e.t.Helper()
+	in, err := resources.Inbound(tn)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.client.AddInbound(e.t.Context(), in); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 // callsSince returns the fake's calls after the first n.
 func (e *env) callsSince(n int) []string { return e.xray.Calls()[n:] }
 
@@ -259,10 +273,10 @@ func deref(p *int) any {
 // topoOf builds the topology of links for sub.
 func topoOf(t *testing.T, sub config.SubscriptionConfig, links ...string) topology.Topology {
 	t.Helper()
-	m := manifest.Build(strings.Join(links, "\n"), "inline", normalize.Policy{}, time.Unix(0, 0))
-	topo, err := topology.Build(m, sub.Target)
-	if err != nil {
-		t.Fatal(err)
+	m := manifest.Build(strings.Join(links, "\n"), "inline", normalize.Policy{TagPrefix: "vless"}, time.Unix(0, 0))
+	topo, skipped := topology.BuildSource(m, sub.Sources[0], sub.Target)
+	if len(skipped) > 0 {
+		t.Fatalf("skipped = %+v", skipped)
 	}
 	return topo
 }

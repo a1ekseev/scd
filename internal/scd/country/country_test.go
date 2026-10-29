@@ -10,9 +10,22 @@ func TestFromLabelAustria(t *testing.T) {
 	}
 }
 
+func TestFromLabelNewCodes(t *testing.T) {
+	for label, want := range map[string]Info{
+		"🇳🇬 Nigeria, Lagos": {Emoji: "🇳🇬", ISO2: "NG", NameEn: "Nigeria", NameRu: "Нигерия"},
+		"🇮🇸 Reykjavik":      {Emoji: "🇮🇸", ISO2: "IS", NameEn: "Iceland", NameRu: "Исландия"},
+	} {
+		if got, ok := FromLabel(label); !ok || got != want {
+			t.Errorf("%s: got %+v %v, want %+v", label, got, ok, want)
+		}
+	}
+}
+
 func TestFromLabelOutsideMap(t *testing.T) {
-	if _, ok := FromLabel("🇽🇰 Pristina"); ok {
-		t.Fatal("XK must not resolve")
+	for _, l := range []string{"🇽🇰 Pristina", "🇺🇳 New York", "🇪🇺 Brussels", "🇿🇿"} {
+		if _, ok := FromLabel(l); ok {
+			t.Errorf("%q must not resolve", l)
+		}
 	}
 }
 

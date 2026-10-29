@@ -35,6 +35,10 @@ func TestDaemonCommandRejectsRunOnceConfig(t *testing.T) {
 	if want := "config at " + path + " is not in daemon mode"; !strings.Contains(errs, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, errs)
 	}
+	// Logged once as service_failed, not printed again as text.
+	if !strings.Contains(errs, "service_failed") || strings.Count(errs, "is not in daemon mode") != 1 {
+		t.Errorf("stderr:\n%s", errs)
+	}
 	if strings.Contains(errs, "status_server_started") {
 		t.Errorf("status server started:\n%s", errs)
 	}

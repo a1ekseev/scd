@@ -1,7 +1,8 @@
-// Package apply holds the Xray apply algorithms of scd (02 §2, D2): the full
-// replacement of the managed outbounds, inbounds and routing rules of a
-// target, with fixed resources preserved and a best-effort rollback for
-// outbounds only, and the ApplyReport they produce (03 §2.4).
+// Package apply holds the Xray apply algorithms of scd (02 §2, D2): the
+// removal of orphans of a target and the replacement of the outbounds,
+// inbounds and routing rules in one source's namespace, with fixed
+// resources and other sources' resources preserved and a best-effort
+// rollback for outbounds only, and the ApplyReport they produce (03 §2.4).
 package apply
 
 import (
@@ -65,6 +66,9 @@ type Meta struct {
 	SubscriptionID string
 	TargetAddress  string
 	Now            func() time.Time
+	// MaxOutbounds caps the outbounds an outbound rollback may restore
+	// (maxActive of a wireguard or masque source); 0 is no cap.
+	MaxOutbounds int
 }
 
 func (m Meta) now() time.Time {

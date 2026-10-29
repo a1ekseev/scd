@@ -1,0 +1,10 @@
+vectors.json: vectors generated with the reference SRP implementation of the
+Proton API. Each vector fixes the auth version, the signed modulus file, the
+password (hex), the 10-byte salt, the client secret a (hex, big-endian) and
+the server ephemeral B, and records the expected x (hashedPassword), A
+(clientEphemeral), M1 (clientProof) and M2 (serverProof). Numbers and hashes
+are base64 of 256 bytes little-endian.
+
+modulus-1.asc, modulus-2.asc: real 2048-bit SRP moduli cleartext-signed by
+the Proton modulus key (fingerprint 248097092b458509c508dac0350585c4e9518f26),
+public server artifacts kept as data.

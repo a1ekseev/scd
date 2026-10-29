@@ -60,9 +60,16 @@ func TestSyncCommandExitCode(t *testing.T) {
 			t.Errorf("%s items = %+v", r.Kind, r.Items)
 		}
 	}
-	for _, ev := range []string{"event=config_loaded", "event=sync_started", "event=apply_failed"} {
+	for _, ev := range []string{"event=config_loaded", "version=dev", "event=xray_unavailable", "event=sync_finished", "sourcesFailed=1"} {
 		if !strings.Contains(errs, ev) {
 			t.Errorf("stderr lacks %s:\n%s", ev, errs)
+		}
+	}
+	// The failure is the unavailable Xray's line only: orphan_remove_failed
+	// is debug, no apply_failed per kind, and sync_started is debug.
+	for _, ev := range []string{"event=orphan_remove_failed", "event=apply_failed", "event=sync_started"} {
+		if strings.Contains(errs, ev) {
+			t.Errorf("stderr has %s:\n%s", ev, errs)
 		}
 	}
 	if strings.Contains(errs, "report has failed items") {
@@ -81,10 +88,10 @@ func TestSyncCommandStopsOnSignal(t *testing.T) {
 	defer srv.Close()
 	body := `subscriptions:
   - id: s1
-    input: ` + srv.URL + `/sub
+    sources: [{id: vless, type: vless, input: ` + srv.URL + `/sub}]
     target: {address: 127.0.0.1:1}
   - id: s2
-    input: ` + srv.URL + `/sub2
+    sources: [{id: vless, type: vless, input: ` + srv.URL + `/sub2}]
     target: {address: 127.0.0.1:2}
 runtime: {}
 logging: {}
@@ -175,10 +182,10 @@ func TestSyncCommandStopsOnSignalBetweenTargets(t *testing.T) {
 	}()
 	body := `subscriptions:
   - id: s1
-    input: ` + sub + `
+    sources: [{id: vless, type: vless, input: ` + sub + `}]
     target: {address: "` + lnA.Addr().String() + `", timeoutMs: 1000}
   - id: s2
-    input: ` + sub + `
+    sources: [{id: vless, type: vless, input: ` + sub + `}]
     target: {address: "` + lnB.Addr().String() + `", timeoutMs: 1000}
 runtime: {}
 logging: {}

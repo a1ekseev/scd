@@ -7,14 +7,17 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/candidate"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/subscription"
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/country"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
+	"github.com/a1ekseev/scd/internal/scd/selection"
 )
 
 // Version is the manifest format version.
@@ -26,7 +29,10 @@ const reasonXrayRejected = "Xray rejected the outbound configuration."
 
 // Entry is one accepted link: its normalized form and JSON outbound.
 type Entry struct {
-	Kind         string               `json:"kind"`
+	Kind string `json:"kind"`
+	// Protocol is "wireguard" or "masque" for a candidate, "" (omitted) for
+	// VLESS.
+	Protocol     string               `json:"protocol,omitempty"`
 	Tag          string               `json:"tag"`
 	Label        string               `json:"label"`
 	Profile      string               `json:"profile"`
@@ -34,9 +40,14 @@ type Entry struct {
 	Country      *country.Info        `json:"country,omitempty"`
 	City         string               `json:"city,omitempty"`
 	Normalized   normalize.Normalized `json:"normalized"`
-	JSONOutbound outbound.Outbound    `json:"jsonOutbound"`
+	JSONOutbound outbound.Spec        `json:"jsonOutbound"`
 	// Warnings are the non-fatal notes of the normalizer.
 	Warnings []normalize.Warning `json:"warnings,omitempty"`
+	// Candidate is the parsed wireguard candidate (nil for VLESS and
+	// masque). It holds the private key and is never printed.
+	Candidate *candidate.WireGuard `json:"-"`
+	// selection is the selection view of a candidate (nil for VLESS).
+	selection *selection.Candidate
 }
 
 // Summary counts the lines of a manifest (01 §1.2 ManifestSummary).
@@ -56,6 +67,13 @@ type Summary struct {
 	InvalidURI           int `json:"invalidUri"`
 	MissingRequiredField int `json:"missingRequiredField"`
 	DuplicateTag         int `json:"duplicateTag"`
+	// PortRangeExhausted counts the entries left without a port by the
+	// source's portRange (set by the plan, not by Build); also in Skipped.
+	PortRangeExhausted int `json:"portRangeExhausted,omitzero"`
+	// WireGuardInvalid counts the wireguard_invalid lines; also in Skipped.
+	WireGuardInvalid int `json:"wireguardInvalid,omitzero"`
+	// MasqueInvalid counts the masque_invalid lines; also in Skipped.
+	MasqueInvalid int `json:"masqueInvalid,omitzero"`
 }
 
 // Manifest is the outbound manifest of one subscription.
@@ -99,6 +117,10 @@ func (m *Manifest) skip(s vless.Skip) {
 		m.Summary.MissingRequiredField++
 	case vless.CodeDuplicateTag:
 		m.Summary.DuplicateTag++
+	case CodeWireGuardInvalid:
+		m.Summary.WireGuardInvalid++
+	case CodeMasqueInvalid:
+		m.Summary.MasqueInvalid++
 	}
 }
 
@@ -120,7 +142,7 @@ func Build(text, sourceFile string, p normalize.Policy, now time.Time) Manifest 
 	for _, line := range lines {
 		l, s := vless.Parse(line)
 		if s != nil {
-			m.skip(*s)
+			m.skip(redactCandidate(*s, line.Trimmed))
 			continue
 		}
 		n, warnings, s := normalize.Normalize(l, p)
@@ -154,6 +176,19 @@ func Build(text, sourceFile string, p normalize.Policy, now time.Time) Manifest 
 	return m
 }
 
+// redactCandidate drops everything but the scheme from the skip of a
+// candidate line (wireguard://, masque://) in a VLESS source: such a line
+// holds a private key. Other skips are returned as they are.
+func redactCandidate(s vless.Skip, line string) vless.Skip {
+	scheme, _, _ := strings.Cut(line, "://")
+	for _, k := range []candidate.Kind{candidate.KindWireGuard, candidate.KindMasque} {
+		if strings.EqualFold(scheme, string(k)) {
+			return vless.Skip{Line: s.Line, Raw: string(k) + "://<redacted>", Code: s.Code, Reason: s.Reason}
+		}
+	}
+	return s
+}
+
 // ErrNoValidEntries is matched (errors.Is) by the error of Validate.
 var ErrNoValidEntries = errors.New("no valid outbound entries")
 
@@ -168,7 +203,21 @@ func (e noValidEntriesError) Error() string {
 		"filteredByCountry=%d filteredByLabelRegex=%d unsupportedScheme=%d unsupportedParam=%d unsupportedValue=%d "+
 		"unsupportedCombo=%d invalidUri=%d missingRequiredField=%d duplicateTag=%d",
 		e.source, s.Parsed, s.Skipped, s.Filtered, s.FilteredByCountry, s.FilteredByLabelRegex, s.UnsupportedScheme,
-		s.UnsupportedParam, s.UnsupportedValue, s.UnsupportedCombo, s.InvalidURI, s.MissingRequiredField, s.DuplicateTag)
+		s.UnsupportedParam, s.UnsupportedValue, s.UnsupportedCombo, s.InvalidURI, s.MissingRequiredField, s.DuplicateTag) +
+		invalidSuffix(s)
+}
+
+// invalidSuffix is " wireguardInvalid=<n>" and " masqueInvalid=<n>" for the
+// counts > 0 (never for VLESS, whose text is unchanged).
+func invalidSuffix(s Summary) string {
+	out := ""
+	if s.WireGuardInvalid > 0 {
+		out += fmt.Sprintf(" wireguardInvalid=%d", s.WireGuardInvalid)
+	}
+	if s.MasqueInvalid > 0 {
+		out += fmt.Sprintf(" masqueInvalid=%d", s.MasqueInvalid)
+	}
+	return out
 }
 
 func (noValidEntriesError) Unwrap() error { return ErrNoValidEntries }

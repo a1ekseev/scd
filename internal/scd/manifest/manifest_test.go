@@ -16,6 +16,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/vless"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
 )
 
 const (
@@ -29,8 +30,8 @@ const (
 
 var (
 	testNow = time.Date(2026, 10, 17, 8, 32, 15, 445_000_000, time.FixedZone("x", 3*3600))
-	allow   = normalize.Policy{AllowInsecure: true}
-	deny    = normalize.Policy{}
+	allow   = normalize.Policy{AllowInsecure: true, TagPrefix: "vless"}
+	deny    = normalize.Policy{TagPrefix: "vless"}
 )
 
 func readFile(t *testing.T, path string) string {
@@ -290,7 +291,7 @@ func TestBuild3xuiRealityLink(t *testing.T) { // Review Focus 7
 	if len(m.Entries) != 1 || m.Entries[0].Profile != "tcp-reality-vision" || len(m.Entries[0].Warnings) != 0 {
 		t.Fatalf("entries %+v skipped %+v", m.Entries, m.Skipped)
 	}
-	r := m.Entries[0].JSONOutbound.StreamSettings.RealitySettings
+	r := m.Entries[0].JSONOutbound.(outbound.Outbound).StreamSettings.RealitySettings
 	if r == nil || r.SpiderX == "" || r.Mldsa65Verify == "" {
 		t.Fatalf("realitySettings %+v", r)
 	}
@@ -298,13 +299,13 @@ func TestBuild3xuiRealityLink(t *testing.T) { // Review Focus 7
 
 // realShapeFilters returns the filters of the first subscription of the
 // Go form of the owner's config.
-func realShapeFilters(t *testing.T) *config.SubscriptionFiltersConfig {
+func realShapeFilters(t *testing.T) *config.SourceFiltersConfig {
 	t.Helper()
 	l, _, err := config.Load(realShapeGo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := l.Config.Subscriptions[0].Filters
+	f := l.Config.Subscriptions[0].Sources[0].Filters
 	if f == nil || len(f.CountryAllowlist) != 24 || len(f.Label.Exclude) != 1 {
 		t.Fatalf("filters %+v", f)
 	}
