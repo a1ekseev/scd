@@ -125,3 +125,20 @@ func TestPublishErrorsKeepFile(t *testing.T) {
 		t.Error("unknown kind published")
 	}
 }
+
+func TestPublishEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wg")
+	out := Output{ID: "wg", Path: path, Kind: candidate.KindWireGuard}
+	if _, err := Publish(out, fixtureLines(t, "wireguard", 1)); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := PublishEmpty(out); err != nil || !changed {
+		t.Fatalf("%v %v", changed, err)
+	}
+	if b, err := os.ReadFile(path); err != nil || len(b) != 0 {
+		t.Fatalf("file %q %v", b, err)
+	}
+	if changed, err := PublishEmpty(out); err != nil || changed {
+		t.Fatalf("an empty file rewritten: %v %v", changed, err)
+	}
+}

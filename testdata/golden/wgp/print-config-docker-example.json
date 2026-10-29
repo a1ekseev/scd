@@ -10,6 +10,16 @@
     "dir": "/app/state",
     "keyFile": "/run/secrets/wgp_state_key"
   },
+  "identification": {
+    "warp": {
+      "userAgent": "1.1.1.1/6.38.9-5641 (Android 16.0.0)",
+      "clientVersion": "a-6.38.9-5641",
+      "apiVersion": "v0a5641",
+      "model": "PC",
+      "locale": "en_US",
+      "osVersion": "16.0.0"
+    }
+  },
   "deviceNamePrefix": "wgp-a-",
   "api": {
     "timeoutMs": 15000,
@@ -35,6 +45,59 @@
         ],
         "dns": []
       }
+    },
+    {
+      "id": "warp",
+      "type": "warp",
+      "enabled": false,
+      "schedule": "0 */6 * * *",
+      "tunnel": "wireguard",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "deviceLostAfterChecks": 2,
+      "reRegisterMinIntervalMinutes": 1440,
+      "label": "☁️ WARP",
+      "wireguard": {
+        "dns": [
+          "1.1.1.1",
+          "1.0.0.1",
+          "2606:4700:4700::1111",
+          "2606:4700:4700::1001"
+        ],
+        "mtu": 1280,
+        "allowedIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
+      }
+    },
+    {
+      "id": "warpmq",
+      "type": "warp",
+      "enabled": false,
+      "schedule": "0 */6 * * *",
+      "tunnel": "masque",
+      "keys": {
+        "rotateOnStart": true
+      },
+      "deviceLostAfterChecks": 2,
+      "reRegisterMinIntervalMinutes": 1440,
+      "label": "☁️ WARP",
+      "masque": {
+        "transports": [
+          "h3",
+          "h2"
+        ],
+        "sni": "consumer-masque.cloudflareclient.com",
+        "port": 443,
+        "dns": [
+          "1.1.1.1",
+          "1.0.0.1",
+          "2606:4700:4700::1111",
+          "2606:4700:4700::1001"
+        ]
+      }
     }
   ],
   "outputs": [
@@ -42,6 +105,18 @@
       "id": "wg",
       "path": "/app/out/wg",
       "provider": "static"
+    },
+    {
+      "id": "warp",
+      "path": "/app/out/warp",
+      "provider": "warp",
+      "candidates": 1
+    },
+    {
+      "id": "warpmq",
+      "path": "/app/out/warpmq",
+      "provider": "warpmq",
+      "candidates": 1
     }
   ]
 }

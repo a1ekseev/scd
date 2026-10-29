@@ -33,6 +33,18 @@ func Publish(out Output, lines []string) (changed bool, err error) {
 	if len(lines) == 0 {
 		return false, fmt.Errorf("output %q: no candidates", out.ID)
 	}
+	return publish(out, lines)
+}
+
+// PublishEmpty writes an empty file to out.Path: the provider has no live
+// candidate, so scd removes the tunnels of the source. Only the daemon
+// calls it, for a tick that returned no lines and no error. changed is as
+// for Publish.
+func PublishEmpty(out Output) (changed bool, err error) {
+	return publish(out, nil)
+}
+
+func publish(out Output, lines []string) (changed bool, err error) {
 	var buf bytes.Buffer
 	for i, l := range lines {
 		if err := check(out.Kind, l); err != nil {

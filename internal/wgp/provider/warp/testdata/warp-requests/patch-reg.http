@@ -1,0 +1,11 @@
+PATCH /v0a5641/reg/00000000-0000-4000-8000-000000000001 HTTP/1.1
+Host: api.cloudflareclient.com
+User-Agent: 1.1.1.1/6.38.9-5641 (Android 16.0.0)
+Content-Length: 105
+Authorization: Bearer fake-token
+Cf-Client-Version: a-6.38.9-5641
+Connection: Keep-Alive
+Content-Type: application/json; charset=UTF-8
+Accept-Encoding: gzip
+
+{"key":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=","key_type":"curve25519","tunnel_type":"wireguard"}

@@ -118,7 +118,8 @@ func PolicyFor(s config.SourceConfig) normalize.Policy {
 // FromSource builds the manifest of a loaded source as sync does (01 §10):
 // the trimmed content under the source's policy (a wireguard or masque
 // source: its candidates, BuildCandidates), with the source id as source
-// file, filtered and validated. The manifest is returned with the
+// file, filtered and validated. An empty wireguard or masque file is valid:
+// its source has no live candidates. The manifest is returned with the
 // validation error too.
 func FromSource(s LoadedSource, now time.Time) (Manifest, error) {
 	id := s.Config.ID
@@ -130,6 +131,9 @@ func FromSource(s LoadedSource, now time.Time) (Manifest, error) {
 		}
 		m = BuildCandidates(candidate.Kind(s.Config.Type), strings.TrimSpace(s.Content), id, id, ds, now)
 		m = applyCandidateFilters(m, s.Config.Filters)
+		if m.Summary.TotalLines == 0 {
+			return m, nil // an empty candidate file: no live candidates, not a failure
+		}
 		return m, Validate(m, id)
 	}
 	m = Build(strings.TrimSpace(s.Content), id, PolicyFor(s.Config), now)

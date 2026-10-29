@@ -117,7 +117,14 @@ func (d *Daemon) tick(ctx context.Context, j job) {
 	d.warnings(j, res.Warnings)
 	if err == nil {
 		var changed bool
-		if changed, err = output.Publish(j.out, res.Lines); changed {
+		if len(res.Lines) == 0 {
+			// No error and no lines: no live candidate, so the file empties
+			// and scd drops the tunnels. A failed tick keeps the file.
+			changed, err = output.PublishEmpty(j.out)
+		} else {
+			changed, err = output.Publish(j.out, res.Lines)
+		}
+		if changed {
 			d.log.Info("Output published.", append(j.ids(), "event", "output_published", "candidates", len(res.Lines))...)
 		}
 	}

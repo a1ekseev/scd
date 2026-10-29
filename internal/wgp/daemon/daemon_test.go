@@ -80,6 +80,43 @@ func TestTickStatus(t *testing.T) {
 	}
 }
 
+// No lines and no error: the output empties (no live candidate); an error
+// with no lines keeps the file.
+func TestTickNoLines(t *testing.T) {
+	b, err := os.ReadFile("../../../docker/fixtures/wireguard/candidates.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := &scripted{lines: strings.Split(string(b), "\n")[:1], errs: []error{nil, errors.New("api: 503"), nil}}
+	out := filepath.Join(dir, "o")
+	cfg := config.Config{
+		Providers: []config.Provider{{ID: "p", Type: "x", Enabled: true, Schedule: "@hourly", Impl: p}},
+		Outputs:   []config.Output{{ID: "o", Path: out, Provider: "p"}},
+	}
+	d, err := New(cfg, func(string) provider.Store { return nil }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.tick(t.Context(), d.jobs[0])
+	p.lines = nil
+	d.tick(t.Context(), d.jobs[0])
+	if s := d.Status().Providers[0]; s.State != wgpstatus.StateError || s.Error != "api: 503" {
+		t.Fatalf("want the tick error: %+v", s)
+	}
+	if got, _ := os.ReadFile(out); len(got) == 0 {
+		t.Fatal("a failed tick emptied the file")
+	}
+	d.tick(t.Context(), d.jobs[0])
+	info, err := os.Stat(out)
+	if err != nil || info.Size() != 0 || info.Mode().Perm() != 0o600 {
+		t.Fatalf("output %v %v", info, err)
+	}
+	if s := d.Status().Providers[0]; s.State != wgpstatus.StateOK || s.Issued != 0 {
+		t.Fatalf("status %+v", s)
+	}
+}
+
 // Disabled providers have no loop.
 func TestNewSkipsDisabled(t *testing.T) {
 	cfg := config.Config{

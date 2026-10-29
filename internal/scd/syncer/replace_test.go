@@ -329,3 +329,30 @@ func TestWireGuardSyncAndMonitorConcurrently(t *testing.T) {
 		t.Fatalf("xray outbounds %v, state %v", got, tunnels)
 	}
 }
+
+// An empty candidate file (wgp has no live candidate) is not a source
+// failure: every tunnel is removed, the slots stay empty with the
+// no_replacement warning; candidates coming back fill them again.
+func TestWireGuardEmptyFile(t *testing.T) {
+	f, srv, path, all := newWG(t, 1, 2)
+	writeCandidates(t, path, all)
+	if r := f.run(t); r.Failed != 0 || r.Removed != 6 || r.Added != 0 {
+		t.Fatalf("report %+v", r)
+	}
+	if tags, _ := activeTags(t, f); len(tags) != 0 || len(srv.OutboundTags()) != 0 {
+		t.Fatalf("active %v outbounds %v", tags, srv.OutboundTags())
+	}
+	if w := wgWarnings(f); !slices.Equal(w, []string{"no_replacement"}) {
+		t.Fatalf("warnings %v", w)
+	}
+	if e := f.logs.events(t, "manifest_validation_failed"); len(e) != 0 {
+		t.Fatalf("manifest_validation_failed %v", e)
+	}
+	writeCandidates(t, path, all, 1, 2)
+	if r := f.run(t); r.Failed != 0 || r.Added != 6 {
+		t.Fatalf("report %+v", r)
+	}
+	if w := wgWarnings(f); len(w) != 0 {
+		t.Fatalf("warnings %v", w)
+	}
+}

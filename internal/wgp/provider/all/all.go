@@ -5,4 +5,5 @@ package all
 
 import (
 	_ "github.com/a1ekseev/scd/internal/wgp/provider/static" // .conf files of a directory
+	_ "github.com/a1ekseev/scd/internal/wgp/provider/warp"   // Cloudflare WARP devices
 )

@@ -98,6 +98,9 @@ type Config struct {
 	Prepare func(*utls.UConn) error
 	// RootCAs verifies the server; nil uses the system roots.
 	RootCAs *x509.CertPool
+	// Dial opens the TCP connection to the base URL host:port; nil uses a
+	// net.Dialer. For tests and proxies: SNI and Host stay the base URL's.
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// API is the timeout and retry policy.
 	API provider.API
 }
@@ -291,8 +294,11 @@ func (c *Client) once(ctx context.Context, req Request) (Response, error) {
 // dial connects and completes the uTLS handshake. raw is the TCP connection
 // under tc.
 func (c *Client) dial(ctx context.Context, sessions utls.ClientSessionCache) (tc *utls.UConn, raw net.Conn, err error) {
-	var d net.Dialer
-	raw, err = d.DialContext(ctx, "tcp", c.addr)
+	dial := c.cfg.Dial
+	if dial == nil {
+		dial = new(net.Dialer).DialContext
+	}
+	raw, err = dial(ctx, "tcp", c.addr)
 	if err != nil {
 		return nil, nil, err
 	}

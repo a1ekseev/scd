@@ -270,6 +270,25 @@ func TestHTTPMode(t *testing.T) {
 	}
 }
 
+func TestDial(t *testing.T) {
+	var host string
+	srv, pool := tlsServer(t, func(_ http.ResponseWriter, r *http.Request) { host = r.Host })
+	var addrs []string
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		addrs = append(addrs, network+" "+addr)
+		return new(net.Dialer).DialContext(ctx, network, srv.Listener.Addr().String())
+	}
+	// The httptest certificate is valid for example.com, so this also
+	// checks that SNI and verification use the base URL host.
+	c := newClient(t, Config{BaseURL: "https://example.com:8443", RootCAs: pool, Dial: dial})
+	if _, err := c.Do(t.Context(), Request{Method: "GET", Path: "/"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 1 || addrs[0] != "tcp example.com:8443" || host != "example.com:8443" {
+		t.Fatalf("dialed %v, host %q", addrs, host)
+	}
+}
+
 func TestVerifiesCertificate(t *testing.T) {
 	srv, _ := tlsServer(t, func(http.ResponseWriter, *http.Request) {})
 	for _, mode := range []Mode{HTTP, Raw} {

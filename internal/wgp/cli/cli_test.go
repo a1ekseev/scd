@@ -84,6 +84,9 @@ func TestLoginErrors(t *testing.T) {
 				t.Errorf("%s --provider %s: code %d err %q", cmd, id, code, errs)
 			}
 		}
+		if code, _, errs := run(cmd, "--config", exampleConfig, "--provider", "warp"); code != 1 || errs != `provider "warp" (type "warp") does not support login` {
+			t.Errorf("%s --provider warp: code %d err %q", cmd, code, errs)
+		}
 		if code, _, errs := run(cmd, "--config", p); code != 1 || !strings.Contains(errs, `"provider" not set`) {
 			t.Errorf("%s without --provider: code %d err %q", cmd, code, errs)
 		}
@@ -138,7 +141,8 @@ func freeAddr(t *testing.T) string {
 }
 
 // TestServe runs serve until both providers ticked: "one" publishes its
-// line, "two" has none and is an error in status.json; the page answers.
+// line, "two" returns no lines and no error, so its output is an empty
+// file (no live candidate); the page answers.
 func TestServe(t *testing.T) {
 	p, _ := stateConfig(t)
 	l, err := config.Load(p)
@@ -159,15 +163,15 @@ func TestServe(t *testing.T) {
 			_ = resp.Body.Close()
 		}
 	}
-	if one, two := st.Providers[0], st.Providers[1]; one.State != "ok" || two.State != "error" || two.Error != `output "two": no candidates` {
+	if one, two := st.Providers[0], st.Providers[1]; one.State != "ok" || two.State != "ok" || two.Issued != 0 {
 		t.Fatalf("status %+v", st)
 	}
 	dir := filepath.Dir(l.Config.Outputs[0].Path)
 	if fromFile, err := wgpstatus.Read(dir, 1<<16); err != nil || len(fromFile.Providers) != 2 {
 		t.Fatalf("status.json %+v, %v", fromFile, err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "two.txt")); !os.IsNotExist(err) {
-		t.Fatalf("empty output was written: %v", err)
+	if info, err := os.Stat(filepath.Join(dir, "two")); err != nil || info.Size() != 0 {
+		t.Fatalf("empty output: %v %v", info, err)
 	}
 	cancel()
 	if err := <-done; err != nil {

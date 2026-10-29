@@ -176,3 +176,30 @@ func TestWireGuardFormattingHidesKeys(t *testing.T) {
 		t.Fatal("nothing redacted was printed")
 	}
 }
+
+// A label without a flag ("☁️ WARP", as wgp WARP lines have) is accepted
+// like "WARP": no country without exit metadata, the label as city and the
+// same tag.
+func TestWireGuardLabelWithoutFlag(t *testing.T) {
+	b, err := os.ReadFile(wgFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _, _ := strings.Cut(strings.SplitN(string(b), "\n", 2)[0], "#")
+	line = strings.Replace(line, "&entry=NL&exit=NL", "", 1)
+	var tags []string
+	for _, label := range []string{"WARP", "%E2%98%81%EF%B8%8F%20WARP"} {
+		m := BuildWireGuard(line+"#"+label, "wg", "wg", "UseIPv4", time.Unix(0, 0))
+		if len(m.Entries) != 1 || len(m.Skipped) != 0 {
+			t.Fatalf("%s: entries %d, skipped %+v", label, len(m.Entries), m.Skipped)
+		}
+		e := m.Entries[0]
+		if e.Country != nil || !strings.HasSuffix(e.City, "WARP") || !strings.HasSuffix(e.Label, "WARP") {
+			t.Fatalf("entry %q country %v city %q", e.Label, e.Country, e.City)
+		}
+		tags = append(tags, e.Tag)
+	}
+	if tags[0] != tags[1] {
+		t.Fatalf("tags %q", tags)
+	}
+}

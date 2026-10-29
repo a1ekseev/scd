@@ -523,6 +523,12 @@ replacement, quarantine and hysteresis, secrets and status
   dashboard; `candidate_no_replacement` is logged once when a tunnel enters
   that state. Quarantine and the hysteresis and failure counts are in memory
   only.
+- **Empty file.** An empty candidate file (no lines at all; wgp writes one
+  when a provider has no live candidate) is not a source failure: every
+  tunnel of the source is removed as above, the slots stay empty with
+  `no_replacement`, and candidates coming back fill them again. A file with
+  lines none of which is accepted still fails the source
+  (`manifest_validation_failed`) and its tunnels stay.
 - `balancerMonitor` checks the balancer end-to-end through an external SOCKS5.
   It never repairs or applies anything. `remotePing` then pushes one group
   result (`status`, `msg`, `ping` query parameters) to an Uptime-Kuma-style
@@ -878,6 +884,11 @@ outputs:
   feeds at most one output, and an enabled provider must have one. An output
   path must not be named `status.json`.
 - `print-config` prints `state.keyFile` as a path; wgp never prints the key.
+- Provider API calls verify the server certificate and present a fixed TLS
+  ClientHello and header set per provider. WARP API requests use a TLS 1.2
+  ClientHello (ECDHE AES-256-GCM suites c02c and c030, fixed extension order,
+  no GREASE), HTTP/1.1 and JSON with sorted keys; the app strings
+  (`identification.warp`) are those of the 1.1.1.1 Android app.
 - **State.** `state.dir` holds one encrypted record per provider,
   `<provider id>.state` (AES-256-GCM, bound to the provider id: a record
   renamed to another id does not open). `state.keyFile` holds the key: the
@@ -911,9 +922,11 @@ outputs:
   is atomic (temporary file, fsync, rename, mode `0600`), and a file that
   already holds the same bytes is not rewritten, so its mtime changes only
   when a candidate changes. Each line is checked with the parser scd uses
-  for the provider's kind (`wireguard://` or `masque://`). An empty result or
-  a bad line fails the output, and the previous file stays (event
-  `provider_tick_failed`; `output_published` when a file changed).
+  for the provider's kind (`wireguard://` or `masque://`). A failed tick or a
+  bad line fails the output, and the previous file stays (event
+  `provider_tick_failed`; `output_published` when a file changed). A tick
+  that returns no lines and no error means "no live candidate": the output
+  becomes an empty file, and scd removes the source's tunnels.
 - **`status.json`.** After every tick wgp rewrites `status.json` in the
   output directory (atomic, `0600`) with the status of every provider that
   has ticked: `id`, `output`, `type`, `state` (`ok`, `needs_login` or
@@ -967,6 +980,130 @@ outputs:
   (`state: error`, `error` names the file and the field, never a value); the
   other files are still published. With no accepted file the tick fails and
   the previous output stays.
+
+### Provider `warp`
+
+Registers Cloudflare WARP devices and publishes, with `provider=warp`, one
+`wireguard://` line per device (`tunnel: wireguard`) or one `masque://` line
+per device and transport (`tunnel: masque`, see [WARP MASQUE](#warp-masque)). It has no login (`login --provider` fails with
+`does not support login`); the devices register themselves. Its output takes
+`candidates`: the number of devices. All devices leave through the Cloudflare
+colo nearest to the host, so more devices give spares, not other countries.
+
+```yaml
+identification:
+  warp:                           # required with a warp provider; all strings required
+    userAgent: "1.1.1.1/6.38.9-5641 (Android 16.0.0)"
+    clientVersion: a-6.38.9-5641  # the CF-Client-Version header
+    apiVersion: v0a5641           # the first path segment of the API
+    model: PC                     # model, locale, os_version of POST /reg
+    locale: en_US
+    osVersion: "16.0.0"
+providers:
+  - id: warp
+    type: warp
+    tunnel: wireguard             # required: wireguard | masque
+    schedule: "0 */6 * * *"       # required; every tick checks every device
+    keys:
+      rotateOnStart: true         # required: a new key for every device at start
+    deviceLostAfterChecks: 2      # default 2, >= 1
+    reRegisterMinIntervalMinutes: 1440  # required, >= 1
+    label: "WARP"                 # required; put a flag here for scd country filters
+    wireguard:                    # optional; only with tunnel: wireguard
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # default these
+      mtu: 1280                   # default 1280, 576..1500
+      allowedIPs: [0.0.0.0/0, "::/0"]  # default 0.0.0.0/0, ::/0
+      port: 2408                  # default the API port; 2408 | 500 | 1701 | 4500
+outputs:
+  - {id: warp, path: /app/out/warp, provider: warp, candidates: 1}
+```
+
+- **Registration.** A device slot without a device registers once
+  (`POST /reg` with a new X25519 key, `tunnel_type: wireguard`). The device
+  id, its token and the private key go only into the encrypted state.
+- **Check.** Every tick sends `GET /reg/{id}` for every device. `200` with
+  `enabled: true` is healthy and resets the loss counter. `404` with code
+  `1006`, `401` with code `1012` and `enabled: false` count as one loss.
+  Other answers (`5xx`, `429`, timeouts, network errors) neither count nor
+  reset the counter. Until the device is lost its line stays published;
+  every counted answer is shown in `status.json`.
+- **Loss.** After `deviceLostAfterChecks` losses in a row (the counter is in
+  the state, so a restart keeps it) the device is dropped and its line is
+  withdrawn (`device_lost`; each counted answer logs `device_check_lost`
+  with the counter). The slot registers a new device, but not
+  earlier than `reRegisterMinIntervalMinutes` after its last `POST /reg`
+  attempt, failed ones included (the time is saved in the state before the
+  request; a restart does not reset it). Only a slot that never tried goes at
+  once. Until then the slot reports `re-registration not before <time>`,
+  or, after a failed attempt of this process, the text of that attempt:
+  `register: status 429 (next attempt not before <time>)`.
+- **Rotation.** With `keys.rotateOnStart` every existing device gets a new
+  key once per process (`PATCH /reg/{id}`), after a healthy check; a failed
+  rotation is tried again on the next tick. A device registered in this
+  process is not rotated. The old key keeps working for a few minutes, so
+  scd has time to switch.
+- **Line.** `reserved` is the base64-decoded `config.client_id` of the last
+  registration or key change (it changes with the key) and must be exactly 3
+  bytes; the addresses, the peer key and the endpoint come from the same
+  answer (a check answer for the current key refreshes them). With
+  `wireguard.port` the endpoint host is kept and the port replaced. DNS, MTU
+  and allowed IPs come from the config.
+- `status.json`: `issued` is the number of published lines; a failing device
+  makes `state: error` with `error` naming the device by its number
+  (`device 1: check: device lost: status 404, code 1006`), never its id,
+  token or key. With no device left (all lost, or none registered yet) the
+  tick returns no lines and no error, so the output becomes an empty file and
+  scd drops the tunnels; `state: error` still says why. No line while a
+  device exists (its answer cannot make a line) fails the tick and the
+  previous output stays.
+- More devices than `candidates` in the state (the key was lowered) are
+  forgotten, not deleted at Cloudflare.
+
+#### WARP MASQUE
+
+A device works with one tunnel type only, so WARP over MASQUE is its own
+`warp` provider with its own devices and its own output, read by an scd
+source of type `masque` ([MASQUE sources](#masque-sources)).
+
+```yaml
+providers:
+  - id: warpmq
+    type: warp
+    tunnel: masque
+    schedule: "0 */6 * * *"
+    keys:
+      rotateOnStart: true         # a new P-256 key for every device at start
+    reRegisterMinIntervalMinutes: 1440
+    label: "WARP MASQUE"
+    masque:                       # required with tunnel: masque
+      transports: [h3, h2]        # required, h3 | h2 without repeats; the order is the priority
+      sni: consumer-masque.cloudflareclient.com  # required: a hostname, or the endpoint IP (no SNI sent)
+      port: 443                   # default 443: the endpoint port, UDP for h3, TCP for h2
+      dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # default these; IPs only
+outputs:
+  - {id: warpmq, path: /app/out/warpmq, provider: warpmq, candidates: 1}
+```
+
+- `wireguard` with `tunnel: masque` and `masque` with `tunnel: wireguard`
+  are `validate-config` errors.
+- Registration, check, loss, re-registration limit and `status.json` are
+  the same as above. Right after `POST /reg` (still X25519, `tunnel_type:
+  wireguard`) the device gets a new ECDSA P-256 key with `PATCH /reg/{id}`
+  (`key_type: secp256r1`, `tunnel_type: masque`); a failed PATCH leaves the
+  device without lines and is tried again on the next tick, without a new
+  registration. `keys.rotateOnStart` repeats that PATCH with a new key once
+  per process. A replaced MASQUE key stops working at once, so a restart with
+  rotation can break the tunnel until the next scd sync.
+- The P-256 private key is kept only in the encrypted state, like the token.
+- **Lines.** From the PATCH answer (or a check answer for the current key):
+  the endpoint key (`config.peers[0].public_key`, PEM, must be a PKIX P-256
+  key) as `peerkey`, `endpoint.v4` with its port replaced by `masque.port`
+  as the endpoint (h3 and h2 use the same address), and the device
+  addresses. One line per `masque.transports` entry, `priority` = its index
+  (`0` first); the lines of one device differ only in `transport` and
+  `priority`, and scd activates one of them. An IP `sni` must be the
+  endpoint IP of the answer, or the device has no lines (`status.json`
+  names the field).
 
 ## Cron schedules
 
@@ -1059,7 +1196,7 @@ Of scd:
 ## Development
 
 ```bash
-go vet ./... && go vet -tags 'xraylive visual' ./...
+go vet ./... && go vet -tags 'xraylive visual warplive' ./...
 go test -race ./...
 golangci-lint run                      # v2.15.0, config .golangci.yml
 go build -o bin/scd ./cmd/scd
@@ -1070,6 +1207,8 @@ bash scripts/check-no-node.sh          # Go-only repository
 SCD_XRAY_BIN=/path/to/xray go test -tags xraylive -count=1 ./internal/scd/livetest/...
 # Dashboard visual regression (headless Chromium)
 SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/...
+# Live WARP check against the real Cloudflare API (not run in CI)
+SCD_WARP_LIVE=1 go test -tags warplive -count=1 ./internal/wgp/provider/warp/...
 ```
 
 Dashboard blocks without a reference of the previous implementation are
@@ -1081,6 +1220,10 @@ The live tests need no network: besides the Xray API checks, a second test
 Xray on `127.0.0.1` (a WireGuard peer, an RFC 9484 MASQUE server with a
 self-signed certificate) carries HTTP requests through the tunnels scd builds,
 across sync, repair, rejoin and candidate replacement.
+
+The live WARP check registers a new temporary device, switches it to MASQUE,
+checks it with `GET /reg/{id}` and deletes it at the end; keys and tokens stay
+in memory.
 
 Without the environment variable, the tagged tests skip. Reference outputs of
 the previous implementation are in [`testdata/reference/`](testdata/reference/README.md).
