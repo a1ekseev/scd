@@ -114,7 +114,7 @@ func TestWireGuardFilters(t *testing.T) {
 		{"entry CH exit NL", config.SourceFiltersConfig{EntryCountryAllowlist: []string{"CH"}, CountryAllowlist: []string{"NL"}}, 1, 6, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := applyWireGuardFilters(m, &tc.f)
+			got := applyCandidateFilters(m, &tc.f)
 			if len(got.Entries) != tc.keep || got.Summary.Parsed != tc.keep || got.Summary.FilteredByCountry != tc.byCountry ||
 				got.Summary.FilteredByLabelRegex != tc.label {
 				t.Fatalf("kept %d, summary %+v", len(got.Entries), got.Summary)

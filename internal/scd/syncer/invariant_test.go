@@ -21,11 +21,13 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
 
-// sourceOutbounds are the outbounds of source "wg" now in the fake.
+// sourceOutbounds are the outbounds of source "wg" (or "mq": a fixture has
+// one of them) now in the fake.
 func sourceOutbounds(srv *xrayfake.Server) []string {
 	var out []string
 	for _, tag := range srv.OutboundTags() {
-		if strings.HasPrefix(tag, "x-observe-wg-") || strings.HasPrefix(tag, "wg-") {
+		if strings.HasPrefix(tag, "x-observe-wg-") || strings.HasPrefix(tag, "wg-") ||
+			strings.HasPrefix(tag, "x-observe-mq-") || strings.HasPrefix(tag, "mq-") {
 			out = append(out, tag)
 		}
 	}

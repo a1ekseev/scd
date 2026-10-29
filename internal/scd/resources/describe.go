@@ -4,18 +4,21 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/xtls/xray-core/app/proxyman"
 	xnet "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
+	pmasque "github.com/xtls/xray-core/proxy/masque"
 	"github.com/xtls/xray-core/proxy/socks"
 	"github.com/xtls/xray-core/proxy/vless"
 	vout "github.com/xtls/xray-core/proxy/vless/outbound"
 	"github.com/xtls/xray-core/proxy/wireguard"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/headers/http"
+	"github.com/xtls/xray-core/transport/internet/masque"
 	"github.com/xtls/xray-core/transport/internet/reality"
 	"github.com/xtls/xray-core/transport/internet/splithttp"
 	"github.com/xtls/xray-core/transport/internet/tcp"
@@ -73,8 +76,8 @@ func address(a *xnet.IPOrDomain) string {
 }
 
 // DescribeOutbound returns the runtime-state "parsed" object of a VLESS
-// outbound (SenderConfig + vless outbound Config) or a WireGuard outbound
-// (describeWireGuard), false for any other outbound. Keys are those of the TS runtime-state (protocol, address, port,
+// outbound (SenderConfig + vless outbound Config), a WireGuard outbound
+// (describeWireGuard) or a MASQUE outbound (describeMasque), false for any other outbound. Keys are those of the TS runtime-state (protocol, address, port,
 // uuid, flow, encryption, network, security, sni, alpn, fingerprint, host,
 // path, publicKey, shortId) plus xhttpMode; empty values are omitted, alpn is
 // always present ([] when unset) unless security is none. Without
@@ -91,6 +94,9 @@ func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[s
 	}
 	if wg, ok := instance[*wireguard.DeviceConfig](h.ProxySettings); ok {
 		return describeWireGuard(wg, sender), true
+	}
+	if mq, ok := instance[*pmasque.ClientConfig](h.ProxySettings); ok {
+		return describeMasque(mq, sender), true
 	}
 	cfg, ok := instance[*vout.Config](h.ProxySettings)
 	if !ok {
@@ -123,11 +129,41 @@ func DescribeOutbound(h *core.OutboundHandlerConfig, includeSecrets bool) (map[s
 	return p, true
 }
 
-// IsWireGuard reports whether h is a WireGuard outbound, whose proto holds
-// the private key: runtime-state never shows its rawBase64.
-func IsWireGuard(h *core.OutboundHandlerConfig) bool {
-	_, ok := instance[*wireguard.DeviceConfig](h.GetProxySettings())
-	return ok
+// HoldsPrivateKey reports whether h is a WireGuard or MASQUE outbound,
+// whose proto holds a private key: runtime-state never shows its
+// rawBase64.
+func HoldsPrivateKey(h *core.OutboundHandlerConfig) bool {
+	_, wg := instance[*wireguard.DeviceConfig](h.GetProxySettings())
+	_, mq := instance[*pmasque.ClientConfig](h.GetProxySettings())
+	return wg || mq
+}
+
+// describeMasque is the "parsed" object of a MASQUE outbound: protocol,
+// endpoint, publicKey (the endpoint's, std base64 PKIX DER), address (the
+// device addresses), remoteDNS, network, security, sni and alpn. The device
+// private key is never shown, whatever includeSecrets.
+func describeMasque(mq *pmasque.ClientConfig, sender *proxyman.SenderConfig) map[string]any {
+	p := map[string]any{"protocol": "masque"}
+	if s := mq.GetServer(); s != nil {
+		p["endpoint"] = net.JoinHostPort(address(s.Address), strconv.Itoa(int(s.Port)))
+	}
+	if len(mq.RemoteDns) > 0 {
+		p["remoteDNS"] = mq.RemoteDns
+	}
+	stream := sender.GetStreamSettings()
+	setString(p, "network", stream.GetProtocolName())
+	for _, tc := range stream.GetTransportSettings() {
+		if c, ok := instance[*masque.Config](tc.Settings); ok {
+			if d := c.GetWarp(); d != nil {
+				p["publicKey"] = base64.StdEncoding.EncodeToString(d.PublicKey)
+				p["address"] = d.Address
+			}
+		}
+	}
+	if stream != nil {
+		describeSecurity(p, stream, false)
+	}
+	return p
 }
 
 // describeWireGuard is the "parsed" object of a WireGuard outbound:

@@ -3,6 +3,7 @@ package syncer
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/a1ekseev/scd/internal/common/vless"
@@ -15,7 +16,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// wgSync is one sync of a wireguard source under its target lock.
+// wgSync is one sync of a wireguard or masque source under its target lock.
 type wgSync struct {
 	s       *Syncer
 	c       config.SubscriptionConfig
@@ -28,7 +29,7 @@ type wgSync struct {
 	skipped []vless.Skip
 }
 
-// syncWireGuard syncs wireguard source src under the target lock. It
+// syncWireGuard syncs wireguard or masque source src under the target lock. It
 // applies the source in full (every kind, like syncPlans) when it has no
 // state, its hashes were reset, apply.ConfigHash changed or Xray lost its
 // resources; the active set is then the first maxActive ranked candidates
@@ -101,7 +102,7 @@ func (s *Syncer) syncWireGuard(ctx context.Context, c config.SubscriptionConfig,
 		}
 	}
 	if full {
-		return w.full(ctx, m), true
+		return w.full(ctx, m, slots), true
 	}
 	return w.decide(ctx, slots, w.slots(slots, cur)), true
 }
@@ -142,8 +143,10 @@ func (w *wgSync) slots(tunnels []state.Tunnel, cur *state.Source) []selection.Sl
 }
 
 // full applies the source in full with the candidates outside quarantine.
-// A failure resets the hashes of an existing state.
-func (w *wgSync) full(ctx context.Context, m manifest.Manifest) TargetReport {
+// A key with a transport (masque) whose active tunnel is still eligible
+// keeps that transport: priority only picks a new one. A failure resets the
+// hashes of an existing state.
+func (w *wgSync) full(ctx context.Context, m manifest.Manifest, active []state.Tunnel) TargetReport {
 	s, c, src := w.s, w.c, w.src
 	eligible := m
 	eligible.Entries = nil
@@ -151,6 +154,20 @@ func (w *wgSync) full(ctx context.Context, m manifest.Manifest) TargetReport {
 		if !w.sel.Quarantined(e.SelectionCandidate(), w.now) {
 			eligible.Entries = append(eligible.Entries, e)
 		}
+	}
+	kept := map[[32]byte]string{}
+	for _, e := range eligible.Entries {
+		cand := e.SelectionCandidate()
+		if cand.Transport != "" && slices.ContainsFunc(active, func(tn state.Tunnel) bool { return tn.Mapping.BaseTunnelID == e.Tag }) {
+			kept[cand.Key] = cand.Transport
+		}
+	}
+	if len(kept) > 0 {
+		eligible.Entries = slices.DeleteFunc(eligible.Entries, func(e manifest.Entry) bool {
+			cand := e.SelectionCandidate()
+			t, ok := kept[cand.Key]
+			return ok && cand.Transport != t
+		})
 	}
 	plans := make([]apply.Plan, 0, 3)
 	for _, k := range s.kinds() {

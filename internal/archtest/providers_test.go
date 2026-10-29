@@ -12,6 +12,10 @@ import (
 // providerName matches a candidate provider name anywhere, any case.
 var providerName = regexp.MustCompile(`(?i)proton|warp`)
 
+// xrayNames are the Xray config and proto names that contain a provider
+// name without naming the provider: the device block of masqueSettings.
+var xrayNames = regexp.MustCompile(`json:"warp"|\.GetWarp\(\)`)
+
 // scd never branches on a provider: provider names live only in the
 // provider table of common/candidate. Test files and test data may name
 // them.
@@ -26,7 +30,7 @@ func TestNoProviderNamesInSCD(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if m := providerName.Find(b); m != nil {
+		if m := providerName.Find(xrayNames.ReplaceAll(b, nil)); m != nil {
 			t.Errorf("%s names the provider %q", path, m)
 		}
 		return nil

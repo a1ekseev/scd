@@ -53,7 +53,7 @@ output goes to stdout and logs go to stderr.
 | `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
 | `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`; orphans are checked first, so an unreachable Xray fails the sync even when no manifest changed. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
-| `scd generate --source-id <id> [--type vless\|wireguard] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; keys are written as `<redacted>`. |
+| `scd generate --source-id <id> [--type vless\|wireguard\|masque] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; `--type masque` reads a MASQUE candidate file the same way, without `--endpoint-domain-strategy`. Keys are written as `<redacted>`. |
 | `scd sfc serve\|refresh\|validate-config\|print-config --config f` | sfc: serve with background refresh / one refresh with JSON report / validate / print (`input`, `fetchHeaders` and output ids redacted unless `--include-secrets`; an output id is the secret part of its public URL, so the `refresh` report and logs name outputs by `name` instead). An interrupted `refresh` prints its partial report and exits 130/143 like `scd sync`. |
 | `scd gtl serve\|validate-config\|print-config --config f` | gtl: serve / validate (`Config is valid`) / print. |
 
@@ -182,16 +182,17 @@ statusServer:
 | `.id` / `.enabled` | Subscription id used in logs (`subscriptionId`), reports and the dashboard; on/off. | required / `true` |
 | `.sources[]` | At least one source. Each is loaded, filtered and applied separately; its tunnels join the same target. | required |
 | `.sources[].id` | Source id: `[a-z0-9-]`, 1..16 characters, no `-` at either end. It prefixes every generated tag and is `sourceId` in logs and reports. `target.address` is unique; a source `id` is unique within its subscription (one Xray), and there no `<id>-` may start another id or overlap `observatorySubjectSelectorPrefix`. | required |
-| `.sources[].type` | `vless` or `wireguard` ([WireGuard sources](#wireguard-sources)). | required |
-| `.sources[].input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. A `wireguard` source takes an absolute file path only. | required |
+| `.sources[].type` | `vless`, `wireguard` ([WireGuard sources](#wireguard-sources)) or `masque` ([MASQUE sources](#masque-sources)). | required |
+| `.sources[].input` | File path (relative to the config file), `http(s)` URL, or `-` for stdin. A `wireguard` or `masque` source takes an absolute file path only. | required |
 | `.sources[].enabled` / `.format` / `.fetchTimeoutMs` | On/off (a disabled source's resources are removed as orphans); decoding `auto\|plain\|base64`; download timeout (does not apply to Xray calls). `format`, `fetchTimeoutMs`, `allowInsecure`, `fetchUserAgent` and `fetchHeaders` are `vless` only. | `true` / `auto` / `5000` |
 | `.sources[].allowInsecure` | Policy for links with `allowInsecure=1` and neither `pcs` nor `vcn`. `deny` skips the link. `allow` accepts it, but Xray v26.10.21 verifies the certificate anyway; logs warning `allow_insecure_ignored`. | `deny` |
 | `.sources[].fetchUserAgent`, `.fetchHeaders` | Request `User-Agent` and extra request headers, see [Fetching subscriptions](#fetching-subscriptions). | `scd/<version>`, none |
 | `.sources[].maxInputBytes` | Size limit of the input (file, `http(s)` and stdin), `1024..67108864`. | 64 MiB |
 | `.sources[].portRange.start/end` | Inclusive port range (`1..65535`) of the source's SOCKS inbounds. Required when inbounds or routing are enabled. The ranges of one subscription must not overlap. | — |
-| `.sources[].filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. For `wireguard`, the exit country. | no filter |
-| `.sources[].filters.entryCountryAllowlist` | `wireguard` only: ISO2 codes of the entry country. | no filter |
-| `.sources[].maxActive`, `.selection`, `.wireguard` | `wireguard` only, required, see [WireGuard sources](#wireguard-sources). | — |
+| `.sources[].filters.countryAllowlist` | ISO2 codes. Entries without a recognized country are dropped. For `wireguard` and `masque`, the exit country. | no filter |
+| `.sources[].filters.entryCountryAllowlist` | `wireguard` and `masque` only: ISO2 codes of the entry country. | no filter |
+| `.sources[].maxActive`, `.selection` | `wireguard` and `masque` only, required, see [WireGuard sources](#wireguard-sources). | — |
+| `.sources[].wireguard` | `wireguard` only, required. | — |
 | `.sources[].monitor.request.timeoutMs`, `.monitor.retry.{attempts,delayMs}` | Any type: override `target.monitor` for the source's tunnels. See [Monitoring and repair](#monitoring-and-repair). | the target's |
 | `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
@@ -300,6 +301,68 @@ Xray as WireGuard outbounds.
   and `/api/instance-status`; `targets[].sources[]` of a `wireguard` source
   adds `maxActive`, `activeCount` and `candidateCount`.
 
+### MASQUE sources
+
+A source with `type: masque` reads a local candidate file with one
+`masque://` line per candidate and puts at most `maxActive` of them into
+Xray as MASQUE outbounds (CONNECT-IP over HTTP/3 or HTTP/2). Everything not
+listed here works as for [WireGuard sources](#wireguard-sources): input rules
+(`masque_input_refused`), filters, ranking, apply, the `maxActive` limit,
+replacement, quarantine and hysteresis, secrets and status
+(`protocol: "masque"`). A `masque` source has no `wireguard` section.
+
+```yaml
+      - id: mq
+        type: masque
+        input: /app/wgp/warpmq # absolute path, mode 0600
+        portRange: {start: 20110, end: 20119}
+        maxActive: 1
+        selection:
+          strategy: label          # score | load | label
+          switchMarginPercent: 20
+          switchConfirmChecks: 2
+          deadPairCooldownMinutes: 10
+          replaceAfterFailures: 2
+        monitor:
+          request: {timeoutMs: 10000}
+          retry: {attempts: 2, delayMs: 2000}
+```
+
+- **Line format.**
+  `masque://<privateKey>@<ip>:<port>?provider=…&peerkey=…&address=…&sni=…&transport=h3|h2&dns=…&priority=<n>[&entry=…&exit=…&expires=…]#<label>`.
+  The device key is an ECDSA P-256 PKCS #8 key and `peerkey` the PKIX P-256
+  key of the endpoint, both base64url without padding; `address` holds at
+  most one IPv4 and one IPv6; `sni` is a hostname or the endpoint IP (then no
+  SNI is sent); `dns` are IPs. A broken line is skipped as `masque_invalid`
+  (the detail names the field, never the value).
+- **Transports.** One device key has one line per transport (`h3`, `h2`),
+  on the same endpoint, that differ only in `transport` and `priority`
+  (0 first). One tunnel per device key is active. A new tunnel for a key (the
+  first sync, a replacement) takes the line with the lowest `priority` whose
+  key + endpoint + transport triple is not in quarantine. When the monitor
+  replaces a failed `h3` tunnel (UDP blocked, for example), its triple goes
+  into quarantine and the `h2` line of the key takes the slot. A healthy
+  tunnel is never switched to another transport of its key: `h2` stays after
+  the `h3` quarantine expires, until it fails or changes. Between keys,
+  `selection.strategy` ranks as usual. A full apply (see WireGuard sources)
+  keeps the active transport of a key; only a restart picks again by
+  `priority`.
+- **Tags.** `<id>-<cc>-<city>-mq-<sha8>`; `sha8` covers the device public
+  key, `peerkey`, endpoint, `address`, `sni`, `transport` and `dns`, not the
+  label and the metadata (`priority` included).
+- **Outbound.** `protocol` and `streamSettings.network` `masque` with the
+  device key (std base64 SEC 1), the endpoint key (PEM PKIX, pinned by Xray)
+  and the addresses in `masqueSettings`; always `security: tls` with
+  `tlsSettings.serverName` = `sni` (Xray checks `security` only when the
+  outbound is added), `alpn: ["h2"]` for `h2` only. No `fingerprint`,
+  headers or `pinnedPeerCertSha256` (the latter would turn off the key
+  pinning).
+- **Monitor.** A failure shows only as a reset or a timeout, up to 10 s
+  while the tunnel is set up: use `timeoutMs` ≥ 10000 and `attempts` ≥ 2.
+- **Secrets.** The device key never appears in any output; the
+  runtime-state `parsed` object of a MASQUE outbound has no private key and
+  there is no `rawBase64`, even with `includeRaw` and `includeSecrets`.
+
 ### Sync
 
 - Every source owns four tag namespaces on its target:
@@ -381,12 +444,12 @@ Xray as WireGuard outbounds.
   type); unset keys keep the target's. A WireGuard failure shows only as a
   timeout or reset and the first handshake can be slow, so for `wireguard`
   sources use `timeoutMs` ≥ 10000 and `attempts` ≥ 2.
-- **Candidate replacement** (`wireguard`). Once `replaceAfterFailures` is
+- **Candidate replacement** (`wireguard`, `masque`). Once `replaceAfterFailures` is
   reached, a failed tunnel is replaced instead of repaired; it is repaired
   only when no replacement exists. A slot keeps its port; the
   replacement is the first ranked candidate that is not active, does not
   share a private key with another active one and whose key + endpoint pair
-  is not in quarantine. It removes the old tunnel first (rule, outbound,
+  (key + endpoint + transport for `masque`) is not in quarantine. It removes the old tunnel first (rule, outbound,
   inbound; both outbound tags, with and without the observatory prefix,
   are removed), then adds the new one (outbound with the observatory prefix,
   inbound, rule), under the same per-target mutex as sync, repair and
@@ -448,11 +511,11 @@ schemas are a contract and grow only by adding fields; `version` stays `1`. A
 panic in a handler returns 500 and logs `http_handler_panic`. The dashboard is
 read-only and has no links to the JSON endpoints.
 
-A target whose subscription has several sources, a `wireguard` source or a
+A target whose subscription has several sources, a `wireguard` or `masque` source or a
 source with a warning, gets `targets[].sources[]` =
 `{sourceId, type, enabled, maxActive?, activeCount?, candidateCount?, warnings?[]{code, message}}`
-in source id order, and its tunnels get `sourceId`; a WireGuard tunnel also
-has `protocol: "wireguard"` (VLESS tunnels have no `protocol`). The dashboard then shows a
+in source id order, and its tunnels get `sourceId`; a WireGuard or MASQUE
+tunnel also has `protocol: "wireguard"` or `"masque"` (VLESS tunnels have no `protocol`). The dashboard then shows a
 Sources card with the warnings (for example `port_range_exhausted`) and the
 source next to each tunnel endpoint. A subscription with one source and no
 warning has neither key, as before.
@@ -462,8 +525,8 @@ include subscription and monitor/push URLs (shown as `<scheme>://<host>/<redacte
 `fetchHeaders` values, UUIDs and keys, outbound `path` and the xhttp `host`,
 which are `<redacted>`. `includeRaw: true` adds `rawBase64` protobuf blobs
 only together with `includeSecrets: true`, because the blobs contain everything
-unredacted. WireGuard outbounds never get `rawBase64`, and their `parsed`
-never shows the private or preshared key.
+unredacted. WireGuard and MASQUE outbounds never get `rawBase64`, and their
+`parsed` never shows the private or preshared key.
 
 ## Label filters
 
@@ -819,6 +882,11 @@ Dashboard blocks without a reference of the previous implementation are
 compared with local screenshots in `internal/scd/status/testdata/visual/`
 (gitignored, never committed); add `-update` to the visual test command to
 create them. A test without its screenshot is skipped.
+
+The live tests need no network: besides the Xray API checks, a second test
+Xray on `127.0.0.1` (a WireGuard peer, an RFC 9484 MASQUE server with a
+self-signed certificate) carries HTTP requests through the tunnels scd builds,
+across sync, repair, rejoin and candidate replacement.
 
 Without the environment variable, the tagged tests skip. Reference outputs of
 the previous implementation are in [`testdata/reference/`](testdata/reference/README.md).

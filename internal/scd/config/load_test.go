@@ -607,7 +607,7 @@ func TestOldSubscriptionKeysRejected(t *testing.T) {
 
 func TestSourceFields(t *testing.T) {
 	mustFail(t, replace(t, "        type: vless\n", ""), "subscriptions.0.sources.0.type: required")
-	mustFail(t, replace(t, "        type: vless\n", "        type: masque\n"), "subscriptions.0.sources.0.type: must be one of vless|wireguard")
+	mustFail(t, replace(t, "        type: vless\n", "        type: other\n"), "subscriptions.0.sources.0.type: must be one of vless|wireguard|masque")
 	mustFail(t, replace(t, "      - id: vless\n        type: vless\n", "      - type: vless\n"), "subscriptions.0.sources.0.id: required")
 	for _, id := range []string{"-a", "a-", "A", "a_b", "abcdefghijklmnopq"} {
 		mustFail(t, replace(t, "      - id: vless\n", "      - id: '"+id+"'\n"),

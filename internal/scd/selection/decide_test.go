@@ -157,3 +157,86 @@ func TestQuarantine(t *testing.T) {
 		t.Fatalf("expired quarantine kept: %v", st.Quarantine)
 	}
 }
+
+// mq is a masque candidate of key k on one endpoint with transport and
+// priority.
+func mq(tag string, k byte, transport string, priority int) Candidate {
+	return Candidate{Tag: tag, Label: "🇳🇱 Amsterdam", Key: [32]byte{k}, Endpoint: "192.0.2.31:443", Transport: transport, Priority: priority}
+}
+
+// The candidates of one key follow each other by priority; the quarantine
+// is per transport; a healthy h2 stays after the h3 quarantine expires.
+func TestMasqueTransports(t *testing.T) {
+	now := time.Unix(1000, 0)
+	cfg := config.SelectionConfig{Strategy: config.StrategyLabel, SwitchConfirmChecks: 1, DeadPairCooldownMinutes: 4}
+	aH3, aH2, bH3 := mq("a3", 1, "h3", 0), mq("a2", 1, "h2", 1), mq("b3", 2, "h3", 0)
+	bH3.Label = "🇳🇱 Amsterdam B"
+	// By label then tag "a2" < "a3" < "b3": the key a group sits first, h3
+	// before h2.
+	ranked := Rank([]Candidate{bH3, aH2, aH3}, cfg.Strategy, self)
+	if got := tags(ranked); !reflect.DeepEqual(got, []string{"a3", "a2", "b3"}) {
+		t.Fatalf("rank %v", got)
+	}
+	if got := tags(Pick(ranked, 2, self)); !reflect.DeepEqual(got, []string{"a3", "b3"}) {
+		t.Fatalf("pick %v", got)
+	}
+
+	var st State
+	st.QuarantinePair(aH3, now, cfg.DeadPairCooldownMinutes)
+	if st.Quarantined(aH2, now) {
+		t.Fatal("h2 of the key is quarantined with h3")
+	}
+	c, ok := Replacement(ranked, map[string]bool{"a3": true, "b3": true}, map[[32]byte]bool{bH3.Key: true}, &st, now)
+	if !ok || c.Tag != "a2" {
+		t.Fatalf("replacement %v %v", c.Tag, ok)
+	}
+	later := now.Add(5 * time.Minute)
+	for _, strategy := range []string{config.StrategyLabel, config.StrategyScore} {
+		cfg.Strategy = strategy
+		if got := brief(Decide(healthy(aH2, bH3), ranked, &st, later, cfg)); !reflect.DeepEqual(got, []string{"keep", "keep"}) {
+			t.Fatalf("%s: h2 switched back: %v", strategy, got)
+		}
+	}
+	// Not even with a better h3 metric.
+	s1, s9 := 1.0, 9.0
+	h3, h2 := aH3, aH2
+	h3.Score, h2.Score = &s1, &s9
+	if got := brief(Decide(healthy(h2, bH3), []Candidate{h3, h2, bH3}, &st, later, cfg)); !reflect.DeepEqual(got, []string{"keep", "keep"}) {
+		t.Fatalf("h2 switched back by score: %v", got)
+	}
+	// h2 gone: the key takes h3 again.
+	if got := brief(Decide(healthy(aH2, bH3), []Candidate{aH3, bH3}, &st, later, cfg)); !reflect.DeepEqual(got, []string{"a3:gone", "keep"}) {
+		t.Fatalf("h2 gone: %v", got)
+	}
+}
+
+// For a better candidate only the first allowed line of a masque key
+// competes: a better h2 behind a worse h3 does not switch; with the h3
+// quarantined it does.
+func TestMasqueBetterFirstLineOnly(t *testing.T) {
+	now := time.Unix(1000, 0)
+	cfg := config.SelectionConfig{Strategy: config.StrategyScore, SwitchMarginPercent: 10, SwitchConfirmChecks: 1, DeadPairCooldownMinutes: 4}
+	score := func(c Candidate, s float64) Candidate { c.Score = &s; return c }
+	a := score(mq("a3", 1, "h3", 0), 4)
+	b3, b2 := score(mq("b3", 2, "h3", 0), 5), score(mq("b2", 2, "h2", 1), 1)
+	ranked := Rank([]Candidate{b2, a, b3}, cfg.Strategy, self)
+	if got := tags(ranked); !reflect.DeepEqual(got, []string{"b3", "b2", "a3"}) {
+		t.Fatalf("rank %v", got)
+	}
+	if got := brief(Decide(healthy(a), ranked, &State{}, now, cfg)); !reflect.DeepEqual(got, []string{"keep"}) {
+		t.Fatalf("h2 behind h3 switched: %v", got)
+	}
+	var st State
+	st.QuarantinePair(b3, now, 4)
+	if got := brief(Decide(healthy(a), ranked, &st, now, cfg)); !reflect.DeepEqual(got, []string{"b2:better"}) {
+		t.Fatalf("with h3 quarantined: %v", got)
+	}
+}
+
+// Rank keeps the wireguard order: without a transport nothing is grouped.
+func TestRankWireGuardNotGrouped(t *testing.T) {
+	a, b, a2 := cand("a", 1, 1), cand("b", 2, 2), cand("a2", 1, 3)
+	if got := tags(Rank([]Candidate{a2, b, a}, config.StrategyScore, self)); !reflect.DeepEqual(got, []string{"a", "b", "a2"}) {
+		t.Fatalf("rank %v", got)
+	}
+}

@@ -66,6 +66,30 @@ subscriptions:
           entryCountryAllowlist: [NL, CH]  # страна входа (entry, иначе флаг label)
         wireguard:
           endpointDomainStrategy: UseIPv4
+      # Кандидаты MASQUE (по строке masque:// на транспорт h3/h2 ключа устройства).
+      # Правила input — как у wireguard. На ключ устройства активен один кандидат:
+      # новый берётся с наименьшим priority вне карантина «ключ + endpoint + transport».
+      # В Xray всегда security: tls. Выключен: файла кандидатов в примере нет.
+      - id: mq
+        type: masque
+        input: /app/wgp/warpmq
+        enabled: false
+        portRange:
+          start: 20110
+          end: 20119
+        maxActive: 1
+        selection:
+          strategy: label
+          switchMarginPercent: 20
+          switchConfirmChecks: 2
+          deadPairCooldownMinutes: 10
+          replaceAfterFailures: 2
+        monitor:
+          request:
+            timeoutMs: 10000
+          retry:
+            attempts: 2
+            delayMs: 2000
     target:
       # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
       # (docker/xray/config/01_api.json).

@@ -1,5 +1,6 @@
 // Package candidate parses and formats the tunnel candidate lines that scd
-// reads from local candidate files ("wireguard://key@host:port?query#label").
+// reads from local candidate files ("wireguard://key@host:port?query#label"
+// and "masque://key@ip:port?query#label").
 // Parsing is strict and error texts never contain field values, because the
 // lines carry private keys.
 package candidate
@@ -35,23 +36,31 @@ const (
 	KindMasque Kind = "masque"
 )
 
-// providerFields lists, per provider, the query parameters it requires on top
-// of the ones every provider requires. It is the only place in scd that knows
-// provider names: a new provider is a new row here.
-var providerFields = map[string][]string{
-	"proton": {"dns"},
-	"warp":   {"dns", "reserved"},
-	"static": {},
+// providerFields lists, per kind and provider, the query parameters the
+// provider requires on top of the ones every provider of the kind requires.
+// It is the only place in scd that knows provider names: a new provider is a
+// new row here.
+var providerFields = map[Kind]map[string][]string{
+	KindWireGuard: {
+		"proton": {"dns"},
+		"warp":   {"dns", "reserved"},
+		"static": {},
+	},
+	KindMasque: {
+		"warp": {},
+	},
 }
 
 // wgRequired are the query parameters every provider requires.
 var wgRequired = []string{"publickey", "address", "mtu", "allowedips"}
 
+// metaParams are the metadata query parameters in format order.
+var metaParams = []string{"server", "entry", "exit", "load", "score", "expires"}
+
 // wgParams are the known query parameters in format order.
-var wgParams = []string{
-	"provider", "publickey", "address", "dns", "mtu", "allowedips", "reserved", "keepalive",
-	"presharedkey", "server", "entry", "exit", "load", "score", "expires",
-}
+var wgParams = slices.Concat([]string{
+	"provider", "publickey", "address", "dns", "mtu", "allowedips", "reserved", "keepalive", "presharedkey",
+}, metaParams)
 
 // FieldError is a candidate line error. It names the field and the broken
 // rule, never the value.
@@ -137,22 +146,12 @@ func ParseWireGuard(line string) (WireGuard, error) {
 	if w.Endpoint, err = parseEndpoint(u.Host); err != nil {
 		return w, fieldErr("endpoint", err.Error())
 	}
-	q, err := parseQuery(u.RawQuery)
+	q, err := parseQuery(u.RawQuery, wgParams)
 	if err != nil {
 		return w, err
 	}
-	w.Provider = q["provider"]
-	extra, ok := providerFields[w.Provider]
-	if w.Provider == "" {
-		return w, fieldErr("provider", "required")
-	}
-	if !ok {
-		return w, fieldErr("provider", "unknown provider")
-	}
-	for _, k := range slices.Concat(wgRequired, extra) {
-		if _, ok := q[k]; !ok {
-			return w, fieldErr(k, "required")
-		}
+	if w.Provider, err = checkProvider(KindWireGuard, q, wgRequired); err != nil {
+		return w, err
 	}
 	for _, k := range wgParams[1:] {
 		if v, ok := q[k]; ok {
@@ -162,6 +161,25 @@ func ParseWireGuard(line string) (WireGuard, error) {
 		}
 	}
 	return w, nil
+}
+
+// checkProvider returns the provider of q and checks that q has every
+// parameter that kind and provider require.
+func checkProvider(kind Kind, q map[string]string, required []string) (string, error) {
+	p := q["provider"]
+	extra, ok := providerFields[kind][p]
+	if p == "" {
+		return "", fieldErr("provider", "required")
+	}
+	if !ok {
+		return "", fieldErr("provider", "unknown provider")
+	}
+	for _, k := range slices.Concat(required, extra) {
+		if _, ok := q[k]; !ok {
+			return "", fieldErr(k, "required")
+		}
+	}
+	return p, nil
 }
 
 // rule is a rule violation; ParseWireGuard wraps it with the field name.
@@ -210,45 +228,54 @@ func (w *WireGuard) set(k, v string) error {
 			return err
 		}
 		w.PresharedKey = &psk
+	default:
+		return w.Meta.set(k, v)
+	}
+	return err
+}
+
+// set parses metadata parameter k.
+func (m *Meta) set(k, v string) error {
+	switch k {
 	case "server":
 		if !utf8.ValidString(v) || strings.ContainsFunc(v, func(r rune) bool { return !unicode.IsPrint(r) }) {
 			return rule("must be printable")
 		}
-		w.Meta.Server = v
+		m.Server = v
 	case "entry", "exit":
 		if len(v) != 2 || v[0] < 'A' || v[0] > 'Z' || v[1] < 'A' || v[1] > 'Z' {
 			return rule("must be an upper-case ISO2 code")
 		}
 		if k == "entry" {
-			w.Meta.Entry = v
+			m.Entry = v
 		} else {
-			w.Meta.Exit = v
+			m.Exit = v
 		}
 	case "load":
 		n, err := parseUint(v, 0, 100)
 		if err != nil {
 			return err
 		}
-		w.Meta.Load = &n
+		m.Load = &n
 	case "score":
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil || !(f >= 0) || math.IsInf(f, 0) { // !(f >= 0) also rejects NaN
 			return rule("must be a number >= 0")
 		}
-		w.Meta.Score = &f
+		m.Score = &f
 	case "expires":
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
 			return rule("must be RFC 3339")
 		}
-		w.Meta.Expires = t.UTC()
+		m.Expires = t.UTC()
 	}
-	return err
+	return nil
 }
 
 // parseQuery splits the raw query on "&" into unescaped values. An empty
 // segment, an unknown or repeated key and an empty value are errors.
-func parseQuery(raw string) (map[string]string, error) {
+func parseQuery(raw string, known []string) (map[string]string, error) {
 	q := map[string]string{}
 	if raw == "" {
 		return q, nil
@@ -260,7 +287,7 @@ func parseQuery(raw string) (map[string]string, error) {
 		switch {
 		case err1 != nil || err2 != nil:
 			return nil, fieldErr("uri", "invalid query escape")
-		case !slices.Contains(wgParams, key):
+		case !slices.Contains(known, key):
 			// The key is not named: a malformed line may put a secret there.
 			return nil, fieldErr("uri", "unknown or empty parameter")
 		case q[key] != "":
@@ -376,9 +403,9 @@ func (w WireGuard) tunnelParams() []kv {
 	return p
 }
 
-func formatLine(userinfo, endpoint string, params []kv, label string) string {
+func formatLine(kind Kind, userinfo, endpoint string, params []kv, label string) string {
 	var b strings.Builder
-	b.WriteString("wireguard://" + url.User(userinfo).String() + "@" + endpoint)
+	b.WriteString(string(kind) + "://" + url.User(userinfo).String() + "@" + endpoint)
 	sep := "?"
 	for _, p := range params {
 		if p.v != "" {
@@ -413,9 +440,13 @@ func (w WireGuard) Redacted() string {
 }
 
 func (w WireGuard) format(privateKey, psk string) string {
-	params := slices.Concat([]kv{{"provider", w.Provider}}, w.tunnelParams(), []kv{{"presharedkey", psk}})
-	m := w.Meta
-	params = append(params, kv{"server", m.Server}, kv{"entry", m.Entry}, kv{"exit", m.Exit})
+	params := slices.Concat([]kv{{"provider", w.Provider}}, w.tunnelParams(), []kv{{"presharedkey", psk}}, w.Meta.params())
+	return formatLine(KindWireGuard, privateKey, w.Endpoint, params, w.Label)
+}
+
+// params are the metadata parameters in format order.
+func (m Meta) params() []kv {
+	params := []kv{{"server", m.Server}, {"entry", m.Entry}, {"exit", m.Exit}}
 	if m.Load != nil {
 		params = append(params, kv{"load", strconv.Itoa(*m.Load)})
 	}
@@ -425,7 +456,7 @@ func (w WireGuard) format(privateKey, psk string) string {
 	if !m.Expires.IsZero() {
 		params = append(params, kv{"expires", m.Expires.Format(time.RFC3339Nano)})
 	}
-	return formatLine(privateKey, w.Endpoint, params, w.Label)
+	return params
 }
 
 // InterfacePublicKey returns the interface public key (X25519 of the
@@ -456,7 +487,7 @@ func (w WireGuard) PublicHash() string {
 		sum := sha256.Sum256(w.PresharedKey[:])
 		params = append(params, kv{"presharedkey", hex.EncodeToString(sum[:])})
 	}
-	line := formatLine(base64.StdEncoding.EncodeToString(pub[:]), w.Endpoint, params, "")
+	line := formatLine(KindWireGuard, base64.StdEncoding.EncodeToString(pub[:]), w.Endpoint, params, "")
 	sum := sha256.Sum256([]byte(line))
 	return hex.EncodeToString(sum[:])[:8]
 }

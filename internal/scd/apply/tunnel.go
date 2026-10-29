@@ -19,7 +19,7 @@ import (
 // sync applies the source in full.
 var ErrReplaceFailed = errors.New("candidate replace failed")
 
-// ConfigHash is the hash of what a full apply of a wireguard source
+// ConfigHash is the hash of what a full apply of a wireguard or masque source
 // depends on besides its candidates: type, portRange, inboundSocks.listen,
 // the observatory prefix, endpointDomainStrategy and maxActive. A change
 // makes the next sync apply the source in full.

@@ -18,8 +18,8 @@ const (
 	ReasonVacant = "vacant"
 )
 
-// PairKey identifies a key on one server: the quarantine unit. Transport
-// is empty for wireguard.
+// PairKey identifies a key on one server (and transport): the quarantine
+// unit. Transport is empty for wireguard.
 type PairKey struct {
 	Key       [32]byte
 	Endpoint  string
@@ -27,7 +27,9 @@ type PairKey struct {
 }
 
 // Pair is the pair key of c.
-func (c Candidate) Pair() PairKey { return PairKey{Key: c.Key, Endpoint: c.Endpoint} }
+func (c Candidate) Pair() PairKey {
+	return PairKey{Key: c.Key, Endpoint: c.Endpoint, Transport: c.Transport}
+}
 
 // State is the in-memory selection state of one source: the quarantined
 // pairs with their expiry and the hysteresis series ("<active
@@ -106,6 +108,8 @@ type Action struct {
 //     switchConfirmChecks sync ticks in a row (reason better); the metric is
 //     score (load for strategy load), else the other one when either lacks
 //     it; without a metric and with strategy label nothing switches.
+//     Another transport of the active key never counts as better: priority
+//     only picks the candidate of a key that takes a slot.
 func Decide(active []Slot, ranked []Candidate, st *State, now time.Time, cfg config.SelectionConfig) []Action {
 	for k, until := range st.Quarantine {
 		if !now.Before(until) {
@@ -158,8 +162,18 @@ func Decide(active []Slot, ranked []Candidate, st *State, now time.Time, cfg con
 		}
 		cur := byTag[a.Tag]
 		delete(keys, cur.Key)
+		seen := map[[32]byte]bool{}
 		for _, c := range ranked {
-			if inUse[c.Tag] || keys[c.Key] || st.Quarantined(c, now) || !beats(c, cur, cfg) {
+			if inUse[c.Tag] || keys[c.Key] || c.Key == cur.Key && c.Transport != cur.Transport || st.Quarantined(c, now) {
+				continue
+			}
+			// Only the first (lowest priority) allowed line of a masque key
+			// competes.
+			if c.Transport != "" && seen[c.Key] {
+				continue
+			}
+			seen[c.Key] = true
+			if !beats(c, cur, cfg) {
 				continue
 			}
 			k := cur.Tag + ">" + c.Tag

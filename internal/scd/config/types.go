@@ -32,9 +32,14 @@ type SubscriptionConfig struct {
 const (
 	SourceVLESS     = "vless"
 	SourceWireGuard = "wireguard"
+	SourceMasque    = "masque"
 )
 
-// Selection strategies of a wireguard source (selection.strategy).
+// CandidateType reports whether a source type reads a candidate file
+// (wireguard, masque): a local private file, maxActive and selection.
+func CandidateType(t string) bool { return t == SourceWireGuard || t == SourceMasque }
+
+// Selection strategies of a wireguard or masque source (selection.strategy).
 const (
 	StrategyScore = "score"
 	StrategyLoad  = "load"
@@ -45,9 +50,9 @@ const (
 // it generates and is unique across the config.
 type SourceConfig struct {
 	ID   string `json:"id"`
-	Type string `json:"type"` // vless|wireguard
+	Type string `json:"type"` // vless|wireguard|masque
 	// Input is "-" (stdin), an http(s) URL or an absolute file path; a
-	// wireguard source has an absolute file path only.
+	// wireguard or masque source has an absolute file path only.
 	Input   string `json:"input"`
 	Enabled bool   `json:"enabled"`
 	// Format, FetchTimeoutMs and AllowInsecure are set for vless only.
@@ -68,7 +73,8 @@ type SourceConfig struct {
 	// configured.
 	PortRange *PortRange           `json:"portRange,omitempty"`
 	Filters   *SourceFiltersConfig `json:"filters,omitempty"`
-	// MaxActive, Selection and WireGuard are set for wireguard only.
+	// MaxActive and Selection are set for wireguard and masque only,
+	// WireGuard for wireguard only.
 	MaxActive int              `json:"maxActive,omitempty"`
 	Selection *SelectionConfig `json:"selection,omitempty"`
 	// Monitor overrides target.monitor for the source's tunnels; nil when
@@ -77,7 +83,8 @@ type SourceConfig struct {
 	WireGuard *WireGuardConfig     `json:"wireguard,omitempty"`
 }
 
-// SelectionConfig chooses the active candidates of a wireguard source.
+// SelectionConfig chooses the active candidates of a wireguard or masque
+// source.
 type SelectionConfig struct {
 	Strategy                string `json:"strategy"` // score|load|label
 	SwitchMarginPercent     int    `json:"switchMarginPercent"`
@@ -121,10 +128,11 @@ var EndpointDomainStrategies = []string{"AsIs", "UseIP", "UseIPv4", "UseIPv6", "
 // and labelExcludeRegex in place of Label.
 type SourceFiltersConfig struct {
 	// CountryAllowlist holds upper-case ISO2 codes; nil or empty means no
-	// country filter. For a wireguard source it is the exit country.
+	// country filter. For a wireguard or masque source it is the exit
+	// country.
 	CountryAllowlist []string `json:"countryAllowlist,omitempty"`
-	// EntryCountryAllowlist is the entry country filter of a wireguard
-	// source.
+	// EntryCountryAllowlist is the entry country filter of a wireguard or
+	// masque source.
 	EntryCountryAllowlist []string           `json:"entryCountryAllowlist,omitempty"`
 	Label                 labelfilter.Filter `json:"-"`
 }

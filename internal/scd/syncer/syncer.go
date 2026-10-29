@@ -361,7 +361,7 @@ func (s *Syncer) syncSource(ctx context.Context, l manifest.LoadedSource) (r Tar
 			slog.Int("filteredByLabelRegex", m.Summary.FilteredByLabelRegex),
 			slog.String("targetAddress", t.Address))
 	}
-	if src.Type == config.SourceWireGuard {
+	if config.CandidateType(src.Type) {
 		r, ok = s.syncWireGuard(ctx, c, src, m, skipped)
 	} else {
 		r, ok = s.syncPlans(ctx, c, src.ID, plans, skipped)
@@ -372,7 +372,7 @@ func (s *Syncer) syncSource(ctx context.Context, l manifest.LoadedSource) (r Tar
 		s.Memory.Update(state.Key(c.ID, t.Address), func(tg *state.Target) {
 			if st := tg.Sources[src.ID]; st != nil {
 				st.Warnings = warnings
-				if src.Type == config.SourceWireGuard {
+				if config.CandidateType(src.Type) {
 					st.CandidateCount = len(m.Entries)
 				}
 			}

@@ -162,11 +162,11 @@ type Source struct {
 	// Warnings are the source-level warnings of the last successful sync
 	// (port_range_exhausted); nil when there are none.
 	Warnings []normalize.Warning
-	// CandidateCount is the number of candidates of a wireguard source after
+	// CandidateCount is the number of candidates of a wireguard or masque source after
 	// its filters at the last successful sync; 0 for VLESS.
 	CandidateCount int
 
-	// The rest is wireguard only. ConfigHash is apply.ConfigHash of the
+	// The rest is wireguard and masque only. ConfigHash is apply.ConfigHash of the
 	// last full apply. Candidates are the filtered candidates of the last
 	// sync, ranked: the monitor replaces a failed tunnel from them.
 	ConfigHash string

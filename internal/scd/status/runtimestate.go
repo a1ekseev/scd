@@ -29,7 +29,7 @@ import (
 const (
 	msgTargetNotFound    = "Target not found in loaded config."
 	msgExpectedNoRefetch = "Expected topology is unavailable for remote or stdin inputs; runtime-state does not refetch subscription sources."
-	msgExpectedNoActive  = "Expected topology of a wireguard source is its active set, which no sync has applied yet."
+	msgExpectedNoActive  = "Expected topology of a wireguard or masque source is its active set, which no sync has applied yet."
 )
 
 // Runtime item classifications.
@@ -326,7 +326,7 @@ func buildExpected(ctx context.Context, mem *state.Memory, sub config.Subscripti
 			origin, errMsg string
 			tunnels        []topology.Tunnel
 		)
-		if src.Type == config.SourceWireGuard {
+		if config.CandidateType(src.Type) {
 			origin, tunnels, errMsg = activeTunnels(mem, sub, src)
 		} else {
 			origin, tunnels, errMsg = expectedSourceTunnels(ctx, sub, src, includeSecrets, now)
@@ -397,7 +397,7 @@ func expectedSourceTunnels(ctx context.Context, sub config.SubscriptionConfig, s
 	return l.Source, topo.Tunnels, ""
 }
 
-// activeTunnels is the expected topology of a wireguard source: its active
+// activeTunnels is the expected topology of a wireguard or masque source: its active
 // set in the state (the candidate file is not read again).
 func activeTunnels(mem *state.Memory, sub config.SubscriptionConfig, src config.SourceConfig) (origin string, tunnels []topology.Tunnel, errMsg string) {
 	if mem != nil {
@@ -457,8 +457,8 @@ func classifyOutbounds(list []*core.OutboundHandlerConfig, t config.Subscription
 			item.Parsed = p
 		}
 		// rawBase64 is the unredacted proto (keys included), so it also needs
-		// includeSecrets; a WireGuard private key is never shown.
-		if opts.IncludeRaw && opts.IncludeSecrets && !resources.IsWireGuard(h) {
+		// includeSecrets; a WireGuard or MASQUE private key is never shown.
+		if opts.IncludeRaw && opts.IncludeSecrets && !resources.HoldsPrivateKey(h) {
 			item.RawBase64 = resources.RawBase64(h)
 		}
 		items = append(items, item)

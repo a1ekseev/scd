@@ -1,0 +1,28 @@
+{
+  "tag": "x-observe-mq-nl-amsterdam-mq-00000000",
+  "protocol": "masque",
+  "settings": {
+    "address": "192.0.2.31",
+    "port": 443,
+    "remoteDNS": [
+      "192.0.2.53"
+    ]
+  },
+  "streamSettings": {
+    "network": "masque",
+    "masqueSettings": {
+      "warp": {
+        "privateKey": "<redacted>",
+        "publicKey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUlU0NGFHkVl8+XB2L9AB1Lcm/wDR\nozQnH//0BYF3pf0qI21VmnkjLHcLvLadzvkw16npCbCo07Qyh+4YL83djw==\n-----END PUBLIC KEY-----\n",
+        "address": [
+          "172.16.0.2/32",
+          "2001:db8::2/128"
+        ]
+      }
+    },
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "masque.example.com"
+    }
+  }
+}

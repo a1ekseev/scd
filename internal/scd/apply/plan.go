@@ -61,7 +61,7 @@ type Plan struct {
 // appended to Skipped (port_range_exhausted) and counted in
 // Summary.Skipped and Summary.PortRangeExhausted.
 func PlanForSource(kind Kind, m manifest.Manifest, src config.SourceConfig, t config.SubscriptionTargetConfig) (Plan, error) {
-	if src.Type == config.SourceWireGuard && src.Selection == nil {
+	if config.CandidateType(src.Type) && src.Selection == nil {
 		return Plan{}, fmt.Errorf("source %q of type %q has no selection", src.ID, src.Type)
 	}
 	topo, overflow := topology.BuildSource(m, src, t)

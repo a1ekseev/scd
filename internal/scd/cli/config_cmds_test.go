@@ -146,19 +146,26 @@ func TestPrintConfigMinimal(t *testing.T) {
 
 func TestPrintConfigDockerExample(t *testing.T) {
 	// The example enables the balancer selection (task 6.6, D22).
-	// It also has a disabled wireguard source, which the TS reference lacks.
-	var wg map[string]any
+	// It also has disabled wireguard and masque sources, which the TS
+	// reference lacks.
+	var wg, mq map[string]any
 	if err := json.Unmarshal([]byte(`{"id":"wg","type":"wireguard","input":"/app/wgp/wg","enabled":false,"maxInputBytes":67108864,
 		"portRange":{"start":20100,"end":20109},"filters":{"countryAllowlist":["NL","CH"],"entryCountryAllowlist":["NL","CH"]},"maxActive":2,
 		"selection":{"strategy":"score","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
 		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}},"wireguard":{"endpointDomainStrategy":"UseIPv4"}}`), &wg); err != nil {
 		t.Fatal(err)
 	}
+	if err := json.Unmarshal([]byte(`{"id":"mq","type":"masque","input":"/app/wgp/warpmq","enabled":false,"maxInputBytes":67108864,
+		"portRange":{"start":20110,"end":20119},"maxActive":1,
+		"selection":{"strategy":"label","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
+		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}}}`), &mq); err != nil {
+		t.Fatal(err)
+	}
 	comparePrintConfig(t, exampleConfig, refDir+"docker-example.json", func(sub map[string]any) {
 		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{
 			"enabled": true, "balancerTag": "x-balancer", "schedule": "*/15 * * * * *", "observatory": true,
 		}
-		sub["sources"] = append(sub["sources"].([]any), wg)
+		sub["sources"] = append(sub["sources"].([]any), wg, mq)
 	})
 }
 

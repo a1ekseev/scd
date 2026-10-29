@@ -1,0 +1,23 @@
+{
+  "tag": "x-live-mq-rfc-{{ALPN}}",
+  "protocol": "masque",
+  "settings": {
+    "address": "127.0.0.1",
+    "port": {{MASQUE_PORT}}
+  },
+  "streamSettings": {
+    "network": "masque",
+    "masqueSettings": {
+      "user": "user@example.com",
+      "pass": "{{MASQUE_PASS}}"
+    },
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "localhost",
+      "pinnedPeerCertSha256": "{{CERT_SHA256}}",
+      "alpn": [
+        "{{ALPN}}"
+      ]
+    }
+  }
+}

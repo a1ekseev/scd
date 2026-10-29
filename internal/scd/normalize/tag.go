@@ -74,10 +74,11 @@ func BuildTag(prefix, label, address, profile, raw string) string {
 	return buildTag(prefix, label, address, profile, Sha8(raw))
 }
 
-// BuildWireGuardTag returns "<prefix>-<cc|xx>-<city>-wg-<publicHash>": the
-// city part as in BuildTag, with the endpoint host in place of the address.
-func BuildWireGuardTag(prefix, label, host, publicHash string) string {
-	return buildTag(prefix, label, host, "wg", publicHash)
+// BuildCandidateTag returns "<prefix>-<cc|xx>-<city>-<profile>-<publicHash>"
+// of a candidate (profile wg or mq): the city part as in BuildTag, with the
+// endpoint host in place of the address.
+func BuildCandidateTag(prefix, label, host, profile, publicHash string) string {
+	return buildTag(prefix, label, host, profile, publicHash)
 }
 
 func buildTag(prefix, label, address, profile, hash string) string {

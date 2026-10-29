@@ -4,19 +4,27 @@ package livetest
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"log/slog"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/xtls/xray-core/core"
 
+	"github.com/a1ekseev/scd/internal/common/candidate"
 	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
+	"github.com/a1ekseev/scd/internal/scd/monitor"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
 	"github.com/a1ekseev/scd/internal/scd/selection"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -270,5 +278,149 @@ func TestLiveWireGuardSyncer(t *testing.T) {
 	}
 	if len(want) != 2 || !slices.Equal(got, want) {
 		t.Fatalf("Xray %v, state %v", got, want)
+	}
+}
+
+// wgKey returns a fresh X25519 private key.
+func wgKey(t *testing.T) *ecdh.PrivateKey {
+	t.Helper()
+	k, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+// TestLiveWireGuardTraffic: a second Xray with a WireGuard inbound on
+// 127.0.0.1 is the peer of two candidates (keys A and B). scd syncs a
+// source file with candidate A, then repairs and rejoins the tunnel, then
+// the file switches to candidate B and the sync replaces the tunnel in its
+// slot. After each step an HTTP request through the tunnel's SOCKS inbound
+// reaches the HTTP server behind the peer, and Xray holds exactly one
+// outbound of the source.
+func TestLiveWireGuardTraffic(t *testing.T) {
+	xc, _, _ := startXray(t)
+	peer, keyA, keyB := wgKey(t), wgKey(t), wgKey(t)
+	b64 := func(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
+	wgPort := freeUDPPort(t, false)
+	launchXrayConf(t, "testdata/wireguard-peer", map[string]string{
+		"{{WG_PORT}}":             strconv.Itoa(wgPort),
+		"{{PEER_SECRET_KEY}}":     b64(peer.Bytes()),
+		"{{CLIENT_A_PUBLIC_KEY}}": b64(keyA.PublicKey().Bytes()),
+		"{{CLIENT_B_PUBLIC_KEY}}": b64(keyB.PublicKey().Bytes()),
+		"{{HTTP_ADDR}}":           tunnelServer(t),
+	})
+	line := func(k *ecdh.PrivateKey, addr string) string {
+		return candidate.FormatWireGuard(candidate.WireGuard{
+			Provider:   "static",
+			PrivateKey: [32]byte(k.Bytes()),
+			Endpoint:   net.JoinHostPort("127.0.0.1", strconv.Itoa(wgPort)),
+			PublicKey:  [32]byte(peer.PublicKey().Bytes()),
+			Address:    []netip.Prefix{netip.MustParsePrefix(addr)},
+			MTU:        1420,
+			AllowedIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")},
+			Label:      "\U0001F1F3\U0001F1F1 Amsterdam",
+		}) + "\n"
+	}
+	path := filepath.Join(t.TempDir(), "wg")
+	write := func(s string) {
+		if err := os.WriteFile(path, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tc, _ := liveTarget(t, 1)
+	tc.ObservatorySubjectSelectorPrefix = "x-live-"
+	start := freePortRange(t, 1)
+	src := config.SourceConfig{
+		ID: "wg", Type: config.SourceWireGuard, Input: path, Enabled: true, MaxActive: 1, MaxInputBytes: 1 << 20,
+		PortRange: &config.PortRange{Start: start, End: start},
+		Selection: &config.SelectionConfig{Strategy: config.StrategyScore, SwitchConfirmChecks: 1, DeadPairCooldownMinutes: 4, ReplaceAfterFailures: 1},
+		WireGuard: &config.WireGuardConfig{EndpointDomainStrategy: "UseIPv4"},
+	}
+	sub := config.SubscriptionConfig{ID: "live", Enabled: true, Sources: []config.SourceConfig{src}, Target: tc}
+	on := config.ResourceToggle{Enabled: true}
+	prefixes := []string{"x-live-wg-", "wg-"}
+	mem := state.New()
+	key := state.Key(sub.ID, tc.Address)
+	s := &syncer.Syncer{
+		Config: config.Loaded{Path: "/live/config.yml", Config: config.AppConfig{
+			Subscriptions: []config.SubscriptionConfig{sub},
+			Resources:     config.ResourceConfig{Outbounds: on, Inbounds: on, Routing: on},
+		}},
+		Memory: mem,
+		Log:    slog.New(slog.DiscardHandler),
+		Dial: func(string, time.Duration) (xrayapi.Client, error) {
+			return cappedClient{Client: xc, t: t, max: 1, prefixes: prefixes}, nil
+		},
+	}
+	sync := func() {
+		t.Helper()
+		if r, err := s.Run(t.Context()); err != nil || r.Failed != 0 {
+			t.Fatalf("sync: %+v, %v", r, err)
+		}
+	}
+	tunnel := func() topology.Tunnel {
+		t.Helper()
+		var tns []topology.Tunnel
+		mem.View(key, func(tg *state.Target) {
+			for _, tn := range tg.Tunnels {
+				tns = append(tns, tn.Mapping)
+			}
+		})
+		if len(tns) != 1 {
+			t.Fatalf("state has %d tunnels, want 1", len(tns))
+		}
+		return tns[0]
+	}
+	// check: the source has exactly the tunnel's current outbound in Xray,
+	// and the tunnel carries traffic.
+	check := func(step string) topology.Tunnel {
+		t.Helper()
+		tn := tunnel()
+		var outs []string
+		for _, tag := range readState(t, xc).outbounds {
+			if slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(tag, p) }) {
+				outs = append(outs, tag)
+			}
+		}
+		if !slices.Equal(outs, []string{tn.OutboundTagCurrent}) {
+			t.Fatalf("%s: outbounds of the source %v, want [%s]", step, outs, tn.OutboundTagCurrent)
+		}
+		getThroughSOCKS(t, net.JoinHostPort(tn.Listen, strconv.Itoa(tn.Port)))
+		return tn
+	}
+
+	write(line(keyA, "10.2.0.2/32"))
+	sync()
+	first := check("sync A")
+	if first.OutboundTagCurrent != first.OutboundTagInitial || !strings.HasPrefix(first.OutboundTagInitial, "x-live-") {
+		t.Fatalf("tunnel %+v not on its prefixed outbound", first)
+	}
+
+	d := monitor.Deps{
+		Memory: mem,
+		Log:    slog.New(slog.DiscardHandler),
+		Dial: func(string, time.Duration) (xrayapi.Client, error) {
+			return sharedClient{Client: xc, t: t, tags: []string{first.OutboundTagInitial, first.OutboundWithoutPrefix.Tag}}, nil
+		},
+	}
+	if err := monitor.Repair(t.Context(), d, sub, first.BaseTunnelID); err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+	if tn := check("repair"); tn.OutboundTagCurrent != first.OutboundWithoutPrefix.Tag {
+		t.Fatalf("repair: outbound %s, want %s", tn.OutboundTagCurrent, first.OutboundWithoutPrefix.Tag)
+	}
+	if err := monitor.Rejoin(t.Context(), d, sub, first.BaseTunnelID); err != nil {
+		t.Fatalf("rejoin: %v", err)
+	}
+	if tn := check("rejoin"); tn.OutboundTagCurrent != first.OutboundTagInitial {
+		t.Fatalf("rejoin: outbound %s, want %s", tn.OutboundTagCurrent, first.OutboundTagInitial)
+	}
+
+	write(line(keyB, "10.2.0.3/32"))
+	sync()
+	if tn := check("replace with B"); tn.BaseTunnelID == first.BaseTunnelID || tn.Port != first.Port {
+		t.Fatalf("replace: tunnel %s port %d, was %s port %d", tn.BaseTunnelID, tn.Port, first.BaseTunnelID, first.Port)
 	}
 }

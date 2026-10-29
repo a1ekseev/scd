@@ -25,8 +25,8 @@ func init() {
 	xlog.RegisterHandler(discard{})
 }
 
-// Spec is an outbound in the Xray v26.10.21 config form: Outbound (VLESS)
-// or WireGuard. Its JSON (json.Marshal) is what scd prints and hashes and
+// Spec is an outbound in the Xray v26.10.21 config form: Outbound (VLESS),
+// WireGuard or Masque. Its JSON (json.Marshal) is what scd prints and hashes and
 // never holds a secret key; ToProto builds the handler from the full form.
 type Spec interface {
 	// GetTag returns the outbound tag.

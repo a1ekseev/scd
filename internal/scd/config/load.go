@@ -86,11 +86,12 @@ const (
 	defaultInputBytes = 64 << 20
 )
 
-// vlessOnlyKeys and wireguardOnlyKeys are the source keys of one type only.
-var (
-	vlessOnlyKeys     = []string{"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders"}
-	wireguardOnlyKeys = []string{"maxActive", "selection", "wireguard"}
-)
+// foreignKeys are the source keys not allowed for each type.
+var foreignKeys = map[string][]string{
+	SourceVLESS:     {"maxActive", "selection", "wireguard"},
+	SourceWireGuard: {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders"},
+	SourceMasque:    {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "wireguard"},
+}
 
 // parseSource reads one sources[] object; the keys of another type are
 // errors.
@@ -100,18 +101,14 @@ func parseSource(n *schema.Node, dir string) SourceConfig {
 		"maxActive", "selection", "monitor", "wireguard")
 	var s SourceConfig
 	s.ID, _ = n.String("id", required)
-	s.Type = n.Enum("type", []string{SourceVLESS, SourceWireGuard}, "")
-	foreign := wireguardOnlyKeys
-	if s.Type == SourceWireGuard {
-		foreign = vlessOnlyKeys
-	}
-	for _, k := range foreign {
-		if s.Type != "" && n.Has(k) {
+	s.Type = n.Enum("type", []string{SourceVLESS, SourceWireGuard, SourceMasque}, "")
+	for _, k := range foreignKeys[s.Type] {
+		if n.Has(k) {
 			n.Addf(k, "not allowed for type %q", s.Type)
 		}
 	}
 	if input, ok := n.String("input", required); ok {
-		if s.Type == SourceWireGuard && !filepath.IsAbs(input) {
+		if CandidateType(s.Type) && !filepath.IsAbs(input) {
 			n.Addf("input", "must be an absolute file path for type %q", s.Type)
 		}
 		s.Input = configload.ResolveInput(dir, input)
@@ -140,9 +137,11 @@ func parseSource(n *schema.Node, dir string) SourceConfig {
 	if mn := n.Object("monitor", false); mn != nil {
 		s.Monitor = parseSourceMonitor(mn)
 	}
-	if s.Type == SourceWireGuard {
+	if CandidateType(s.Type) {
 		s.MaxActive = n.Int("maxActive", schema.IntOpt{Required: true, Min: new(1)})
 		s.Selection = parseSelection(n.Object("selection", true))
+	}
+	if s.Type == SourceWireGuard {
 		wn := n.Object("wireguard", true)
 		wn.Strict("endpointDomainStrategy")
 		s.WireGuard = &WireGuardConfig{EndpointDomainStrategy: wn.Enum("endpointDomainStrategy", EndpointDomainStrategies, "")}
@@ -150,8 +149,8 @@ func parseSource(n *schema.Node, dir string) SourceConfig {
 	return s
 }
 
-// parseSelection reads the selection object of a wireguard source; n may
-// be nil (already reported as required).
+// parseSelection reads the selection object of a wireguard or masque
+// source; n may be nil (already reported as required).
 func parseSelection(n *schema.Node) *SelectionConfig {
 	if n == nil {
 		return nil
@@ -192,11 +191,11 @@ func parsePortRange(n *schema.Node) *PortRange {
 }
 
 // parseFilters reads the filters object of a source of type typ;
-// entryCountryAllowlist is for wireguard only.
+// entryCountryAllowlist is for wireguard and masque only.
 func parseFilters(n *schema.Node, typ string) *SourceFiltersConfig {
 	n.Strict("countryAllowlist", "labelIncludeRegex", "labelExcludeRegex", "entryCountryAllowlist")
 	f := &SourceFiltersConfig{Label: labelfilter.Parse(n), CountryAllowlist: countryList(n, "countryAllowlist")}
-	if n.Has("entryCountryAllowlist") && typ != "" && typ != SourceWireGuard {
+	if n.Has("entryCountryAllowlist") && typ != "" && !CandidateType(typ) {
 		n.Addf("entryCountryAllowlist", "not allowed for type %q", typ)
 	}
 	f.EntryCountryAllowlist = countryList(n, "entryCountryAllowlist")

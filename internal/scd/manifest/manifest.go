@@ -17,6 +17,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/country"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
+	"github.com/a1ekseev/scd/internal/scd/selection"
 )
 
 // Version is the manifest format version.
@@ -29,7 +30,7 @@ const reasonXrayRejected = "Xray rejected the outbound configuration."
 // Entry is one accepted link: its normalized form and JSON outbound.
 type Entry struct {
 	Kind string `json:"kind"`
-	// Protocol is "wireguard" for a wireguard candidate, "" (omitted) for
+	// Protocol is "wireguard" or "masque" for a candidate, "" (omitted) for
 	// VLESS.
 	Protocol     string               `json:"protocol,omitempty"`
 	Tag          string               `json:"tag"`
@@ -42,11 +43,11 @@ type Entry struct {
 	JSONOutbound outbound.Spec        `json:"jsonOutbound"`
 	// Warnings are the non-fatal notes of the normalizer.
 	Warnings []normalize.Warning `json:"warnings,omitempty"`
-	// Candidate is the parsed wireguard candidate (nil for VLESS). It holds
-	// the private key and is never printed.
+	// Candidate is the parsed wireguard candidate (nil for VLESS and
+	// masque). It holds the private key and is never printed.
 	Candidate *candidate.WireGuard `json:"-"`
-	// interfaceKey is the candidate's interface public key (selection key).
-	interfaceKey [32]byte
+	// selection is the selection view of a candidate (nil for VLESS).
+	selection *selection.Candidate
 }
 
 // Summary counts the lines of a manifest (01 §1.2 ManifestSummary).
@@ -71,6 +72,8 @@ type Summary struct {
 	PortRangeExhausted int `json:"portRangeExhausted,omitzero"`
 	// WireGuardInvalid counts the wireguard_invalid lines; also in Skipped.
 	WireGuardInvalid int `json:"wireguardInvalid,omitzero"`
+	// MasqueInvalid counts the masque_invalid lines; also in Skipped.
+	MasqueInvalid int `json:"masqueInvalid,omitzero"`
 }
 
 // Manifest is the outbound manifest of one subscription.
@@ -116,6 +119,8 @@ func (m *Manifest) skip(s vless.Skip) {
 		m.Summary.DuplicateTag++
 	case CodeWireGuardInvalid:
 		m.Summary.WireGuardInvalid++
+	case CodeMasqueInvalid:
+		m.Summary.MasqueInvalid++
 	}
 }
 
@@ -199,16 +204,20 @@ func (e noValidEntriesError) Error() string {
 		"unsupportedCombo=%d invalidUri=%d missingRequiredField=%d duplicateTag=%d",
 		e.source, s.Parsed, s.Skipped, s.Filtered, s.FilteredByCountry, s.FilteredByLabelRegex, s.UnsupportedScheme,
 		s.UnsupportedParam, s.UnsupportedValue, s.UnsupportedCombo, s.InvalidURI, s.MissingRequiredField, s.DuplicateTag) +
-		wireGuardInvalidSuffix(s)
+		invalidSuffix(s)
 }
 
-// wireGuardInvalidSuffix is " wireguardInvalid=<n>" when n > 0 (never for
-// VLESS, whose text is unchanged).
-func wireGuardInvalidSuffix(s Summary) string {
-	if s.WireGuardInvalid == 0 {
-		return ""
+// invalidSuffix is " wireguardInvalid=<n>" and " masqueInvalid=<n>" for the
+// counts > 0 (never for VLESS, whose text is unchanged).
+func invalidSuffix(s Summary) string {
+	out := ""
+	if s.WireGuardInvalid > 0 {
+		out += fmt.Sprintf(" wireguardInvalid=%d", s.WireGuardInvalid)
 	}
-	return fmt.Sprintf(" wireguardInvalid=%d", s.WireGuardInvalid)
+	if s.MasqueInvalid > 0 {
+		out += fmt.Sprintf(" masqueInvalid=%d", s.MasqueInvalid)
+	}
+	return out
 }
 
 func (noValidEntriesError) Unwrap() error { return ErrNoValidEntries }

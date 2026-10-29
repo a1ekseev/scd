@@ -234,7 +234,7 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 		} else if needPorts {
 			n.Addf(key+"portRange", "required when resources.inbounds.enabled or resources.routing.enabled is true")
 		}
-		if src.Type == SourceWireGuard && (!res.Inbounds.Enabled || !res.Routing.Enabled) {
+		if CandidateType(src.Type) && (!res.Inbounds.Enabled || !res.Routing.Enabled) {
 			n.Addf(key+"type", "%q requires resources.inbounds.enabled and resources.routing.enabled", src.Type)
 		}
 		if !ValidSourceID(src.ID) {

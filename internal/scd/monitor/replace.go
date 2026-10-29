@@ -12,9 +12,9 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/topology"
 )
 
-// ReplaceFailed replaces tunnel tunnelID of wireguard source src after
-// replaceAfterFailures failed checks in a row, under the target lock: its
-// pair goes into quarantine for deadPairCooldownMinutes, and the first
+// ReplaceFailed replaces tunnel tunnelID of wireguard or masque source src
+// after replaceAfterFailures failed checks in a row, under the target lock:
+// its pair goes into quarantine for deadPairCooldownMinutes, and the first
 // candidate of the last sync that selection.Replacement allows takes its
 // slot and port (apply.ReplaceTunnel, candidate_replaced with reason
 // failed). Without one the tunnel is left to the usual repair (done is

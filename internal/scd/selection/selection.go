@@ -1,7 +1,7 @@
-// Package selection chooses the active candidates of a wireguard source:
-// it filters them (entry country, then exit country, then label), ranks
-// them by the source's selection.strategy and picks at most maxActive, never
-// two with the same key. It does no I/O.
+// Package selection chooses the active candidates of a wireguard or masque
+// source: it filters them (entry country, then exit country, then label),
+// ranks them by the source's selection.strategy and picks at most
+// maxActive, never two with the same key. It does no I/O.
 package selection
 
 import (
@@ -20,11 +20,16 @@ type Candidate struct {
 	Entry, Exit string
 	Load        *int
 	Score       *float64
-	// Key is the candidate's interface public key (never the private key):
-	// two active candidates never share it.
+	// Key identifies the candidate's key (the wireguard interface public
+	// key, the SHA-256 of the masque device public key; never the private
+	// key): two active candidates never share it.
 	Key [32]byte
 	// Endpoint is the peer "host:port".
 	Endpoint string
+	// Transport is the masque transport (h3, h2), "" for wireguard.
+	Transport string
+	// Priority orders the candidates of one key, 0 first (masque).
+	Priority int
 }
 
 // Reason is why Filter dropped a candidate.
@@ -99,7 +104,10 @@ func emptyLast(a, b string) int {
 //   - label: label, tag.
 //
 // A candidate without a sort key (an empty label included) comes after the
-// candidates with it; labels and tags compare with strings.Compare.
+// candidates with it; labels and tags compare with strings.Compare. The
+// candidates of one key with a transport (masque) then follow each other at
+// the place of the best of them, ordered by priority, so the first one of a key that may take a slot
+// is the one with the lowest priority.
 func Rank[T any](items []T, strategy string, of func(T) Candidate) []T {
 	out := slices.Clone(items)
 	slices.SortStableFunc(out, func(x, y T) int {
@@ -113,7 +121,34 @@ func Rank[T any](items []T, strategy string, of func(T) Candidate) []T {
 		}
 		return names
 	})
-	return out
+	// Group only candidates with a transport (masque): wireguard keeps the
+	// plain ranking.
+	first := map[[32]byte]int{}
+	pos := make([]int, len(out))
+	for i, it := range out {
+		c := of(it)
+		pos[i] = i
+		if c.Transport == "" {
+			continue
+		}
+		if f, ok := first[c.Key]; ok {
+			pos[i] = f
+		} else {
+			first[c.Key] = i
+		}
+	}
+	idx := make([]int, len(out))
+	for i := range idx {
+		idx[i] = i
+	}
+	slices.SortStableFunc(idx, func(i, j int) int {
+		return cmp.Or(cmp.Compare(pos[i], pos[j]), cmp.Compare(of(out[i]).Priority, of(out[j]).Priority))
+	})
+	grouped := make([]T, len(out))
+	for k, i := range idx {
+		grouped[k] = out[i]
+	}
+	return grouped
 }
 
 // Pick returns the first maxActive items of ranked, skipping an item whose

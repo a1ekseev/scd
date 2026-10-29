@@ -32,7 +32,8 @@ type PreparedOutbound struct {
 type Tunnel struct {
 	// SourceID is the id of the source the tunnel comes from.
 	SourceID string
-	// Protocol is "wireguard" for a wireguard tunnel, "" for VLESS.
+	// Protocol is "wireguard" or "masque" for a candidate tunnel, "" for
+	// VLESS.
 	Protocol string
 	// BaseTunnelID and BaseOutboundTag are the entry tag.
 	BaseTunnelID    string
@@ -68,8 +69,9 @@ type Topology struct {
 // ones in tag order) get no tunnel and are returned as port_range_exhausted
 // skips.
 //
-// wireguard: the active set, at most maxActive entries ranked by
-// selection.strategy without two of one key; slot i is rank position i.
+// wireguard and masque: the active set, at most maxActive entries ranked
+// by selection.strategy without two of one key (the lowest priority of a
+// key first); slot i is rank position i.
 // The other candidates are inactive, not skipped.
 func BuildSource(m manifest.Manifest, src config.SourceConfig, t config.SubscriptionTargetConfig) (Topology, []vless.Skip) {
 	if t.InboundSocks == nil || src.PortRange == nil {
@@ -81,9 +83,9 @@ func BuildSource(m manifest.Manifest, src config.SourceConfig, t config.Subscrip
 		skipped []vless.Skip
 	)
 	switch {
-	case src.Type == config.SourceWireGuard && src.Selection == nil:
+	case config.CandidateType(src.Type) && src.Selection == nil:
 		// Not a valid config (apply.PlanForSource fails it): nothing is active.
-	case src.Type == config.SourceWireGuard:
+	case config.CandidateType(src.Type):
 		ranked := selection.Rank(m.Entries, src.Selection.Strategy, manifest.Entry.SelectionCandidate)
 		entries = selection.Pick(ranked, src.MaxActive, manifest.Entry.SelectionCandidate)
 	default:

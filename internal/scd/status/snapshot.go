@@ -110,7 +110,7 @@ type SourceView struct {
 	SourceID string `json:"sourceId"`
 	Type     string `json:"type"`
 	Enabled  bool   `json:"enabled"`
-	// MaxActive, ActiveCount and CandidateCount are set for a wireguard
+	// MaxActive, ActiveCount and CandidateCount are set for a wireguard or masque
 	// source; the counts after its first successful sync.
 	MaxActive      int `json:"maxActive,omitempty"`
 	ActiveCount    int `json:"activeCount,omitempty"`
@@ -285,7 +285,7 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 }
 
 // sourceViews is the sources[] of target t (nil before any state) of sub:
-// every source of sub in id order with its warnings and, for wireguard, its
+// every source of sub in id order with its warnings and, for wireguard and masque, its
 // counts; nil when sub has one VLESS source without warnings (D3: the TS
 // snapshot form).
 func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
@@ -296,7 +296,7 @@ func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 		if t != nil {
 			if s := t.Sources[src.ID]; s != nil {
 				v.Warnings = s.AllWarnings()
-				if src.Type == config.SourceWireGuard && s.Topology != nil {
+				if config.CandidateType(src.Type) && s.Topology != nil {
 					v.ActiveCount, v.CandidateCount = len(s.Topology.Tunnels), s.CandidateCount
 				}
 			}

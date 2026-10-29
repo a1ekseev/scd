@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/candidate"
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/securefile"
 	"github.com/a1ekseev/scd/internal/scd/config"
@@ -33,8 +34,8 @@ type FailedSource struct {
 	// it does hold the input URL; redact it with inputsrc.RedactInputIn before
 	// logging or printing (D33).
 	Error string
-	// Code is CodeWireGuardInputRefused for a refused wireguard input, else
-	// "".
+	// Code is CodeWireGuardInputRefused (CodeMasqueInputRefused) for a
+	// refused wireguard (masque) input, else "".
 	Code string
 }
 
@@ -62,7 +63,7 @@ func LoadSources(
 			l   inputsrc.Loaded
 			err error
 		)
-		if s.Type == config.SourceWireGuard {
+		if config.CandidateType(s.Type) {
 			l, err = LoadPrivate(s.Input, s.MaxInputBytes)
 		} else {
 			l, err = load(ctx, s.Input, LoadOptions(s))
@@ -73,7 +74,7 @@ func LoadSources(
 			}
 			f := FailedSource{Subscription: sub, Config: s, Error: err.Error()}
 			if errors.Is(err, securefile.ErrRefused) {
-				f.Code = CodeWireGuardInputRefused
+				f.Code = s.Type + "_input_refused"
 			}
 			failed = append(failed, f)
 			continue
@@ -83,7 +84,7 @@ func LoadSources(
 	return loaded, failed
 }
 
-// LoadPrivate reads the candidate file of a wireguard source with
+// LoadPrivate reads the candidate file of a wireguard or masque source with
 // securefile.ReadPrivate: an absolute path to a regular file that group and
 // others cannot access, at most maxBytes long.
 func LoadPrivate(path string, maxBytes int64) (inputsrc.Loaded, error) {
@@ -115,16 +116,20 @@ func PolicyFor(s config.SourceConfig) normalize.Policy {
 }
 
 // FromSource builds the manifest of a loaded source as sync does (01 §10):
-// the trimmed content under the source's policy (a wireguard source: its
-// candidates, BuildWireGuard), with the source id as source file, filtered
-// and validated. The manifest is returned with the
+// the trimmed content under the source's policy (a wireguard or masque
+// source: its candidates, BuildCandidates), with the source id as source
+// file, filtered and validated. The manifest is returned with the
 // validation error too.
 func FromSource(s LoadedSource, now time.Time) (Manifest, error) {
 	id := s.Config.ID
 	var m Manifest
-	if wg := s.Config.WireGuard; s.Config.Type == config.SourceWireGuard && wg != nil {
-		m = BuildWireGuard(strings.TrimSpace(s.Content), id, id, wg.EndpointDomainStrategy, now)
-		m = applyWireGuardFilters(m, s.Config.Filters)
+	if config.CandidateType(s.Config.Type) {
+		ds := ""
+		if wg := s.Config.WireGuard; wg != nil {
+			ds = wg.EndpointDomainStrategy
+		}
+		m = BuildCandidates(candidate.Kind(s.Config.Type), strings.TrimSpace(s.Content), id, id, ds, now)
+		m = applyCandidateFilters(m, s.Config.Filters)
 		return m, Validate(m, id)
 	}
 	m = Build(strings.TrimSpace(s.Content), id, PolicyFor(s.Config), now)

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/net/proxy"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/subscription"
@@ -30,6 +33,7 @@ const (
 	readyTimeout  = 10 * time.Second
 	rpcTimeout    = 5 * time.Second
 	envXrayBinary = "SCD_XRAY_BIN"
+	tunnelWait    = 20 * time.Second
 )
 
 // syncBuffer is a bytes.Buffer safe for the Xray output copier and the test
@@ -84,6 +88,13 @@ func startXray(t *testing.T, env ...string) (client xrayapi.Client, socksAddr st
 
 func launchXray(t *testing.T, env ...string) *xrayProc {
 	t.Helper()
+	return launchXrayConf(t, templatesDir, nil, env...)
+}
+
+// launchXrayConf is launchXray on the config templates in dir with the
+// placeholders of vars substituted too.
+func launchXrayConf(t *testing.T, dir string, vars map[string]string, env ...string) *xrayProc {
+	t.Helper()
 	bin := os.Getenv(envXrayBinary)
 	if bin == "" {
 		t.Skip(envXrayBinary + " not set")
@@ -96,18 +107,23 @@ func launchXray(t *testing.T, env ...string) *xrayProc {
 	probePort := probe.Listener.Addr().(*net.TCPAddr).Port
 	apiPort, socksPort := freePort(t), freePort(t)
 
-	dir := t.TempDir()
-	repl := strings.NewReplacer(
+	pairs := []string{
 		"{{API_PORT}}", strconv.Itoa(apiPort),
 		"{{SOCKS_PORT}}", strconv.Itoa(socksPort),
 		"{{PROBE_PORT}}", strconv.Itoa(probePort),
-	)
-	entries, err := os.ReadDir(templatesDir)
+	}
+	for k, v := range vars {
+		pairs = append(pairs, k, v)
+	}
+	repl := strings.NewReplacer(pairs...)
+	tmpl := dir
+	dir = t.TempDir()
+	entries, err := os.ReadDir(tmpl)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		b, err := os.ReadFile(filepath.Join(templatesDir, e.Name()))
+		b, err := os.ReadFile(filepath.Join(tmpl, e.Name()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -181,6 +197,88 @@ func freePort(t *testing.T) int {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port
+}
+
+// freeUDPPort returns a UDP port on 127.0.0.1 that was free a moment ago;
+// with tcp the TCP port of the same number was free too.
+func freeUDPPort(t *testing.T, tcp bool) int {
+	t.Helper()
+	lc := &net.ListenConfig{}
+	for range 50 {
+		pc, err := lc.ListenPacket(t.Context(), "udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := pc.LocalAddr().(*net.UDPAddr).Port
+		pc.Close()
+		if !tcp {
+			return port
+		}
+		if l, err := lc.Listen(t.Context(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port))); err == nil {
+			l.Close()
+			return port
+		}
+	}
+	t.Fatal("no free UDP+TCP port")
+	return 0
+}
+
+// tunnelBody is what the HTTP server behind the test peers answers.
+const tunnelBody = "through the tunnel"
+
+// tunnelServer starts an HTTP server on 127.0.0.1 that answers tunnelBody
+// and returns its address.
+func tunnelServer(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(tunnelBody))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.Listener.Addr().String()
+}
+
+// tunnelTarget is where requests through a tunnel go: a documentation
+// address that only the test peer's freedom redirect turns into the
+// tunnelServer, so an answer proves the request went through the peer.
+const tunnelTarget = "http://192.0.2.1/"
+
+// getThroughSOCKS GETs tunnelTarget through the SOCKS5 inbound at socksAddr
+// until it answers tunnelBody or the deadline passes (the first request
+// waits for the tunnel handshake).
+func getThroughSOCKS(t *testing.T, socksAddr string) {
+	t.Helper()
+	d, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cd := d.(proxy.ContextDialer)
+	deadline := time.Now().Add(tunnelWait)
+	for {
+		// A new transport per try: no connection is reused across steps.
+		hc := &http.Client{Transport: &http.Transport{DialContext: cd.DialContext, DisableKeepAlives: true}, Timeout: 5 * time.Second}
+		body, err := get(t.Context(), hc)
+		if err == nil && body == tunnelBody {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s through %s: %q, %v", tunnelTarget, socksAddr, body, err)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func get(ctx context.Context, hc *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tunnelTarget, http.NoBody)
+	if err != nil {
+		return "", err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	return string(b), err
 }
 
 // d26Case is one line of d26-links.txt with its d26-expect.json row.
