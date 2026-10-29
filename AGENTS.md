@@ -43,14 +43,14 @@ go build -o bin/scd ./cmd/scd            # always -o bin/scd
 bash scripts/check-xray-version.sh
 bash scripts/check-no-node.sh
 SCD_XRAY_BIN=/path/to/xray-26.10.21 go test -tags xraylive -count=1 ./internal/scd/livetest/...
-SCD_CHROME=/path/to/headless_shell go test -tags visual -count=1 ./internal/scd/status/...
+SCD_CHROME=/path/to/headless_shell go test -tags visual -count=1 ./internal/scd/status/...   # local only, not in CI; goldens are local and gitignored, created with -update
 SCD_WARP_LIVE=1 go test -tags warplive -count=1 ./internal/wgp/provider/warp/...   # real WARP API, temporary device; not in CI
 bash scripts/compose-smoke.sh            # Docker smoke on the example configs
 ```
 The live, visual and warplive tests skip without their environment variables.
 
 ## CI Contract
-- `.github/workflows/docker.yml`. On pull requests, pushes to `master` and release tags, job `verify` runs: `go mod verify`, the Xray pin check, the Go-only tree check, `go vet` (also with `-tags 'xraylive visual warplive'`), golangci-lint, govulncheck (pinned version), `go test -race`, live Xray tests, dashboard visual regression, build, and example config validation (scd, sfc, gtl, wgp). Job `smoke` (after `verify`) runs the compose smoke with the compose profile `wgp` (wgp is opt-in; plain `docker compose up` has no wgp): xray, scd, sfc, gtl and wgp on the example configs; wgp static publishes `docker/fixtures/static/*.conf` (0600 copies, a fresh state key, both `sudo -n chown 65532` on Linux; no root and no passwordless sudo stops the smoke) to the `wgp-out` volume, and the smoke checks the wgp `/api/status`, that `wg.txt` and `status.json` are 0600 files of 65532, that scd (65532, `:ro`) shows the `wgp` block and `protocol: wireguard` tunnels of source `wg` (enabled in the smoke copy of the scd example), and that the WireGuard outbounds are in Xray runtime-state.
+- `.github/workflows/docker.yml`. On pull requests, pushes to `master` and release tags, job `verify` runs: `go mod verify`, the Xray pin check, the Go-only tree check, `go vet` (also with `-tags 'xraylive visual warplive'`), golangci-lint, govulncheck (pinned version), `go test -race`, live Xray tests, build, and example config validation (scd, sfc, gtl, wgp). Job `smoke` (after `verify`) runs the compose smoke with the compose profile `wgp` (wgp is opt-in; plain `docker compose up` has no wgp): xray, scd, sfc, gtl and wgp on the example configs; wgp static publishes `docker/fixtures/static/*.conf` (0600 copies, a fresh state key, both `sudo -n chown 65532` on Linux; no root and no passwordless sudo stops the smoke) to the `wgp-out` volume, and the smoke checks the wgp `/api/status`, that `wg` and `status.json` are 0600 files of 65532, that scd (65532, `:ro`) shows the `wgp` block and `protocol: wireguard` tunnels of source `wg` (enabled in the smoke copy of the scd example), and that the WireGuard outbounds are in Xray runtime-state.
 - Release tags `vX.Y.Z` publish one multi-arch image (amd64 and arm64) with tags `latest` and `X.Y.Z`, only after `verify` and `smoke` pass.
 
 ## Docker Image
