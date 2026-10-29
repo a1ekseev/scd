@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/spf13/cobra"
 
 	"github.com/a1ekseev/scd/internal/common/buildinfo"
+	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/httpserve"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/logging"
@@ -53,11 +55,19 @@ func New() *cobra.Command {
 // provider loops and the status page until ctx is done. On a stop signal the
 // loops stop at once and wait for an active tick; the server drains for up
 // to httpserve.ShutdownTimeout (D7). The state lock is released last.
+//
+// A failure after the logger exists is logged as service_failed and not
+// printed again (cliutil.ErrLogged).
 func serve(ctx context.Context, l config.Loaded, stderr io.Writer) error {
 	log, err := logging.New(stderr, l.Config.Logging.Level, l.Config.Logging.Format)
 	if err != nil {
 		return err
 	}
+	return cliutil.LogFailure(log, serveWith(ctx, l, log))
+}
+
+// serveWith is serve with its logger.
+func serveWith(ctx context.Context, l config.Loaded, log *slog.Logger) error {
 	enabled := 0
 	for _, p := range l.Config.Providers {
 		if p.Enabled {

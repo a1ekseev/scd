@@ -240,7 +240,7 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 	}
 	if err != nil {
 		failedAt := d.now()
-		inRow := 0
+		inRow, flaps := 0, 0
 		updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 			m := &tn.Monitor
 			m.State = state.TunnelDegraded
@@ -249,8 +249,27 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 			m.LastError = err.Error()
 			m.ConsecutiveFailures++
 			m.FailuresInRow++
+			if m.FailingSince == nil {
+				m.FailingSince = new(failedAt)
+			}
+			m.Flap.LastFailAt = failedAt
+			if !m.Flap.Since.IsZero() && m.FailuresInRow == downAfter {
+				// The flapping tunnel stays down: the episode ends.
+				flaps, m.Flap = m.Flap.Count, state.FlapState{}
+			}
 			inRow = m.FailuresInRow
 		})
+		if flaps > 0 {
+			d.Log.LogAttrs(ctx, slog.LevelWarn, "Flapping tunnel stays down.",
+				slog.String("event", "tunnel_down"),
+				slog.String("subscriptionId", sub.ID),
+				slog.String("sourceId", ref.sourceID),
+				slog.String("targetAddress", t.Address),
+				slog.String("tunnelId", ref.id),
+				slog.Int("failuresInRow", inRow),
+				slog.Int("flaps", flaps),
+				slog.String("probeError", err.Error()))
+		}
 		if src != nil && src.Selection != nil && inRow >= src.Selection.ReplaceAfterFailures {
 			if done, err := ReplaceFailed(ctx, d, sub, *src, ref.id); done || err != nil {
 				return err
@@ -260,8 +279,18 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 	}
 
 	checkedAt := d.now()
+	var (
+		since       *time.Time
+		withdrawn   bool
+		mon         state.TunnelMonitor
+		stable      bool
+		stableFlaps int
+		flappedFor  time.Duration
+	)
 	updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 		m := &tn.Monitor
+		since, withdrawn = m.FailingSince, shouldRejoin(tn.Mapping)
+		m.FailingSince, m.LastRepairError = nil, ""
 		m.State = state.TunnelHealthy
 		m.LastCheckedAt, m.LastSuccessAt = new(checkedAt), new(checkedAt)
 		m.LastStatusCode, m.LastLatencyMs = new(resp.StatusCode), new(resp.LatencyMs)
@@ -269,17 +298,60 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 		m.LastError = ""
 		m.ConsecutiveFailures = 0
 		m.FailuresInRow = 0
+		if f := m.Flap; !f.Since.IsZero() && checkedAt.Sub(f.LastFailAt) >= stableAfter {
+			stable, stableFlaps, flappedFor = true, f.Count, f.LastFailAt.Sub(f.Since)
+			m.Flap = state.FlapState{}
+		}
+		mon = *m
 	})
+	var noLive *time.Time
 	d.Memory.Update(key, func(tg *state.Target) {
 		if st := tg.Sources[ref.sourceID]; st != nil {
 			delete(st.NoReplacement, ref.id)
+			noLive, st.NoLiveSince = st.NoLiveSince, nil
 		}
 	})
-	if err := Rejoin(ctx, d, sub, ref.id); err != nil {
+	if noLive != nil {
+		d.Log.LogAttrs(ctx, slog.LevelInfo, "Source has a working tunnel again.",
+			slog.String("event", "source_recovered"),
+			slog.String("subscriptionId", sub.ID),
+			slog.String("sourceId", ref.sourceID),
+			slog.String("targetAddress", t.Address),
+			slog.Int64("failedForMs", checkedAt.Sub(*noLive).Milliseconds()))
+	}
+	if stable {
+		d.Log.LogAttrs(ctx, slog.LevelInfo, "Tunnel is stable again after flapping.",
+			slog.String("event", "tunnel_stable"),
+			slog.String("subscriptionId", sub.ID),
+			slog.String("sourceId", ref.sourceID),
+			slog.String("targetAddress", t.Address),
+			slog.String("tunnelId", ref.id),
+			slog.Int("flaps", stableFlaps),
+			slog.Int64("flappedForMs", flappedFor.Milliseconds()))
+	}
+	// One info line per recovery: tunnel_rejoined_balancer (with
+	// failedForMs) for a tunnel that goes back into the balancer, else
+	// tunnel_recovered; debug inside a flap episode.
+	var failedFor *int64
+	if since != nil {
+		failedFor = new(checkedAt.Sub(*since).Milliseconds())
+	}
+	if failedFor != nil && !withdrawn {
+		d.Log.LogAttrs(ctx, flapLevel(mon, slog.LevelInfo), "Tunnel recovered after a successful monitor probe.",
+			slog.String("event", "tunnel_recovered"),
+			slog.String("subscriptionId", sub.ID),
+			slog.String("sourceId", ref.sourceID),
+			slog.String("targetAddress", t.Address),
+			slog.String("tunnelId", ref.id),
+			slog.Int64("failedForMs", *failedFor))
+	}
+	if err := rejoin(ctx, d, sub, ref.id, failedFor); err != nil {
+		repeat := false
 		updateTunnel(d.Memory, key, ref.id, func(tn *state.Tunnel) {
 			tn.Monitor.LastError = rejoinFailedPrefix + err.Error()
+			repeat = noteRejoinError(&tn.Monitor, err)
 		})
-		d.logRejoinFailed(ctx, sub, ref.id, err)
+		d.logRejoinFailed(ctx, sub, ref.sourceID, ref.id, err, repeat)
 	}
 	return nil
 }

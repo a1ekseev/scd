@@ -18,11 +18,11 @@ func New() *cobra.Command {
 	}
 	cmd.AddCommand(
 		serveCommand(),
-		configCommand("validate-config", "Validate config file", func(cmd *cobra.Command, _ config.Config) error {
+		configCommand("validate-config", "Validate config file", func(cmd *cobra.Command, _ string, _ config.Config) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Config is valid")
 			return err
 		}),
-		configCommand("print-config", "Print normalized config", func(cmd *cobra.Command, cfg config.Config) error {
+		configCommand("print-config", "Print normalized config", func(cmd *cobra.Command, _ string, cfg config.Config) error {
 			return jsonout.Write(cmd.OutOrStdout(), cfg)
 		}),
 	)
@@ -30,8 +30,8 @@ func New() *cobra.Command {
 }
 
 // configCommand builds a command that takes the required --config flag, loads
-// the gtl config and passes it to run.
-func configCommand(use, short string, run func(*cobra.Command, config.Config) error) *cobra.Command {
+// the gtl config and passes its path and the config to run.
+func configCommand(use, short string, run func(*cobra.Command, string, config.Config) error) *cobra.Command {
 	var path string
 	cmd := &cobra.Command{
 		Use:   use,
@@ -42,7 +42,7 @@ func configCommand(use, short string, run func(*cobra.Command, config.Config) er
 			if err != nil {
 				return err
 			}
-			return run(cmd, cfg)
+			return run(cmd, path, cfg)
 		},
 	}
 	cmd.Flags().StringVar(&path, "config", "", "Path to config.yml")

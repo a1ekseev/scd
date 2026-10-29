@@ -50,7 +50,7 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) int {
 	if ie, ok := errors.AsType[*cliutil.InterruptedError](err); ok {
 		return ie.ExitCode() // the command printed its report and logged the cancel
 	}
-	if !errors.Is(err, cliutil.ErrReportFailed) {
+	if !errors.Is(err, cliutil.ErrReportFailed) && !errors.Is(err, cliutil.ErrLogged) {
 		fmt.Fprintln(stderr, err.Error())
 	}
 	return 1

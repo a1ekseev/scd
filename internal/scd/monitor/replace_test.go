@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
-	"github.com/a1ekseev/scd/internal/scd/resources"
 	"github.com/a1ekseev/scd/internal/scd/selection"
 	"github.com/a1ekseev/scd/internal/scd/socks"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -52,13 +54,7 @@ func wgEnv(t *testing.T, replaceAfter int, lines ...int) *env {
 	})
 	for _, tn := range topo.Tunnels {
 		e.install(tn)
-		in, err := resources.Inbound(tn)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := e.client.AddInbound(t.Context(), in); err != nil {
-			t.Fatal(err)
-		}
+		e.addInbound(tn)
 	}
 	return e
 }
@@ -107,17 +103,22 @@ func TestReplaceAfterFailuresInRow(t *testing.T) {
 		t.Fatalf("tunnel %+v", e.tunnel(0))
 	}
 	want := []string{
-		"RemoveRule:" + old.RouteTag, "RemoveOutbound:" + old.OutboundWithoutPrefix.Tag, "RemoveOutbound:" + old.OutboundTagInitial,
+		"ListInbounds", "RemoveRule:" + old.RouteTag, "RemoveOutbound:" + old.OutboundWithoutPrefix.Tag, "RemoveOutbound:" + old.OutboundTagInitial,
 		"RemoveInbound:" + old.InboundTag, "ListOutbounds", "AddOutbound:" + next.OutboundTagInitial, "AddInbound:" + next.InboundTag, "AddRule:" + next.RouteTag + "->" + next.OutboundTagInitial,
 	}
 	if got := e.callsSince(n); !slices.Equal(got, want) {
 		t.Fatalf("calls %q, want %q", got, want)
 	}
-	if ev := e.logs.events(t, "candidate_replaced"); len(ev) != 1 || ev[0]["reasonCode"] != "failed" || ev[0]["fromTag"] != old.BaseTunnelID {
+	if ev := e.logs.events(t, "candidate_replaced"); len(ev) != 1 || ev[0]["reasonCode"] != "failed" || ev[0]["fromTag"] != old.BaseTunnelID ||
+		ev[0]["failuresInRow"] != 3.0 || ev[0]["probeError"] == "" {
 		t.Fatalf("candidate_replaced %v", ev)
 	}
 	if q := e.source().Selection.Quarantine; len(q) != 1 {
 		t.Fatalf("quarantine %v", q)
+	}
+	// The new tunnel starts a new monitor: no flap episode carried over.
+	if f := e.tunnel(0).Monitor.Flap; !f.Since.IsZero() || len(f.Times) != 0 {
+		t.Fatalf("flap %+v", f)
 	}
 	if p := outboundPeak([]string{old.OutboundWithoutPrefix.Tag, e.tunnel(1).Mapping.OutboundTagInitial}, e.xray.Calls()[n:]); p > 2 {
 		t.Fatalf("peak %d", p)
@@ -151,6 +152,37 @@ func TestNoReplacement(t *testing.T) {
 	}
 	if src := e.source(); len(src.AllWarnings()) != 0 || e.tunnel(0).Mapping.OutboundTagCurrent != tn.OutboundTagInitial {
 		t.Fatalf("warnings %v, tunnel %+v", src.AllWarnings(), e.tunnel(0).Mapping)
+	}
+}
+
+// While the source waits for a full apply (its hashes are reset), a failed
+// tunnel is repaired, not replaced: no new candidate, no quarantine.
+func TestNoReplaceWhileHashesReset(t *testing.T) {
+	for _, reset := range []bool{true, false} {
+		e := wgEnv(t, 1, 1, 2, 4)
+		old := e.tunnel(0).Mapping
+		if reset {
+			e.mem.Update(e.key, func(tg *state.Target) { tg.ResetSourceHashes("wg") })
+		}
+		e.deps.Probe = failPort(old.Port)
+		n := len(e.xray.Calls())
+		if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+			t.Fatal(err)
+		}
+		replaced := len(e.logs.events(t, "candidate_replaced")) == 1
+		if replaced == reset || (len(e.source().Selection.Quarantine) == 1) == reset {
+			t.Errorf("reset=%v: replaced %v, quarantine %v", reset, replaced, e.source().Selection.Quarantine)
+		}
+		if !reset {
+			continue
+		}
+		want := []string{
+			"ListInbounds", "RemoveRule:" + old.RouteTag, "RemoveOutbound:" + old.OutboundTagInitial, "ListOutbounds",
+			"AddOutbound:" + old.OutboundWithoutPrefix.Tag, "AddRule:" + old.RouteTag + "->" + old.OutboundWithoutPrefix.Tag,
+		}
+		if got := e.callsSince(n); !slices.Equal(got, want) {
+			t.Errorf("calls %q, want %q", got, want)
+		}
 	}
 }
 
@@ -211,5 +243,108 @@ func TestSourceMonitorOverride(t *testing.T) {
 				t.Fatalf("delays %v", delays)
 			}
 		})
+	}
+}
+
+// A tunnel whose inbound is gone from Xray is not replaced: one
+// ListInbounds, xray_state_lost, no candidate event and no quarantine.
+func TestNoReplaceWithoutInbound(t *testing.T) {
+	e := wgEnv(t, 1, 1, 2, 4)
+	old := e.tunnel(0).Mapping
+	if err := e.client.RemoveInbound(t.Context(), old.InboundTag); err != nil {
+		t.Fatal(err)
+	}
+	e.deps.Probe = failPort(old.Port)
+	n := len(e.xray.Calls())
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.callsSince(n); !slices.Equal(got, []string{"ListInbounds"}) {
+		t.Fatalf("calls %q", got)
+	}
+	for _, ev := range []string{"candidate_replaced", "candidate_replace_failed", "candidate_no_replacement"} {
+		if len(e.logs.events(t, ev)) != 0 {
+			t.Errorf("%s logged", ev)
+		}
+	}
+	if q := e.source().Selection.Quarantine; len(q) != 0 || len(e.source().Hashes) != 0 || len(e.logs.events(t, "xray_state_lost")) != 1 {
+		t.Fatalf("quarantine %v, hashes %v", q, e.source().Hashes)
+	}
+}
+
+// While Xray is unavailable a failed replacement is debug next to
+// xray_unavailable.
+func TestReplaceFailedXrayUnavailable(t *testing.T) {
+	e := wgEnv(t, 1, 1, 2, 4)
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.xray.FailNext("AddInbound", status.Error(codes.Unavailable, "connection error"))
+	if err := TunnelTick(t.Context(), e.deps, e.sub); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.logs.levels(t, "candidate_replace_failed"); !slices.Equal(got, []string{"DEBUG"}) {
+		t.Fatalf("candidate_replace_failed %v", got)
+	}
+	if len(e.logs.events(t, "xray_unavailable")) != 1 {
+		t.Fatal("no xray_unavailable")
+	}
+}
+
+// A source without a live candidate is one episode: the first
+// candidate_no_replacement is warn, then replacements, no_replacement and
+// repairs of its tunnels are debug, until any of its tunnels passes a
+// check (source_recovered).
+func TestSourceWithoutLiveCandidate(t *testing.T) {
+	e := wgEnv(t, 1, 1, 2, 4)
+	e.sub.Target.Monitor.MaxParallel = 1
+	c := newClock(e)
+	for i := range 6 {
+		e.tickAt(c, time.Duration(i)*3*time.Minute, failProbe) // the cooldown (4 min) ends between ticks
+	}
+	if got := e.logs.levels(t, "candidate_no_replacement"); len(got) < 2 || got[0] != "WARN" || slices.Contains(got[1:], "WARN") {
+		t.Fatalf("candidate_no_replacement %v", got)
+	}
+	if got := e.logs.levels(t, "candidate_replaced"); len(got) < 2 || got[0] != "INFO" || slices.Contains(got[1:], "INFO") {
+		t.Fatalf("candidate_replaced %v", got)
+	}
+	if got := e.logs.levels(t, "tunnel_repaired"); slices.Contains(got, "WARN") {
+		t.Fatalf("tunnel_repaired %v", got)
+	}
+	e.tickAt(c, 20*time.Minute, ok(200, 10))
+	e.tickAt(c, 21*time.Minute, ok(200, 10))
+	ev := e.logs.events(t, "source_recovered")
+	if len(ev) != 1 || ev[0]["level"] != "INFO" || ev[0]["sourceId"] != "wg" || ev[0]["failedForMs"] == 0.0 {
+		t.Fatalf("source_recovered %v", ev)
+	}
+	if e.source().NoLiveSince != nil {
+		t.Fatal("episode not ended")
+	}
+}
+
+// One healthy and one dead tunnel are no episode: one warn
+// candidate_no_replacement, no source_recovered. When the healthy one dies
+// too the episode starts with its own warn and ends with one
+// source_recovered.
+func TestSourceEpisodeNeedsNoHealthyTunnel(t *testing.T) {
+	e := wgEnv(t, 1, 1, 2)
+	e.sub.Target.Monitor.MaxParallel = 1
+	c := newClock(e)
+	dead := e.tunnel(1).Mapping.Port
+	for i := range 4 {
+		e.tickAt(c, time.Duration(i)*time.Minute, failPort(dead))
+	}
+	if got := e.logs.levels(t, "candidate_no_replacement"); !slices.Equal(got, []string{"WARN"}) {
+		t.Fatalf("candidate_no_replacement %v", got)
+	}
+	if ev := e.logs.events(t, "source_recovered"); len(ev) != 0 || e.source().NoLiveSince != nil {
+		t.Fatalf("source_recovered %v", ev)
+	}
+	e.tickAt(c, 5*time.Minute, failProbe)
+	e.tickAt(c, 6*time.Minute, failProbe)
+	if got := e.logs.levels(t, "candidate_no_replacement"); !slices.Equal(got, []string{"WARN", "WARN"}) {
+		t.Fatalf("candidate_no_replacement %v", got)
+	}
+	e.tickAt(c, 7*time.Minute, ok(200, 10))
+	if ev := e.logs.events(t, "source_recovered"); len(ev) != 1 || ev[0]["level"] != "INFO" {
+		t.Fatalf("source_recovered %v", ev)
 	}
 }

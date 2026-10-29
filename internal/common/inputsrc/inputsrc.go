@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/a1ekseev/scd/internal/common/buildinfo"
+	"github.com/a1ekseev/scd/internal/common/neterr"
 )
 
 const defaultFetchTimeout = 5 * time.Second
@@ -180,7 +181,8 @@ func fetch(ctx context.Context, rawURL string, o Options) (string, error) {
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err // drop the duplicated URL
 		}
-		return "", fmt.Errorf("unable to download input from %s: %w", rawURL, err)
+		// Without the local address the text is the same on every attempt.
+		return "", fmt.Errorf("unable to download input from %s: %w", rawURL, neterr.Stable(err))
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)

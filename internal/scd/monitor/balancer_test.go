@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -101,9 +102,10 @@ func TestBalancerDegradedKeepsLastSuccess(t *testing.T) {
 	if b.LastCheckedAt == nil || b.LastFailureAt == nil || !b.LastCheckedAt.Equal(*b.LastFailureAt) {
 		t.Errorf("timestamps = %v / %v", b.LastCheckedAt, b.LastFailureAt)
 	}
-	// Success and failure of the check itself are not logged.
-	if s := e.logs.String(); s != "" {
-		t.Errorf("logs = %s", s)
+	// Only the change to degraded is logged.
+	if ev := e.logs.events(t, "balancer_degraded"); len(ev) != 1 || ev[0]["level"] != "WARN" || ev[0]["error"] != "Expected HTTP 204, got 200." ||
+		strings.Count(e.logs.String(), "\n") != 1 {
+		t.Errorf("logs = %s", e.logs.String())
 	}
 }
 

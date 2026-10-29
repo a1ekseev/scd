@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/wgpstatus"
 	"github.com/a1ekseev/scd/internal/wgp/config"
 	_ "github.com/a1ekseev/scd/internal/wgp/provider/providertest"
@@ -208,8 +210,10 @@ func TestServeStateErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := serve(t.Context(), l, io.Discard); err == nil || !strings.Contains(err.Error(), "in use by another wgp process") {
-		t.Fatalf("serve with a held lock: %v", err)
+	var logs bytes.Buffer
+	if err := serve(t.Context(), l, &logs); err == nil || !strings.Contains(err.Error(), "in use by another wgp process") ||
+		!errors.Is(err, cliutil.ErrLogged) || !strings.Contains(logs.String(), `"event":"service_failed"`) {
+		t.Fatalf("serve with a held lock: %v\n%s", err, logs.String())
 	}
 	if code, _, errs := run("login", "--config", p, "--provider", "two"); code != 1 || !strings.Contains(errs, "in use by another wgp process") {
 		t.Fatalf("login with a held lock: code %d err %q", code, errs)

@@ -297,11 +297,12 @@ func TestRefreshNoCacheFails(t *testing.T) {
 		t.Fatalf("cache_missed logs = %v", missed)
 	}
 	m := missed[0]
-	if m["level"] != "ERROR" || m["subscriptionId"] != "main" || m["cachePath"] != cache.Path(cfg.Path, "main") ||
+	if m["level"] != "DEBUG" || m["subscriptionId"] != "main" || m["cachePath"] != cache.Path(cfg.Path, "main") ||
 		!strings.Contains(m["cacheError"].(string), "no such file") || !strings.Contains(m["error"].(string), "network down") {
 		t.Fatalf("cache_missed log = %v", m)
 	}
-	if ev := rec.events(t, "subscription_refresh_failed"); len(ev) != 1 || ev[0]["error"] != "network down" {
+	if ev := rec.events(t, "subscription_refresh_failed"); len(ev) != 1 || ev[0]["error"] != "network down" ||
+		ev[0]["level"] != "ERROR" || !strings.Contains(ev[0]["cacheError"].(string), "no such file") {
 		t.Fatalf("refresh_failed logs = %v", ev)
 	}
 	js, _ := json.Marshal(rep.Outputs[0])

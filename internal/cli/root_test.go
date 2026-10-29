@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -71,5 +73,20 @@ func TestReportFailedExitCode(t *testing.T) {
 	}
 	if errb.Len() != 0 {
 		t.Fatalf("stderr must be empty, got %q", errb.String())
+	}
+}
+
+// An error already logged (service_failed) exits 1 without a text copy.
+func TestLoggedErrorExitCode(t *testing.T) {
+	root := NewRoot()
+	root.AddCommand(&cobra.Command{
+		Use: "stub",
+		RunE: func(*cobra.Command, []string) error {
+			return cliutil.LogFailure(slog.New(slog.DiscardHandler), errors.New("listen failed"))
+		},
+	})
+	var out, errb bytes.Buffer
+	if code := run(root, []string{"stub"}, &out, &errb); code != 1 || errb.Len() != 0 {
+		t.Fatalf("exit code %d, stderr %q", code, errb.String())
 	}
 }

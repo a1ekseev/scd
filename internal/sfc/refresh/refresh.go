@@ -74,6 +74,37 @@ type Refresher struct {
 	Now func() time.Time
 	// Input defaults to inputsrc.Load.
 	Input func(ctx context.Context, input string, o inputsrc.Options) (inputsrc.Loaded, error)
+
+	// lastFetchErr is the current load failure per subscription id, for the
+	// edge-triggered logs. Run never overlaps itself, so no lock.
+	lastFetchErr map[string]fetchFail
+}
+
+// fetchFail is the current load failure of a subscription: the event and
+// error it was logged with, and when the series started.
+type fetchFail struct {
+	event, msg string
+	since      time.Time
+}
+
+// fetchFailed records a load failure of subscription id logged as event
+// and returns level when it differs from the last one, else
+// slog.LevelDebug.
+func (r *Refresher) fetchFailed(id, event, msg string, level slog.Level) slog.Level {
+	if r.lastFetchErr == nil {
+		r.lastFetchErr = map[string]fetchFail{}
+	}
+	prev, ok := r.lastFetchErr[id]
+	if !ok {
+		prev.since = r.now()
+	}
+	same := ok && prev.event == event && prev.msg == msg
+	prev.event, prev.msg = event, msg
+	r.lastFetchErr[id] = prev
+	if same {
+		return slog.LevelDebug
+	}
+	return level
 }
 
 // Run refreshes the enabled subscriptions one after another and returns the
@@ -128,6 +159,7 @@ func (r *Refresher) Run(ctx context.Context) Report {
 // failed because ctx was cancelled; nothing is recorded then.
 func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscription) (reports []OutputReport, ok bool) {
 	log := r.log()
+	start := r.now()
 	in, err := r.input()(ctx, sub.Input, inputsrc.Options{
 		Format:       sub.Format,
 		FetchTimeout: time.Duration(sub.FetchTimeoutMs) * time.Millisecond,
@@ -139,13 +171,19 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 			log.Warn("Subscription source cache write failed; continuing with fresh input.",
 				"event", "subscription_source_cache_write_failed", "subscriptionId", sub.ID, "error", werr.Error())
 		} else {
-			log.Info("Subscription source cache written.",
+			log.Debug("Subscription source cache written.",
 				"event", "subscription_source_cache_written", "subscriptionId", sub.ID, "path", p)
+		}
+		if f, failed := r.lastFetchErr[sub.ID]; failed {
+			delete(r.lastFetchErr, sub.ID)
+			log.Info("Subscription refresh recovered.", "event", "subscription_refresh_recovered", "subscriptionId", sub.ID,
+				"source", inputsrc.RedactInput(sub.Input), "failedForMs", r.now().Sub(f.since).Milliseconds())
 		}
 		links := r.parse(sub.ID, in.Content)
 		reports := r.buildOutputs(sub, links, false)
 		log.Info("Subscription refreshed.", "event", "subscription_refreshed", "subscriptionId", sub.ID,
-			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputNames(sub), "parsedEntries", len(links))
+			"source", inputsrc.RedactInput(in.Source), "outputs", enabledOutputNames(sub), "parsedEntries", len(links),
+			"durationMs", r.now().Sub(start).Milliseconds(), "failedOutputs", failedOutputs(sub, reports))
 		return reports, true
 	}
 	if ctx.Err() != nil {
@@ -158,16 +196,18 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 	if cerr == nil {
 		links := r.parse(sub.ID, content)
 		reports := r.buildOutputs(sub, links, true)
-		log.Warn("Subscription refresh used source cache after input load failed.",
+		level := r.fetchFailed(sub.ID, "subscription_source_cache_used", msg, slog.LevelWarn)
+		log.Log(ctx, level, "Subscription refresh used source cache after input load failed.",
 			"event", "subscription_source_cache_used", "subscriptionId", sub.ID, "path", cachePath,
 			"error", msg, "parsedEntries", len(links))
 		return reports, true
 	}
-	log.Error("Subscription source cache is not available after input load failed.",
+	log.Debug("Subscription source cache is not available after input load failed.",
 		"event", "subscription_source_cache_missed", "subscriptionId", sub.ID, "error", msg,
 		"cachePath", cachePath, "cacheError", cerr.Error())
-	log.Error("Subscription refresh failed.",
-		"event", "subscription_refresh_failed", "subscriptionId", sub.ID, "error", msg)
+	level := r.fetchFailed(sub.ID, "subscription_refresh_failed", msg, slog.LevelError)
+	log.Log(ctx, level, "Subscription refresh failed.",
+		"event", "subscription_refresh_failed", "subscriptionId", sub.ID, "error", msg, "cacheError", cerr.Error())
 
 	for _, out := range sub.Outputs {
 		if out.Enabled {
@@ -218,11 +258,18 @@ func (r *Refresher) buildOutputs(sub config.Subscription, links []vless.Link, fr
 	return reports
 }
 
-// succeed stores a new payload for out.
+// succeed stores a new payload for out; after an empty output it logs
+// output_recovered (the end of a load failure is
+// subscription_refresh_recovered).
 func (r *Refresher) succeed(sub config.Subscription, out config.Output, raws []string, fromCache bool) OutputReport {
 	prev := r.State.get(out.ID)
 	st := configured(&prev, sub, out)
 	now := r.now()
+	if prev.LastError == errEmptyOutput {
+		r.log().Info("Output recovered.", "event", "output_recovered", "subscriptionId", sub.ID,
+			"outputName", out.LogName(), "failedForMs", now.Sub(prev.FailingSince).Milliseconds())
+	}
+	st.FailingSince = time.Time{}
 	st.LastGoodPlain = strings.Join(raws, "\n")
 	st.LastGoodBase64 = base64.StdEncoding.EncodeToString([]byte(st.LastGoodPlain))
 	st.LastGoodLineCount = len(raws)
@@ -235,11 +282,26 @@ func (r *Refresher) succeed(sub config.Subscription, out config.Output, raws []s
 	}
 }
 
-// fail records a failed refresh of out; the last good payload is kept.
+// fail records a failed refresh of out; the last good payload is kept. An
+// empty output is logged as output_refresh_failed (warn when the output did
+// not fail so before, else debug); a load failure is the subscription's
+// event.
 func (r *Refresher) fail(sub config.Subscription, out config.Output, msg string, fromCache bool) OutputReport {
 	prev := r.State.get(out.ID)
 	st := configured(&prev, sub, out)
 	now := r.now()
+	if prev.LastError == "" {
+		st.FailingSince = now
+	}
+	if msg == errEmptyOutput {
+		logf := r.log().Warn
+		if prev.LastError == msg {
+			logf = r.log().Debug
+		}
+		logf("Output refresh failed; the previous payload is kept.",
+			"event", "output_refresh_failed", "subscriptionId", sub.ID, "outputName", out.LogName(),
+			"error", msg, "keptPrevious", prev.LastGoodBase64 != "")
+	}
 	st.LastRefreshAt, st.LastFailureAt = now, now
 	st.LastError = msg
 	r.State.put(st)
@@ -247,6 +309,22 @@ func (r *Refresher) fail(sub config.Subscription, out config.Output, msg string,
 		ID: out.ID, SubscriptionID: sub.ID, Name: out.Name,
 		UsedCachedValue: prev.LastGoodBase64 != "", UsedSourceCache: fromCache, Error: msg,
 	}
+}
+
+// failedOutputs are the log names of the failed outputs among reports.
+func failedOutputs(sub config.Subscription, reports []OutputReport) []string {
+	out := []string{}
+	for _, rep := range reports {
+		if rep.OK {
+			continue
+		}
+		for _, o := range sub.Outputs {
+			if o.ID == rep.ID {
+				out = append(out, o.LogName())
+			}
+		}
+	}
+	return out
 }
 
 // MarshalJSON prints the report with the id redacted: the id is the secret

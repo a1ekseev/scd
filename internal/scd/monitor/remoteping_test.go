@@ -3,11 +3,13 @@ package monitor
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -55,7 +57,7 @@ func TestRemotePingAsync(t *testing.T) {
 		t.Errorf("after push = %+v", b)
 	}
 	logs := e.logs.events(t, "balancer_monitor_remote_ping_succeeded")
-	if len(logs) != 1 || logs[0]["level"] != "INFO" || logs[0]["statusCode"] != 200.0 || logs[0]["viaSocks"] != false {
+	if len(logs) != 1 || logs[0]["level"] != "DEBUG" || logs[0]["statusCode"] != 200.0 || logs[0]["viaSocks"] != false {
 		t.Errorf("succeeded logs = %v", logs)
 	}
 	if _, has := logs[0]["proxyHost"]; has {
@@ -216,7 +218,7 @@ func TestRemotePingViaSocks(t *testing.T) {
 				t.Errorf("log = %v", l)
 			}
 		}
-		if started[0]["status"] != "up" || started[0]["level"] != "INFO" || started[0]["msg"] != "Balancer monitor remote ping started." {
+		if started[0]["status"] != "up" || started[0]["level"] != "DEBUG" || started[0]["msg"] != "Balancer monitor remote ping started." {
 			t.Errorf("started = %v", started[0])
 		}
 		if failed[0]["statusCode"] != 502.0 || failed[0]["msg"] != "Balancer monitor remote ping failed." {
@@ -403,5 +405,20 @@ func TestDirectPushErrorHasNoURL(t *testing.T) {
 	_, err := PushDirect(t.Context(), u+"/api/push/SECRET?token=SECRET", time.Second)
 	if err == nil || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), u) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A direct push error loses the URL and the local address of a network
+// error.
+func TestPingErrorTextStable(t *testing.T) {
+	const u = "https://push.example.test/api/push/token"
+	err := &url.Error{Op: "Get", URL: u, Err: &net.OpError{
+		Op: "read", Net: "tcp",
+		Source: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 50001},
+		Addr:   &net.TCPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 443},
+		Err:    syscall.ECONNRESET,
+	}}
+	if got, want := pingErrorText(err, u), "read tcp 192.0.2.1:443: "+syscall.ECONNRESET.Error(); got != want {
+		t.Fatalf("%q, want %q", got, want)
 	}
 }

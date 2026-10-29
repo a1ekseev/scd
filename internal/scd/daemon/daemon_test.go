@@ -225,14 +225,17 @@ func TestDaemonFirstSyncImmediate(t *testing.T) {
 		done := startRun(ctx, d)
 		synctest.Wait()
 
-		if n := len(logs.events(t, "config_loaded")); n != 1 {
-			t.Errorf("config_loaded logged %d times", n)
+		if ev := logs.events(t, "config_loaded"); len(ev) != 1 || ev[0]["version"] != "dev" {
+			t.Errorf("config_loaded = %v", ev)
 		}
-		if n := len(logs.events(t, "daemon_tick")); n != 1 {
-			t.Errorf("daemon_tick logged %d times, want 1", n)
+		// The steps are debug; sync_finished closes the sync at info.
+		for _, e := range []string{"daemon_tick", "sync_started"} {
+			if ev := logs.events(t, e); len(ev) != 1 || ev[0]["level"] != "DEBUG" {
+				t.Errorf("%s = %v, want once at debug", e, ev)
+			}
 		}
-		if n := len(logs.events(t, "sync_started")); n != 1 {
-			t.Errorf("sync_started logged %d times, want 1", n)
+		if ev := logs.events(t, "sync_finished"); len(ev) != 1 || ev[0]["level"] != "INFO" {
+			t.Errorf("sync_finished = %v", ev)
 		}
 		addrs, at := rec.snapshot()
 		if len(addrs) == 0 || addrs[0] != "127.0.0.1:8080" || !at[0].Equal(t0) {
@@ -246,7 +249,7 @@ func TestDaemonFirstSyncImmediate(t *testing.T) {
 }
 
 // TestDaemonStartsWhenXrayDown (Review Focus 2): with Xray unreachable the
-// sync fails per kind, the status server still answers and the next tick
+// sync fails (one orphan_remove_failed line per sync), the status server still answers and the next tick
 // tries the apply again.
 func TestDaemonStartsWhenXrayDown(t *testing.T) {
 	closed := freeAddr(t)
@@ -270,13 +273,16 @@ func TestDaemonStartsWhenXrayDown(t *testing.T) {
 	done := startRun(ctx, d)
 
 	logs.waitEvent(t, "status_server_started", 1)
-	logs.waitEvent(t, "apply_failed", 3)
+	logs.waitEvent(t, "orphan_remove_failed", 1)
 	code, body := httpGet(t, "http://"+listen+"/api/instance-status")
 	if code != http.StatusOK || !strings.Contains(body, `"version": 1`) {
 		t.Errorf("/api/instance-status = %d %s", code, body)
 	}
 	logs.waitEvent(t, "daemon_tick", 2)
-	logs.waitEvent(t, "apply_failed", 6)
+	logs.waitEvent(t, "orphan_remove_failed", 2)
+	if n := len(logs.events(t, "apply_failed")); n != 0 {
+		t.Errorf("apply_failed logged %d times; the orphan removal failure is the only line", n)
+	}
 	mu.Lock()
 	n := dials
 	mu.Unlock()
@@ -416,7 +422,7 @@ func TestDaemonStartsLoopsForDisabledSubscriptionMonitors(t *testing.T) {
 		"monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
 		"balancer_monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
 		"balancer_selection_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
-		"remote_status_tick_failed [remoteInstanceId remote-1 apiUrl http://remote.invalid/api/instance-status]",
+		"remote_status_tick_failed [remoteInstanceId remote-1 apiUrl http://remote.invalid/<redacted>]",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("loops =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

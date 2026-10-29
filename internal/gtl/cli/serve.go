@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
+	"github.com/a1ekseev/scd/internal/common/buildinfo"
+	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/httpserve"
 	"github.com/a1ekseev/scd/internal/common/logging"
 	"github.com/a1ekseev/scd/internal/common/sigctx"
@@ -18,18 +21,26 @@ import (
 var shutdownTimeout = httpserve.ShutdownTimeout
 
 func serveCommand() *cobra.Command {
-	return configCommand("serve", "Run the load generator HTTP server", func(cmd *cobra.Command, cfg config.Config) error {
+	return configCommand("serve", "Run the load generator HTTP server", func(cmd *cobra.Command, path string, cfg config.Config) error {
 		ctx, stop := sigctx.NotifyContext(cmd.Context())
 		defer stop()
-		return serve(ctx, cfg, cmd.ErrOrStderr())
+		return serve(ctx, path, cfg, cmd.ErrOrStderr())
 	})
 }
 
-func serve(ctx context.Context, cfg config.Config, stderr io.Writer) error {
+// serve runs the server until ctx is done. A failure after the logger
+// exists is logged as service_failed and not printed again.
+func serve(ctx context.Context, path string, cfg config.Config, stderr io.Writer) error {
 	log, err := logging.New(stderr, cfg.Logging.Level, cfg.Logging.Format)
 	if err != nil {
 		return err
 	}
+	log.Info("Config loaded.", "event", "config_loaded", "configPath", path, "version", buildinfo.Version)
+	return cliutil.LogFailure(log, serveWith(ctx, cfg, log))
+}
+
+// serveWith is serve with its logger.
+func serveWith(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	ln, err := httpserve.Listen(cfg.Server.Listen) //nolint:contextcheck // binding a socket needs no cancellation
 	if err != nil {
 		return err

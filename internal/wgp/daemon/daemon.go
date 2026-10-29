@@ -116,16 +116,22 @@ func (d *Daemon) tick(ctx context.Context, j job) {
 	}
 	d.warnings(j, res.Warnings)
 	if err == nil {
-		var changed bool
+		var change output.Change
 		if len(res.Lines) == 0 {
 			// No error and no lines: no live candidate, so the file empties
 			// and scd drops the tunnels. A failed tick keeps the file.
-			changed, err = output.PublishEmpty(j.out)
+			change, err = output.PublishEmpty(j.out)
 		} else {
-			changed, err = output.Publish(j.out, res.Lines)
+			change, err = output.Publish(j.out, res.Lines)
 		}
-		if changed {
-			d.log.Info("Output published.", append(j.ids(), "event", "output_published", "candidates", len(res.Lines))...)
+		if change != "" {
+			// Metadata (load, score, expiry) moves on every tick of some
+			// providers; only another candidate list is info.
+			level := slog.LevelDebug
+			if change == output.ChangeCandidates {
+				level = slog.LevelInfo
+			}
+			d.log.Log(ctx, level, "Output published.", append(j.ids(), "event", "output_published", "candidates", len(res.Lines), "changed", string(change))...)
 		}
 	}
 	s := res.Status

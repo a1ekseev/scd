@@ -92,12 +92,7 @@ func (s *Syncer) syncWireGuard(ctx context.Context, c config.SubscriptionConfig,
 			plans = append(plans, p)
 		}
 		if missing := missingIn(ctx, client, t, plans); len(missing) > 0 {
-			s.Log.LogAttrs(ctx, slog.LevelWarn, "Xray lost managed resources; applying again.",
-				slog.String("event", "xray_state_drift"),
-				slog.String("subscriptionId", c.ID),
-				slog.String("sourceId", src.ID),
-				slog.String("targetAddress", t.Address),
-				slog.Any("missing", missing))
+			s.logDrift(ctx, c, src.ID, missing)
 			full = true
 		}
 	}
@@ -173,7 +168,7 @@ func (w *wgSync) full(ctx context.Context, m manifest.Manifest, active []state.T
 	for _, k := range s.kinds() {
 		p, err := apply.PlanForSource(k, eligible, src, c.Target)
 		if err != nil {
-			return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, err.Error()), w.skipped)
+			return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, err.Error(), true), w.skipped)
 		}
 		plans = append(plans, p)
 	}
@@ -269,7 +264,7 @@ loop:
 	if len(removed) == 0 && len(added) == 0 && failErr == nil {
 		unchanged := s.kinds()
 		for _, k := range unchanged {
-			s.Log.LogAttrs(ctx, slog.LevelInfo, "Manifest unchanged for resource; skipping Xray API.",
+			s.Log.LogAttrs(ctx, slog.LevelDebug, "Manifest unchanged for resource; skipping Xray API.",
 				targetAttrs("skipped_no_changes", k, c, src.ID)...)
 		}
 		return newTargetReport(c.ID, t.Address, src.ID, unchanged, nil, w.skipped)

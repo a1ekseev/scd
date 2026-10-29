@@ -23,6 +23,9 @@ type OutputState struct {
 	LastFailureAt                 time.Time
 	// LastError is the error of the last refresh; "" after a success.
 	LastError string
+	// FailingSince is the first failed refresh of the current series, zero
+	// after a success (output_recovered.failedForMs).
+	FailingSince time.Time
 }
 
 // State holds the state of every configured output, keyed by id and by its

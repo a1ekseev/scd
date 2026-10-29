@@ -1,6 +1,7 @@
 package state
 
 import (
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,7 +78,7 @@ func TestReplaceSourceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 			t.Fatalf("Tunnels order = %+v, want topology order c, b", tg.Tunnels)
 		}
 		for _, tn := range tg.Tunnels {
-			if tn.Monitor != (TunnelMonitor{State: TunnelIdle}) {
+			if !reflect.DeepEqual(tn.Monitor, TunnelMonitor{State: TunnelIdle}) {
 				t.Errorf("tunnel %s monitor = %+v, want idle", tn.Mapping.BaseTunnelID, tn.Monitor)
 			}
 		}
@@ -243,4 +244,71 @@ func TestReplaceSourceTopologyKeepsOtherSources(t *testing.T) {
 			t.Fatalf("SourceIDs %v", ids)
 		}
 	})
+}
+
+// A full apply keeps FailingSince and Flap of a tunnel of the same tag
+// (logging only), not of a new tag, and none after a lost Xray state.
+func TestReplaceSourceTopologyCarriesFailing(t *testing.T) {
+	for _, lost := range []bool{false, true} {
+		m := New()
+		m.ReplaceSourceTopology("k", "vless", topo("a", "b"), nil)
+		since := time.Unix(100, 0)
+		m.Update("k", func(tg *Target) {
+			for _, tn := range tg.Tunnels {
+				tn.Monitor = TunnelMonitor{State: TunnelDegraded, FailingSince: &since, Flap: FlapState{Since: since, Count: 3}}
+			}
+			if lost {
+				tg.SetStateLost("vless", since)
+			}
+		})
+		m.ReplaceSourceTopology("k", "vless", topo("a", "c"), nil)
+		m.View("k", func(tg *Target) {
+			a, c := tg.Tunnels[0].Monitor, tg.Tunnels[1].Monitor
+			carried := a.FailingSince != nil && a.Flap.Count == 3 && a.State == TunnelIdle
+			if carried == lost || c.FailingSince != nil || c.Flap.Count != 0 {
+				t.Errorf("lost=%v: a %+v, c %+v", lost, a, c)
+			}
+		})
+	}
+}
+
+func TestXrayMarkers(t *testing.T) {
+	var tg Target
+	t0 := time.Unix(100, 0)
+	if !tg.SetXrayDown("a", t0) || tg.SetXrayDown("b", t0.Add(time.Second)) || tg.XrayDown.Error != "b" {
+		t.Fatalf("XrayDown %+v", tg.XrayDown)
+	}
+	if d, was := tg.ClearXrayDown(t0.Add(time.Minute)); !was || d != time.Minute || tg.XrayDown != nil {
+		t.Fatalf("ClearXrayDown %v %v", d, was)
+	}
+	if _, was := tg.ClearXrayDown(t0); was {
+		t.Fatal("cleared twice")
+	}
+	if !tg.SetStateLost("a", t0) || tg.SetStateLost("b", t0.Add(time.Second)) || tg.SetStateLost("a", t0.Add(time.Hour)) {
+		t.Fatal("SetStateLost")
+	}
+	if _, ok := tg.ClearStateLost("a", t0, t0); ok || len(tg.StateLost) != 2 {
+		t.Fatal("a mark at before is not covered")
+	}
+	if _, ok := tg.ClearStateLost("a", t0.Add(time.Second), t0); ok || len(tg.StateLost) != 1 {
+		t.Fatal("restored while b is marked")
+	}
+	if d, ok := tg.ClearStateLost("b", t0.Add(time.Hour), t0.Add(time.Minute)); !ok || d != time.Minute || len(tg.StateLost) != 0 {
+		t.Fatalf("ClearStateLost %v %v", d, ok)
+	}
+	if _, ok := tg.ClearStateLost("b", t0.Add(time.Hour), t0); ok {
+		t.Fatal("cleared twice")
+	}
+	// A source stays marked (it never loads): a new loss after a partial
+	// restore is first again.
+	tg.SetStateLost("a", t0)
+	if tg.SetStateLost("b", t0) {
+		t.Fatal("second source of an episode is first")
+	}
+	if _, ok := tg.ClearStateLost("a", t0.Add(time.Second), t0); ok || tg.SetStateLost("b", t0) {
+		t.Fatal("b already marked")
+	}
+	if !tg.SetStateLost("a", t0.Add(time.Hour)) {
+		t.Fatal("new loss next to a stuck source is not first")
+	}
 }

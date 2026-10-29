@@ -367,3 +367,27 @@ func TestNeedsLoginLogLines(t *testing.T) {
 		t.Fatalf("state %v", lines[0])
 	}
 }
+
+// output_published is info when the candidates change and debug when only
+// their metadata does (changed: candidates|metadata).
+func TestOutputPublishedChange(t *testing.T) {
+	line := fixtureLine(t)
+	lines := []string{line, strings.Replace(line, "load=40", "load=41", 1), line}
+	n := 0
+	d, buf, _ := logDaemon(t, funcProvider{func(context.Context) (provider.Result, error) {
+		n++
+		return provider.Result{Lines: []string{lines[n-1]}}, nil
+	}})
+	for range lines {
+		d.tick(t.Context(), d.jobs[0])
+	}
+	var got []string
+	for _, l := range logLines(t, buf) {
+		if l["event"] == "output_published" {
+			got = append(got, fmt.Sprintf("%s %s", l["level"], l["changed"]))
+		}
+	}
+	if want := []string{"INFO candidates", "DEBUG metadata", "DEBUG metadata"}; !slices.Equal(got, want) {
+		t.Fatalf("output_published %q, want %q", got, want)
+	}
+}

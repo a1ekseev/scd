@@ -53,7 +53,10 @@ type logEvent struct {
 // the tunnel mapping appears after the sync. Logs are written only on
 // transitions (10 §6.4): balancer_selection_changed,
 // balancer_selection_failed (new error text), balancer_selection_recovered
-// and balancer_observatory_unavailable (new error text). It is a no-op when
+// and balancer_observatory_unavailable (new error text); while the Xray API
+// is unavailable (xray_unavailable, cleared by a successful
+// GetBalancerInfo: xray_recovered) the first two are debug, and the
+// observatory line is debug when GetBalancerInfo failed too. It is a no-op when
 // the selection is disabled; the error is reserved for a cancelled ctx, in
 // which case nothing is recorded.
 func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
@@ -89,6 +92,9 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	now := d.now()
 	key := state.Key(sub.ID, t.Address)
 	d.Memory.Ensure(key)
+	// One cause, one line: while the API is unavailable xray_unavailable
+	// covers the selection and observatory errors of the same tick.
+	down, recovered := state.NoteXray(ctx, d.Memory, d.Log, sub.ID, t.Address, infoErr, now)
 	var events []logEvent
 	d.Memory.Update(key, func(tg *state.Target) {
 		events = record(&tg.BalancerSelection, bs, now, info, infoErr)
@@ -103,6 +109,12 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 		slog.String("balancerTag", bs.BalancerTag),
 	}
 	for _, e := range events {
+		switch {
+		case e.event == "balancer_selection_failed" && down,
+			e.event == "balancer_selection_recovered" && recovered,
+			e.event == "balancer_observatory_unavailable" && (infoErr != nil || xrayapi.IsUnavailable(obsErr)):
+			e.level = slog.LevelDebug
+		}
 		attrs := append([]slog.Attr{slog.String("event", e.event)}, base...)
 		d.Log.LogAttrs(ctx, e.level, e.msg, append(attrs, e.details...)...)
 	}
@@ -134,8 +146,14 @@ func record(s *state.SelectionState, bs config.BalancerSelectionConfig, now time
 			events = append(events, logEvent{slog.LevelInfo, "Balancer selection check recovered.", "balancer_selection_recovered", nil})
 		}
 		if s.State == "" || selected != s.SelectedTag || mode != s.Mode {
+			// Xray moves its pick on its own; only the first pick, a mode
+			// change and a move to or from no pick are info.
+			level := slog.LevelDebug
+			if s.State == "" || mode != s.Mode || selected == "" || s.SelectedTag == "" {
+				level = slog.LevelInfo
+			}
 			events = append(events, logEvent{
-				slog.LevelInfo, "Balancer selection changed.", "balancer_selection_changed",
+				level, "Balancer selection changed.", "balancer_selection_changed",
 				[]slog.Attr{slog.String("from", s.SelectedTag), slog.String("to", selected), slog.String("mode", string(mode))},
 			})
 		}

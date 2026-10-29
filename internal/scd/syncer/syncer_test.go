@@ -647,7 +647,7 @@ func TestFullSuccessResetsMonitorsAndBumpsGeneration(t *testing.T) {
 			t.Fatalf("tunnels = %d", len(tg.Tunnels))
 		}
 		for _, tn := range tg.Tunnels {
-			if tn.Monitor != (state.TunnelMonitor{State: state.TunnelIdle}) {
+			if !reflect.DeepEqual(tn.Monitor, state.TunnelMonitor{State: state.TunnelIdle}) {
 				t.Errorf("monitor = %+v, want idle", tn.Monitor)
 			}
 		}

@@ -22,9 +22,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/buildinfo"
 	"github.com/a1ekseev/scd/internal/common/cron"
 	"github.com/a1ekseev/scd/internal/common/cronloop"
 	"github.com/a1ekseev/scd/internal/common/httpserve"
+	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/sigctx"
 	"github.com/a1ekseev/scd/internal/scd/balancer"
 	"github.com/a1ekseev/scd/internal/scd/config"
@@ -119,7 +121,7 @@ func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitG
 		schedule: cfg.Runtime.Schedule,
 		events:   syncEvents,
 		task: func(ctx context.Context) error {
-			d.Log.LogAttrs(ctx, slog.LevelInfo, "Daemon tick started.", slog.String("event", "daemon_tick"))
+			d.Log.LogAttrs(ctx, slog.LevelDebug, "Daemon tick started.", slog.String("event", "daemon_tick"))
 			_, err := s.Run(ctx)
 			return err
 		},
@@ -147,7 +149,7 @@ func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitG
 		out = append(out, loop{r.Schedule, func(ctx context.Context) error {
 			agg.Collect(ctx, r, d.HTTPClient, d.Log, d.now)
 			return nil
-		}, remoteEvents, []any{"remoteInstanceId", r.ID, "apiUrl", r.APIURL}})
+		}, remoteEvents, []any{"remoteInstanceId", r.ID, "apiUrl", inputsrc.RedactURL(r.APIURL)}})
 	}
 	return out
 }
@@ -175,7 +177,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 		schedules[i] = s
 	}
 
-	d.Log.LogAttrs(ctx, slog.LevelInfo, "Config loaded.", slog.String("event", "config_loaded"), slog.String("configPath", d.Config.Path))
+	d.Log.LogAttrs(ctx, slog.LevelInfo, "Config loaded.", slog.String("event", "config_loaded"), slog.String("configPath", d.Config.Path),
+		slog.String("version", buildinfo.Version))
 
 	var ln net.Listener
 	if ss := cfg.StatusServer; ss.Enabled && ss.Listen != "" {

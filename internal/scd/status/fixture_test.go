@@ -103,8 +103,13 @@ type fixtureMonitor struct {
 	LastSuccessStatusCode, LastSuccessLatencyMs *int
 	LastError                                   string
 	ConsecutiveFailures                         int
-	// FailuresInRow is not in the API; the fixtures never set it.
-	FailuresInRow int `json:"-"`
+	// FailuresInRow and the rest are not in the API; the fixtures never set
+	// them.
+	FailuresInRow   int             `json:"-"`
+	FailingSince    *time.Time      `json:"-"`
+	LastRepairError string          `json:"-"`
+	LastRejoinError string          `json:"-"`
+	Flap            state.FlapState `json:"-"`
 }
 
 type fixtureBalancer struct {
@@ -119,6 +124,7 @@ type fixtureBalancer struct {
 	RemotePingLastStatusCode                                              *int
 	RemotePingLastError                                                   string
 	ConsecutiveFailures                                                   int
+	FailingSince                                                          *time.Time `json:"-"`
 }
 
 // fixtureSelection is targets[].balancerSelection (task 6.6): the keys of

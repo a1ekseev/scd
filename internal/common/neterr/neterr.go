@@ -5,6 +5,7 @@ package neterr
 import (
 	"errors"
 	"net"
+	"regexp"
 	"strings"
 )
 
@@ -32,3 +33,13 @@ type stableError struct {
 
 func (e stableError) Error() string { return e.msg }
 func (e stableError) Unwrap() error { return e.err }
+
+// localAddr is the "<local>->" part of a network error text.
+var localAddr = regexp.MustCompile(`\b((?:tcp|udp)[46]?) \S+?->`)
+
+// StableText is Stable for an error that exists only as text (a gRPC
+// status message): "read tcp <local>-><remote>: …" loses "<local>->"
+// (up to the first "->", so the remote address stays).
+func StableText(msg string) string {
+	return localAddr.ReplaceAllString(msg, "${1} ")
+}

@@ -317,7 +317,10 @@ Xray as WireGuard outbounds.
   then add, kind by kind, like a VLESS source) on the first sync after a
   start, when `type`, `portRange`, `inboundSocks.listen`, the observatory
   prefix, `endpointDomainStrategy` or `maxActive` change, after a failed
-  replacement, and on `xray_state_drift`. Otherwise each sync changes single
+  replacement, on `xray_state_drift`, and after the monitor found a tunnel's
+  inbound missing in Xray (`xray_state_lost`). While the source waits for
+  that full apply, the monitor does not replace its candidates after
+  `replaceAfterFailures`; it only repairs them. Otherwise each sync changes single
   slots only (see "Monitoring and repair"). Xray never holds more than `maxActive`
   outbounds of the source, at any RPC of a sync, a rollback, a repair, a
   rejoin or a replacement: before each `AddOutbound` of the source scd lists
@@ -425,7 +428,9 @@ replacement, quarantine and hysteresis, secrets and status
 - When a source's manifest hash is unchanged, sync still lists the target's
   outbounds, inbounds and rules (read-only). If a resource of that source is
   missing, for example after an Xray restart, it logs warning
-  `xray_state_drift` with per-kind counts and applies the source again. A
+  `xray_state_drift` with per-kind counts and applies the source again; the
+  other sources of the same target log it at debug. A sync that loaded and
+  applied every source that lost its resources logs `xray_state_restored`. A
   repaired outbound (without the observatory prefix) is not a loss.
 - Topology: one outbound per filtered entry. With inbounds and routing
   enabled, each outbound also gets one SOCKS inbound (`in-…`) and one routing
@@ -469,6 +474,30 @@ replacement, quarantine and hysteresis, secrets and status
   that is already gone is not an error. If a rejoin add
   fails, scd restores the unprefixed outbound and rule (best effort) and
   logs `tunnel_rejoin_failed`.
+- A repair first lists Xray's inbounds (read-only). If the tunnel's inbound
+  is missing (Xray restarted), it is not repaired: scd changes nothing in
+  Xray, resets the hashes of that source and logs `xray_state_lost` (warn
+  for the first tunnel of the target, then debug); the next sync applies the
+  source in full and logs `xray_state_restored`. Sources whose inbounds are
+  in place are repaired as usual. After a loss of Xray state the tunnels of
+  a source come back only once its input loads again: while it does not,
+  scd logs `xray_state_restore_blocked` (warn once per source, then debug).
+- Flapping: a successful repair of the first failed check of a series is a
+  flap. After 3 flaps within 60 minutes scd logs `tunnel_flapping` once;
+  then the tunnel's `tunnel_repaired`, `tunnel_rejoined_balancer` and
+  `tunnel_recovered` are debug until `tunnel_stable` (60 minutes without a
+  failed check) or `tunnel_down` (3 failed checks in a row). Without
+  `observatorySubjectSelectorPrefix` a tunnel is repaired on every failed
+  check; only the first `tunnel_repaired` of a series is warn.
+- While the Xray API of a target does not answer (gRPC Unavailable or a
+  timeout), scd logs one `xray_unavailable` and, after the first successful
+  API call of the monitor, the balancer selection or the orphan removal,
+  one `xray_recovered` (`failedForMs`). It may come up to a sync or monitor
+  interval after Xray is back: only a successful API call ends it. The
+  failures of repair, rejoin, replacement, balancer selection and orphan
+  removal in between are debug, and so is the recovery of a failure logged
+  only at debug.
+  A good probe does not end it: probes do not use the API.
 - A tunnel that is already out of the balancer is not repaired again: further
   failed checks only update its monitor state (`degraded`, `lastError` = the
   probe error, the failure counter) and log `tunnel_repair_skipped` at debug.
@@ -487,7 +516,8 @@ replacement, quarantine and hysteresis, secrets and status
   only when no replacement exists. A slot keeps its port; the
   replacement is the first ranked candidate that is not active, does not
   share a private key with another active one and whose key + endpoint pair
-  (key + endpoint + transport for `masque`) is not in quarantine. It removes the old tunnel first (rule, outbound,
+  (key + endpoint + transport for `masque`) is not in quarantine. A tunnel
+  whose inbound is missing in Xray is not replaced (as for a repair). It removes the old tunnel first (rule, outbound,
   inbound; both outbound tags, with and without the observatory prefix,
   are removed), then adds the new one (outbound with the observatory prefix,
   inbound, rule), under the same per-target mutex as sync, repair and
@@ -495,7 +525,9 @@ replacement, quarantine and hysteresis, secrets and status
   - on a sync, when its candidate is gone from the file or changed
     (`reasonCode: gone|changed`);
   - after `replaceAfterFailures` failed checks in a row (a repair does not
-    reset this count, only a successful check does): the pair goes into
+    reset this count, only a successful check does; not while the source's
+    hashes are reset and it waits for a full apply, so a source that does
+    not load gets no replacement until it loads): the pair goes into
     quarantine for `deadPairCooldownMinutes` (`reasonCode: failed`); while a
     tunnel without a replacement keeps failing, every failed check puts its
     pair into quarantine again, so the pair stays out as long as it fails;
@@ -520,9 +552,12 @@ replacement, quarantine and hysteresis, secrets and status
   recovers); a candidate gone from the file with none to replace it is
   removed (`candidate_removed`) and its slot stays empty. Both show the
   source warning `no_replacement` in `targets[].sources[]` and on the
-  dashboard; `candidate_no_replacement` is logged once when a tunnel enters
-  that state. Quarantine and the hysteresis and failure counts are in memory
-  only.
+  dashboard; `candidate_no_replacement` is warn. A `candidate_no_replacement`
+  while the source has no other healthy tunnel starts an episode without a
+  live tunnel: until any tunnel of the source passes a check
+  (`source_recovered`, `failedForMs`), its `candidate_replaced` (`failed`),
+  `candidate_no_replacement` and `tunnel_repaired` are debug. Quarantine
+  and the hysteresis and failure counts are in memory only.
 - **Empty file.** An empty candidate file (no lines at all; wgp writes one
   when a provider has no live candidate) is not a source failure: every
   tunnel of the source is removed as above, the slots stay empty with
@@ -760,8 +795,10 @@ What is shown, per strategy:
   tools. A typo sends all balancer traffic nowhere, and the override survives
   rule changes until Xray restarts. The dashboard shows it, and marks it
   degraded when it points outside the tunnels.
-- Logs: `balancer_selection_changed`, `balancer_selection_failed`,
-  `balancer_selection_recovered`, `balancer_observatory_unavailable`.
+- Logs: `balancer_selection_changed` (`info` for the first pick, a mode
+  change or a move to or from no pick; Xray moving its pick within a mode
+  is `debug`), `balancer_selection_failed`, `balancer_selection_recovered`,
+  `balancer_observatory_unavailable`.
 
 ## scd sfc
 
@@ -940,11 +977,14 @@ outputs:
 - **Outputs.** Every tick writes the provider's lines to its output `path`,
   one line per candidate, in the order the provider returns them. The write
   is atomic (temporary file, fsync, rename, mode `0600`), and a file that
-  already holds the same bytes is not rewritten, so its mtime changes only
+  already holds the same bytes is not rewritten (a file with a wider mode is
+  rewritten and logged as `changed: candidates`), so its mtime changes only
   when a candidate changes. Each line is checked with the parser scd uses
   for the provider's kind (`wireguard://` or `masque://`). A failed tick or a
   bad line fails the output, and the previous file stays (event
-  `provider_tick_failed`; `output_published` when a file changed). A tick
+  `provider_tick_failed`; `output_published` when a file changed: `info`
+  with `changed: candidates` when the candidate list or its order changed,
+  `debug` with `changed: metadata` when only metadata or labels did). A tick
   that returns no lines and no error means "no live candidate": the output
   becomes an empty file, and scd removes the source's tunnels.
 - **`status.json`.** After every tick wgp rewrites `status.json` in the
@@ -1269,11 +1309,42 @@ as is). The same parser validates configs and drives the scheduler.
   `msg`, `event`, then fields). `pretty` is `key=value` text with nested
   values as JSON strings.
 - Levels: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`.
-- Event names are stable, for example scd `config_loaded`, `sync_started`,
-  `subscription_fetched`, `orphans_removed`, `orphan_remove_failed`,
-  `manifest_built`, `apply_finished`, `daemon_tick`,
-  `tunnel_repaired`, `tunnel_rejoined_balancer`, `sync_failed`, and sfc
-  `refresh_tick`, `subscription_refreshed`.
+- Event names are stable, for example scd `config_loaded`, `sync_finished`,
+  `orphans_removed`, `orphan_remove_failed`, `apply_finished`,
+  `tunnel_repaired`, `tunnel_recovered`, `tunnel_rejoined_balancer`,
+  `tunnel_flapping`, `tunnel_down`, `tunnel_stable`, `xray_unavailable`,
+  `xray_recovered`, `xray_state_drift`, `xray_state_lost`,
+  `xray_state_restored`, `xray_state_restore_blocked`, `source_recovered`,
+  `sync_failed`, sfc `subscription_refreshed`, and wgp `output_published`.
+- One line per decision or change of state. Steps, per-kind lines and
+  repeats are `debug` (`sync_started`, `subscription_fetched`,
+  `daemon_tick`, `manifest_built`, `skipped_no_changes`,
+  `resource_apply_started`, `apply_finished`,
+  `remote_status_collected`, sfc `refresh_tick`): `logging.level: debug`
+  shows them all. `sync_finished` sums up every sync (`durationMs`,
+  `sourcesApplied` (sources whose apply changed Xray), `sourcesUnchanged`,
+  `sourcesFailed`, `resourcesAdded`, `resourcesReplaced`,
+  `resourcesRemoved`, `skippedLines`, and `appliedSourceIds`
+  (`<subscriptionId>/<sourceId>`) when a source was applied).
+- One cause, one line: while the Xray API of a target is unavailable
+  (`xray_unavailable`), the errors of tunnel repair and rejoin, candidate
+  replacement, balancer selection and orphan removal are `debug`, and so is
+  `balancer_observatory_unavailable` when `GetBalancerInfo` failed in the
+  same tick.
+- Errors and warnings are logged when they appear or their text changes; a
+  repeat of the same state is `debug`, and the way back is a `*_recovered`
+  event (`failedForMs` where it applies; a tunnel that goes back into the
+  balancer logs only `tunnel_rejoined_balancer` with `failedForMs`). The
+  memory is the process: after a restart the current state is logged once
+  again. Network error texts (fetch, probe, push and Xray API errors, also
+  `lastError` in the status API) leave out the local address, which changes
+  with every connection.
+- `config_loaded` carries `version`. A failure after the start
+  (`service_failed`) is one JSON line, not printed again as text; errors
+  before the logger exists (flags, config) are plain text.
+- Logs never hold keys, tokens, candidate or VLESS lines, URL paths,
+  queries or userinfo (also inside error texts), `fetchHeaders` values, sfc
+  output ids or tunnel endpoint addresses.
 
 ## Known limitations
 

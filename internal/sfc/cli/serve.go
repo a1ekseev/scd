@@ -3,11 +3,14 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/spf13/cobra"
 
+	"github.com/a1ekseev/scd/internal/common/buildinfo"
+	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/cron"
 	"github.com/a1ekseev/scd/internal/common/cronloop"
 	"github.com/a1ekseev/scd/internal/common/httpserve"
@@ -41,17 +44,25 @@ func serveCommand() *cobra.Command {
 // (O12). When ctx is done the loop stops at once and waits only for an
 // active refresh, while the server drains for up to
 // httpserve.ShutdownTimeout (D7).
+//
+// A failure after the logger exists is logged as service_failed and not
+// printed again (cliutil.ErrLogged).
 func serve(ctx context.Context, l config.Loaded, stderr io.Writer) error {
-	cfg := l.Config
-	log, err := logging.New(stderr, cfg.Logging.Level, cfg.Logging.Format)
+	log, err := logging.New(stderr, l.Config.Logging.Level, l.Config.Logging.Format)
 	if err != nil {
 		return err
 	}
+	return cliutil.LogFailure(log, serveWith(ctx, l, log))
+}
+
+// serveWith is serve with its logger.
+func serveWith(ctx context.Context, l config.Loaded, log *slog.Logger) error {
+	cfg := l.Config
 	sched, err := cron.Parse(cfg.Runtime.RefreshSchedule)
 	if err != nil {
 		return err
 	}
-	log.Info("Config loaded.", "event", "config_loaded", "configPath", l.Path)
+	log.Info("Config loaded.", "event", "config_loaded", "configPath", l.Path, "version", buildinfo.Version)
 
 	r := &refresh.Refresher{Cfg: l, State: refresh.NewState(cfg), Log: log}
 	r.Run(ctx)
@@ -65,6 +76,17 @@ func serve(ctx context.Context, l config.Loaded, stderr io.Writer) error {
 	}
 	log.Info("Subscription server started.", "event", "server_started", "listen", cfg.Server.Listen)
 
+	// Log "stopping" as soon as ctx is done, before the server drains.
+	logged := make(chan struct{})
+	stopLog := context.AfterFunc(ctx, func() {
+		defer close(logged)
+		log.Info("Server stopping.", "event", "server_stopping", "signal", sigctx.Reason(ctx))
+	})
+	defer func() {
+		if !stopLog() {
+			<-logged
+		}
+	}()
 	loopCtx, stopLoop := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -73,7 +95,7 @@ func serve(ctx context.Context, l config.Loaded, stderr io.Writer) error {
 			if !started.Swap(true) {
 				return nil // the start-up refresh already ran
 			}
-			log.Info("Refresh tick started.", "event", "refresh_tick")
+			log.Debug("Refresh tick started.", "event", "refresh_tick")
 			if rep := r.Run(ctx); rep.Canceled != "" {
 				// Shutdown, not a failure: debug only.
 				log.Debug("Refresh tick canceled.", "event", "refresh_tick_canceled", "phase", rep.Canceled)

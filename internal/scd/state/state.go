@@ -121,6 +121,34 @@ type TunnelMonitor struct {
 	// ConsecutiveFailures a repair does not reset it, only a successful
 	// check (and a new tunnel) does. It drives replaceAfterFailures.
 	FailuresInRow int
+	// FailingSince is the first failed check of the current series, nil
+	// after a successful one (tunnel_recovered.failedForMs).
+	FailingSince *time.Time
+	// LastRepairError is the error of the last failed repair, "" after a
+	// successful repair or check: tunnel_repair_failed is logged at error
+	// only when it changes. Not in the status API.
+	LastRepairError string
+	// LastRejoinError is the error of the last failed rejoin, "" after a
+	// successful one: tunnel_rejoin_failed is logged at error only when it
+	// changes. Not in the status API.
+	LastRejoinError string
+	// Flap is the flap episode of the tunnel; logging only, not in the
+	// status API.
+	Flap FlapState
+}
+
+// FlapState counts the flaps of a tunnel (a successful repair of the first
+// failed check of a series) for tunnel_flapping, tunnel_down and
+// tunnel_stable.
+type FlapState struct {
+	// Times are the flaps of the recent window, outside an episode.
+	Times []time.Time
+	// Since is the first flap of the episode, zero outside one.
+	Since time.Time
+	// Count is the number of flaps of the episode.
+	Count int
+	// LastFailAt is the last failed check.
+	LastFailAt time.Time
 }
 
 // BalancerMonitor is the balancer monitor state of a target (TS
@@ -143,6 +171,9 @@ type BalancerMonitor struct {
 	RemotePingLastError                                                   string
 
 	ConsecutiveFailures int
+	// FailingSince is the first failed check of the current series, nil
+	// while healthy (balancer_recovered.failedForMs). Not in the status API.
+	FailingSince *time.Time
 }
 
 // Tunnel is the runtime state of one tunnel: its mapping (whose
@@ -178,6 +209,12 @@ type Source struct {
 	// outside quarantine: kept in repair, or removed with their slot left
 	// empty.
 	NoReplacement map[string]bool
+	// NoLiveSince is set by a no_replacement while no other tunnel of the
+	// source is healthy and cleared by the next successful check of any of
+	// its tunnels: the episode without a live tunnel, whose repeats are
+	// logged at debug.
+	// Logging only, not in the status API.
+	NoLiveSince *time.Time
 }
 
 // CodeNoReplacement is the code of the source warning for NoReplacement.
@@ -216,6 +253,17 @@ type Target struct {
 	Balancer BalancerMonitor
 	// BalancerSelection survives topology replacements (10 §6.4).
 	BalancerSelection SelectionState
+	// XrayDown is set while the Xray API of the target does not answer
+	// (logging only).
+	XrayDown *XrayIssue
+	// StateLost holds, by source id, when the monitor or sync found managed
+	// resources of the source missing in Xray, until a sync applied the
+	// source (logging only). StateLostSince is the start of the episode and
+	// StateLostLogged whether a loss was logged at warn since the last
+	// source was restored.
+	StateLost       map[string]time.Time
+	StateLostSince  time.Time
+	StateLostLogged bool
 }
 
 // Memory is the state of every target of this process.
@@ -296,7 +344,9 @@ func (m *Memory) MarkSynced(key string) {
 // ReplaceSourceTopology installs topo and hashes of source sourceID after
 // its fully successful apply (03 §2.3): SyncSeen is set, Generation++, the
 // source's Hashes become a copy of hashes and its tunnels are rebuilt in
-// topology order with idle monitors (Mapping.SourceID = sourceID). The tunnels of the other sources (with
+// topology order with idle monitors (Mapping.SourceID = sourceID); a tunnel
+// of the same tag keeps FailingSince and Flap (only logging reads them),
+// unless the source lost its Xray state (StateLost). The tunnels of the other sources (with
 // their monitor state), the balancer monitor and the balancer selection are
 // kept. The target is created if it does not exist; the *Target stays the
 // same object.
@@ -313,7 +363,7 @@ func (m *Memory) ReplaceSourceTopology(key, sourceID string, topo topology.Topol
 	if old := t.Sources[sourceID]; old != nil {
 		// Quarantine and no_replacement survive; the hysteresis starts over.
 		src.Selection = selection.State{Quarantine: old.Selection.Quarantine}
-		src.NoReplacement = old.NoReplacement
+		src.NoReplacement, src.NoLiveSince = old.NoReplacement, old.NoLiveSince
 	}
 	if src.Hashes == nil {
 		src.Hashes = map[apply.Kind]string{}
@@ -324,9 +374,21 @@ func (m *Memory) ReplaceSourceTopology(key, sourceID string, topo topology.Topol
 	}
 	src.Topology = &topo
 	t.Sources[sourceID] = src
+	old := map[string]*Tunnel{}
+	if _, lost := t.StateLost[sourceID]; !lost {
+		for _, tn := range t.Tunnels {
+			if tn.Mapping.SourceID == sourceID {
+				old[tn.Mapping.BaseTunnelID] = tn
+			}
+		}
+	}
 	fresh := make([]*Tunnel, 0, len(topo.Tunnels))
 	for _, tn := range topo.Tunnels {
-		fresh = append(fresh, &Tunnel{Mapping: tn, Monitor: TunnelMonitor{State: TunnelIdle}})
+		mon := TunnelMonitor{State: TunnelIdle}
+		if o := old[tn.BaseTunnelID]; o != nil {
+			mon.FailingSince, mon.Flap = o.Monitor.FailingSince, o.Monitor.Flap
+		}
+		fresh = append(fresh, &Tunnel{Mapping: tn, Monitor: mon})
 	}
 	t.replaceTunnels(sourceID, fresh)
 }
@@ -411,6 +473,10 @@ func (m *Memory) DropSource(key, sourceID string) {
 		return
 	}
 	delete(t.Sources, sourceID)
+	delete(t.StateLost, sourceID)
+	if len(t.StateLost) == 0 {
+		t.StateLostLogged = false
+	}
 	t.replaceTunnels(sourceID, nil)
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/common/neterr"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/socks"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -35,12 +36,14 @@ func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionCon
 	}
 	startedAt := d.now()
 	skipped := false
+	prevErr := ""
 	if !d.Memory.Update(key, func(tg *state.Target) {
 		b := &tg.Balancer
 		if b.RemotePingState == state.RemotePingPending {
 			skipped = true
 			return
 		}
+		prevErr = b.RemotePingLastError
 		b.RemotePingState = state.RemotePingPending
 		b.RemotePingLastRunAt = &startedAt
 		b.RemotePingLastError = ""
@@ -61,11 +64,11 @@ func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionCon
 		return
 	}
 
-	d.logPing(ctx, slog.LevelInfo, "Balancer monitor remote ping started.", "balancer_monitor_remote_ping_started",
+	d.logPing(ctx, slog.LevelDebug, "Balancer monitor remote ping started.", "balancer_monitor_remote_ping_started",
 		sub, p, slog.String("status", p.status))
 
 	pctx := context.WithoutCancel(ctx)
-	run := func() { d.pushRemotePing(pctx, sub, key, p) }
+	run := func() { d.pushRemotePing(pctx, sub, key, p, prevErr) }
 	if d.Background != nil {
 		d.Background.Go(run)
 	} else {
@@ -89,8 +92,15 @@ func pingAttrs(bm config.TargetBalancerMonitorConfig, p pingPayload) []slog.Attr
 
 // pushRemotePing sends one push and records its outcome: a 2xx status is
 // ok, any other status or an error is failed. The balancer state is never
-// changed by a push.
-func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig, key string, p pingPayload) {
+// changed by a push. A failure is logged at warn when its text differs from
+// prevErr, the error of the push before, else at debug.
+func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig, key string, p pingPayload, prevErr string) {
+	failLevel := func(msg string) slog.Level {
+		if msg == prevErr {
+			return slog.LevelDebug
+		}
+		return slog.LevelWarn
+	}
 	bm := sub.Target.BalancerMonitor
 	code, pushURL, err := d.sendRemotePing(ctx, bm, p)
 	if err != nil {
@@ -103,7 +113,7 @@ func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig,
 			b.RemotePingLastStatusCode = nil
 			b.RemotePingLastError = msg
 		})
-		d.logPing(ctx, slog.LevelWarn, "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
+		d.logPing(ctx, failLevel(msg), "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
 			sub, p, slog.String("error", msg))
 		return
 	}
@@ -117,7 +127,7 @@ func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig,
 			b.RemotePingLastStatusCode = new(code)
 			b.RemotePingLastError = msg
 		})
-		d.logPing(ctx, slog.LevelWarn, "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
+		d.logPing(ctx, failLevel(msg), "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
 			sub, p, slog.Int("statusCode", code), slog.String("error", msg))
 		return
 	}
@@ -130,7 +140,7 @@ func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig,
 		b.RemotePingLastStatusCode = new(code)
 		b.RemotePingLastError = ""
 	})
-	d.logPing(ctx, slog.LevelInfo, "Balancer monitor remote ping succeeded.", "balancer_monitor_remote_ping_succeeded",
+	d.logPing(ctx, slog.LevelDebug, "Balancer monitor remote ping succeeded.", "balancer_monitor_remote_ping_succeeded",
 		sub, p, slog.Int("statusCode", code))
 }
 
@@ -174,13 +184,13 @@ func (d Deps) sendRemotePing(ctx context.Context, bm config.TargetBalancerMonito
 }
 
 // pingErrorText is the error text of a failed push without the push URL:
-// a *url.Error is reduced to its cause and any remaining copy of the URLs
-// is replaced by "<redacted>".
+// a *url.Error is reduced to its cause, a network error loses its local
+// address and any remaining copy of the URLs is replaced by "<redacted>".
 func pingErrorText(err error, urls ...string) string {
 	if ue, ok := errors.AsType[*url.Error](err); ok {
 		err = ue.Err
 	}
-	msg := err.Error()
+	msg := neterr.Stable(err).Error()
 	for _, u := range urls {
 		if u != "" {
 			msg = strings.ReplaceAll(msg, u, "<redacted>")

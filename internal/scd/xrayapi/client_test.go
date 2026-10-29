@@ -256,3 +256,31 @@ func TestAddRuleRequestShape(t *testing.T) {
 		t.Fatalf("Rules = %v, want %v", got, want)
 	}
 }
+
+// IsUnavailable holds for every Unavailable and DeadlineExceeded status,
+// whatever its text, and for nothing else; a network error in the text
+// loses its local address.
+func TestIsUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		code codes.Code
+		msg  string
+		want bool
+		text string
+	}{
+		{codes.Unavailable, "dial tcp: lookup xray: no such host", true, "dial tcp: lookup xray: no such host"},
+		{codes.Unavailable, "read tcp 10.0.0.2:5555->10.0.0.5:10085: read: connection reset by peer", true, "read tcp 10.0.0.5:10085: read: connection reset by peer"},
+		{codes.DeadlineExceeded, "context deadline exceeded", true, ""},
+		{codes.Unknown, "app/proxyman/outbound: existing tag found: x", false, "app/proxyman/outbound: existing tag found: x"},
+		{codes.Internal, "", false, "gRPC call failed with status 13"},
+	} {
+		s, c := xrayfake.Start(t)
+		s.FailNext("ListRule", status.Error(tc.code, tc.msg))
+		_, err := c.ListRules(t.Context())
+		if xrayapi.IsUnavailable(err) != tc.want || (tc.text != "" && apiErrorText(t, err) != tc.text) {
+			t.Errorf("%v %q: unavailable %v, text %q", tc.code, tc.msg, xrayapi.IsUnavailable(err), err)
+		}
+	}
+	if xrayapi.IsUnavailable(nil) || xrayapi.IsUnavailable(errors.New("x")) {
+		t.Error("not an *Error")
+	}
+}

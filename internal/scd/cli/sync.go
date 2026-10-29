@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/a1ekseev/scd/internal/common/buildinfo"
 	"github.com/a1ekseev/scd/internal/common/cliutil"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/logging"
@@ -28,7 +29,8 @@ func syncCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		log.LogAttrs(ctx, slog.LevelInfo, "Config loaded.", slog.String("event", "config_loaded"), slog.String("configPath", l.Path))
+		log.LogAttrs(ctx, slog.LevelInfo, "Config loaded.", slog.String("event", "config_loaded"), slog.String("configPath", l.Path),
+			slog.String("version", buildinfo.Version))
 		s := &syncer.Syncer{Config: l, Memory: state.New(), Log: log, Dial: xrayapi.Dial}
 		report, err := s.Run(ctx)
 		if err != nil {

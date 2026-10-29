@@ -26,7 +26,7 @@ func TestPublish(t *testing.T) {
 	out := Output{ID: "wg", Path: path, Kind: candidate.KindWireGuard}
 
 	changed, err := Publish(out, wg)
-	if err != nil || !changed {
+	if err != nil || changed != ChangeCandidates {
 		t.Fatalf("first publish: %v, %v", changed, err)
 	}
 	want := wg[0] + "\n" + wg[1] + "\n"
@@ -43,7 +43,7 @@ func TestPublish(t *testing.T) {
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := Publish(out, wg); err != nil || changed {
+	if changed, err := Publish(out, wg); err != nil || changed != "" {
 		t.Fatalf("same lines: %v, %v", changed, err)
 	}
 	if info, _ := os.Stat(path); !info.ModTime().Equal(old) {
@@ -54,7 +54,7 @@ func TestPublish(t *testing.T) {
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := Publish(out, wg); err != nil || !changed {
+	if changed, err := Publish(out, wg); err != nil || changed != ChangeCandidates {
 		t.Fatalf("same lines, mode 0644: %v, %v", changed, err)
 	}
 	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
@@ -62,7 +62,7 @@ func TestPublish(t *testing.T) {
 	}
 
 	// Order is the given order; the bytes depend only on the lines.
-	if changed, err := Publish(out, []string{wg[1], wg[0]}); err != nil || !changed {
+	if changed, err := Publish(out, []string{wg[1], wg[0]}); err != nil || changed != ChangeCandidates {
 		t.Fatalf("reordered: %v, %v", changed, err)
 	}
 	if b, _ := os.ReadFile(path); string(b) != wg[1]+"\n"+wg[0]+"\n" {
@@ -88,7 +88,7 @@ func TestPublish(t *testing.T) {
 func TestPublishMasque(t *testing.T) {
 	mq := fixtureLines(t, "masque", 1)
 	out := Output{ID: "mq", Path: filepath.Join(t.TempDir(), "mq"), Kind: candidate.KindMasque}
-	if changed, err := Publish(out, mq); err != nil || !changed {
+	if changed, err := Publish(out, mq); err != nil || changed != ChangeCandidates {
 		t.Fatalf("%v, %v", changed, err)
 	}
 }
@@ -114,7 +114,7 @@ func TestPublishErrorsKeepFile(t *testing.T) {
 		"line break": {[]string{wg[0] + "\n" + wg[0]}, `output "wg": line 1: line break inside a candidate line`},
 	} {
 		changed, err := Publish(out, tc.lines)
-		if err == nil || changed || !strings.HasPrefix(err.Error(), tc.want) || strings.Contains(err.Error(), key) {
+		if err == nil || changed != "" || !strings.HasPrefix(err.Error(), tc.want) || strings.Contains(err.Error(), key) {
 			t.Errorf("%s: %v, %v", name, changed, err)
 		}
 		if b, _ := os.ReadFile(path); string(b) != wg[0]+"\n" {
@@ -132,13 +132,47 @@ func TestPublishEmpty(t *testing.T) {
 	if _, err := Publish(out, fixtureLines(t, "wireguard", 1)); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := PublishEmpty(out); err != nil || !changed {
+	if changed, err := PublishEmpty(out); err != nil || changed != ChangeCandidates {
 		t.Fatalf("%v %v", changed, err)
 	}
 	if b, err := os.ReadFile(path); err != nil || len(b) != 0 {
 		t.Fatalf("file %q %v", b, err)
 	}
-	if changed, err := PublishEmpty(out); err != nil || changed {
+	if changed, err := PublishEmpty(out); err != nil || changed != "" {
 		t.Fatalf("an empty file rewritten: %v %v", changed, err)
+	}
+}
+
+// The change is metadata only while the ordered PublicHash list stays: a
+// longer old file (longer label or metadata) is read in full, a file over
+// the read limit or one that does not parse counts as new candidates.
+func TestPublishChange(t *testing.T) {
+	wg := fixtureLines(t, "wireguard", 3)
+	meta := strings.Replace(wg[0], "load=40", "load=41", 1)
+	longer := wg[0] + strings.Repeat("x", 300) // a longer label
+	for name, tc := range map[string]struct {
+		old  string
+		want Change
+	}{
+		"same":          {wg[0] + "\n" + wg[1] + "\n", ""},
+		"load":          {meta + "\n" + wg[1] + "\n", ChangeMetadata},
+		"longer label":  {longer + "\n" + wg[1] + "\n", ChangeMetadata},
+		"other key":     {wg[0] + "\n" + wg[2] + "\n", ChangeCandidates},
+		"order":         {wg[1] + "\n" + wg[0] + "\n", ChangeCandidates},
+		"one less":      {wg[0] + "\n", ChangeCandidates},
+		"broken":        {"garbage\n", ChangeCandidates},
+		"over the read": {wg[0] + "\n" + wg[1] + "\n" + strings.Repeat("#", maxOld), ChangeCandidates},
+	} {
+		path := filepath.Join(t.TempDir(), "wg")
+		if err := os.WriteFile(path, []byte(tc.old), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Publish(Output{ID: "wg", Path: path, Kind: candidate.KindWireGuard}, wg[:2])
+		if err != nil || got != tc.want {
+			t.Errorf("%s: %q, %v; want %q", name, got, err, tc.want)
+		}
+		if b, _ := os.ReadFile(path); string(b) != wg[0]+"\n"+wg[1]+"\n" {
+			t.Errorf("%s: file not written", name)
+		}
 	}
 }

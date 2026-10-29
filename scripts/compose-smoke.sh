@@ -202,7 +202,8 @@ poll "scd /api/instance-status: 2 wireguard tunnels of source wg" scd_wireguard_
 poll "scd runtime-state: wireguard outbounds applied to Xray" scd_runtime_state_wireguard
 
 # The image runs as nonroot (65532), and sfc must still be able to write its
-# source cache (a failed write is only a warning, so check the event).
+# source cache (a failed write is only a warning, so check that a refresh
+# logged no such warning; the write itself is debug).
 for svc in scd sfc gtl wgp; do
   user="$(docker inspect --format '{{.Config.User}}' "$svc")"
   [[ "$user" == "65532:65532" ]] || die "$svc runs as user '$user', want 65532:65532"
@@ -211,19 +212,19 @@ log "ok: scd, sfc, gtl and wgp run as 65532:65532"
 sfc_cache_written() {
   local logs
   logs="$("${compose[@]}" logs --no-color sfc)"
-  grep -q 'subscription_source_cache_written' <<<"$logs" && ! grep -q 'subscription_source_cache_write_failed' <<<"$logs"
+  grep -q 'subscription_refreshed' <<<"$logs" && ! grep -q 'subscription_source_cache_write_failed' <<<"$logs"
 }
 poll "sfc wrote its source cache as nonroot" sfc_cache_written
 
 # An Xray restart drops every API-added resource; with an unchanged manifest
-# the next sync must notice it and apply again.
+# the next sync (or the monitor first) must notice it and apply again.
 scd_logged_drift() {
   # Not a pipe: grep -q would exit early and fail the pipe under pipefail.
-  grep -qE 'event(=|":")xray_state_drift' <<<"$("${compose[@]}" logs --no-color scd)"
+  grep -qE 'event(=|":")xray_state_(drift|lost)' <<<"$("${compose[@]}" logs --no-color scd)"
 }
 log "restarting Xray"
 docker restart xray-test >&2
-poll "scd logged xray_state_drift after the Xray restart" scd_logged_drift
+poll "scd logged xray_state_drift or xray_state_lost after the Xray restart" scd_logged_drift
 poll "scd runtime-state: outbounds applied again" scd_runtime_state
 
 ok=1

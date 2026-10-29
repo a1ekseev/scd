@@ -158,6 +158,10 @@ func newEnv(t *testing.T, sub config.SubscriptionConfig, links ...string) *env {
 		e.mem.ReplaceSourceTopology(e.key, "vless", topo, map[apply.Kind]string{
 			apply.KindOutbound: "hash-a", apply.KindInbound: "hash-b", apply.KindRouting: "hash-c",
 		})
+		// The inbounds exist in Xray: a repair checks them first.
+		for _, tn := range topo.Tunnels {
+			e.addInbound(tn)
+		}
 	}
 	e.deps = Deps{
 		Memory: e.mem,
@@ -234,6 +238,18 @@ func (e *env) install(m topology.Tunnel) {
 		e.t.Fatal(err)
 	}
 	if err := e.client.AddRule(ctx, resources.Rule(m, m.OutboundTagCurrent)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// addInbound adds the tunnel's SOCKS inbound to the fake.
+func (e *env) addInbound(tn topology.Tunnel) {
+	e.t.Helper()
+	in, err := resources.Inbound(tn)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.client.AddInbound(e.t.Context(), in); err != nil {
 		e.t.Fatal(err)
 	}
 }

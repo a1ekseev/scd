@@ -29,8 +29,8 @@ func failProbe(context.Context, socks.Request) (socks.Response, error) {
 	return socks.Response{}, errors.New("probe failed")
 }
 
-// 03 §10.6 p.7: removeRule → removeOutbound(initial) → addOutbound(unprefixed)
-// → addRule(route → unprefixed).
+// 03 §10.6 p.7: listInbounds → removeRule → removeOutbound(initial) →
+// addOutbound(unprefixed) → addRule(route → unprefixed).
 func TestRepairSequence(t *testing.T) {
 	e := newEnv(t, newSub(prefixed), linkAT)
 	tn := e.tunnel(0).Mapping
@@ -43,6 +43,7 @@ func TestRepairSequence(t *testing.T) {
 	}
 	unprefixed := tn.OutboundWithoutPrefix.Tag
 	want := []string{
+		"ListInbounds",
 		"RemoveRule:" + tn.RouteTag,
 		"RemoveOutbound:" + prefix + unprefixed,
 		"AddOutbound:" + unprefixed,
@@ -69,7 +70,8 @@ func TestRepairSequence(t *testing.T) {
 	logs := e.logs.events(t, "tunnel_repaired")
 	if len(logs) != 1 || logs[0]["level"] != "WARN" || logs[0]["msg"] != "Tunnel repaired after failed monitor probe." ||
 		logs[0]["tunnelId"] != tn.BaseTunnelID || logs[0]["outboundTag"] != unprefixed ||
-		logs[0]["subscriptionId"] != "source-1" || logs[0]["targetAddress"] != "127.0.0.1:8080" {
+		logs[0]["subscriptionId"] != "source-1" || logs[0]["targetAddress"] != "127.0.0.1:8080" ||
+		logs[0]["sourceId"] != "vless" || logs[0]["probeError"] != "probe failed" || logs[0]["failuresInRow"] != 1.0 {
 		t.Errorf("tunnel_repaired logs = %v", logs)
 	}
 }
@@ -571,6 +573,9 @@ func TestRemoveOutboundFailureStopsBeforeAdd(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := []string{"RemoveRule:" + tn.RouteTag, "RemoveOutbound:" + old, "AddRule:" + tn.RouteTag + "->" + old}
+			if !rejoin {
+				want = append([]string{"ListInbounds"}, want...)
+			}
 			if got := e.callsSince(before); !slices.Equal(got, want) {
 				t.Errorf("calls = %q\nwant    %q", got, want)
 			}

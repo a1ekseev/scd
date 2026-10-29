@@ -33,3 +33,16 @@ func TestStableUnwraps(t *testing.T) {
 		t.Fatalf("%v does not unwrap", err)
 	}
 }
+
+func TestStableText(t *testing.T) {
+	for in, want := range map[string]string{
+		"read tcp 10.0.0.2:5555->10.0.0.5:10085: read: connection reset": "read tcp 10.0.0.5:10085: read: connection reset",
+		"write tcp6 [fd00::2]:5555->[fd00::5]:10085: broken pipe":        "write tcp6 [fd00::5]:10085: broken pipe",
+		"read udp 10.0.0.2:5555->10.0.0.5:53: i/o timeout":               "read udp 10.0.0.5:53: i/o timeout",
+		"dial tcp 10.0.0.5:10085: connect: connection refused":           "dial tcp 10.0.0.5:10085: connect: connection refused",
+	} {
+		if got := StableText(in); got != want {
+			t.Errorf("StableText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
