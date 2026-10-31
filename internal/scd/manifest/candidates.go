@@ -36,18 +36,27 @@ const (
 	ProtocolMasque    = "masque"
 )
 
+// CandidateOptions are the source settings of the candidate outbounds.
+type CandidateOptions struct {
+	// DomainStrategy is the endpoint domain strategy of wireguard.
+	DomainStrategy string
+	// DialerProxy is the outbound tag the candidate outbounds dial through
+	// (sockopt.dialerProxy); "" for none.
+	DialerProxy string
+}
+
 // BuildWireGuard is BuildCandidates of a wireguard candidate file.
-func BuildWireGuard(text, sourceFile, tagPrefix, domainStrategy string, now time.Time) Manifest {
-	return BuildCandidates(candidate.KindWireGuard, text, sourceFile, tagPrefix, domainStrategy, now)
+func BuildWireGuard(text, sourceFile, tagPrefix string, o CandidateOptions, now time.Time) Manifest {
+	return BuildCandidates(candidate.KindWireGuard, text, sourceFile, tagPrefix, o, now)
 }
 
 // BuildCandidates builds the manifest of a candidate file of kind (one
-// "<kind>://" line per candidate) with tags of source tagPrefix;
-// domainStrategy is the endpoint domain strategy of wireguard. The skipped
+// "<kind>://" line per candidate) with tags of source tagPrefix and the
+// outbound options o. The skipped
 // lines have no raw text (they may hold a key); an accepted line keeps the
 // redacted candidate line as Raw. Entries keep the line order; the first
 // line of a tag wins.
-func BuildCandidates(kind candidate.Kind, text, sourceFile, tagPrefix, domainStrategy string, now time.Time) Manifest {
+func BuildCandidates(kind candidate.Kind, text, sourceFile, tagPrefix string, o CandidateOptions, now time.Time) Manifest {
 	lines := subscription.ScanLines(text)
 	m := Manifest{
 		Version: Version, GeneratedAt: jsonout.Timestamp(now), SourceFile: sourceFile,
@@ -59,7 +68,7 @@ func BuildCandidates(kind candidate.Kind, text, sourceFile, tagPrefix, domainStr
 			m.skip(vless.Skip{Line: l.Number, Code: vless.CodeUnsupportedScheme, Reason: "The line is not a " + string(kind) + ":// candidate."})
 			continue
 		}
-		e, err := candidateEntry(kind, l.Trimmed, l.Number, tagPrefix, domainStrategy)
+		e, err := candidateEntry(kind, l.Trimmed, l.Number, tagPrefix, o)
 		if err != nil {
 			m.skip(vless.Skip{
 				Line: l.Number, Code: string(kind) + "_invalid", Reason: "The " + string(kind) + " candidate line is invalid.",
@@ -91,19 +100,19 @@ func BuildCandidates(kind candidate.Kind, text, sourceFile, tagPrefix, domainStr
 
 // candidateEntry parses line as a candidate of kind and returns its entry;
 // the error is the parser's *candidate.FieldError.
-func candidateEntry(kind candidate.Kind, line string, number int, tagPrefix, domainStrategy string) (Entry, error) {
+func candidateEntry(kind candidate.Kind, line string, number int, tagPrefix string, o CandidateOptions) (Entry, error) {
 	if kind == candidate.KindMasque {
 		c, err := candidate.ParseMasque(line)
 		if err != nil {
 			return Entry{}, err
 		}
-		return masqueEntry(c, number, tagPrefix), nil
+		return masqueEntry(c, number, tagPrefix, o.DialerProxy), nil
 	}
 	c, err := candidate.ParseWireGuard(line)
 	if err != nil {
 		return Entry{}, err
 	}
-	return wireGuardEntry(c, number, tagPrefix, domainStrategy), nil
+	return wireGuardEntry(c, number, tagPrefix, o), nil
 }
 
 // newCandidateEntry is the entry of a candidate with label (the endpoint
@@ -133,11 +142,11 @@ func newCandidateEntry(protocol, profile, label, exit, endpoint, host string, po
 }
 
 // wireGuardEntry is the entry of wireguard candidate c.
-func wireGuardEntry(c candidate.WireGuard, line int, tagPrefix, domainStrategy string) Entry {
+func wireGuardEntry(c candidate.WireGuard, line int, tagPrefix string, o CandidateOptions) Entry {
 	host, port, _ := net.SplitHostPort(c.Endpoint) // valid: ParseWireGuard checked it
 	portN, _ := strconv.Atoi(port)
 	e := newCandidateEntry(ProtocolWireGuard, "wg", c.Label, c.Meta.Exit, c.Endpoint, host, portN, line, tagPrefix, c.PublicHash(), c.Redacted())
-	e.JSONOutbound, e.Candidate = outbound.BuildWireGuard(c, e.Tag, domainStrategy), &c
+	e.JSONOutbound, e.Candidate = outbound.BuildWireGuard(c, e.Tag, o.DomainStrategy, o.DialerProxy), &c
 	e.selection = &selection.Candidate{
 		Tag: e.Tag, Label: c.Label, Entry: c.Meta.Entry, Exit: c.Meta.Exit, Load: c.Meta.Load, Score: c.Meta.Score,
 		Key: c.InterfacePublicKey(), Endpoint: c.Endpoint,

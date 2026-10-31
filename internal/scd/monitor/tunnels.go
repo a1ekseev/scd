@@ -186,8 +186,9 @@ type tunnelRef struct {
 	port     int
 }
 
-// TunnelTick probes every tunnel of the subscription's target (03 §4.1):
-// at most monitor.maxParallel probes at once, retries inside the worker
+// TunnelTick probes every tunnel of the subscription's target (03 §4.1),
+// after the dependency health of its sources with dependsOn
+// (dependencyHealth: their waits): at most monitor.maxParallel probes at once, retries inside the worker
 // slot, a repair after the final failure and a rejoin after a success. It
 // is a no-op without a monitor request or before a sync reached the target
 // (SyncSeen). A worker error (a repair that could not start) ends that worker;
@@ -210,6 +211,10 @@ func TunnelTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) erro
 	})
 	if !synced {
 		return nil
+	}
+	d.dependencyHealth(ctx, sub)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 	return runLimited(len(refs), t.Monitor.MaxParallel, func(i int) error {
 		return checkTunnel(ctx, d, sub, key, refs[i])
@@ -259,8 +264,16 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 			}
 			inRow = m.FailuresInRow
 		})
+		// A waiting source (dependency unhealthy or recovering, or a failed
+		// check before its apply) is only repaired, quietly.
+		waiting := false
+		d.Memory.View(key, func(tg *state.Target) { waiting = tg.SourceWaiting(ref.sourceID) })
 		if flaps > 0 {
-			d.Log.LogAttrs(ctx, slog.LevelWarn, "Flapping tunnel stays down.",
+			level := slog.LevelWarn
+			if waiting {
+				level = slog.LevelDebug
+			}
+			d.Log.LogAttrs(ctx, level, "Flapping tunnel stays down.",
 				slog.String("event", "tunnel_down"),
 				slog.String("subscriptionId", sub.ID),
 				slog.String("sourceId", ref.sourceID),
@@ -270,7 +283,7 @@ func checkTunnel(ctx context.Context, d Deps, sub config.SubscriptionConfig, key
 				slog.Int("flaps", flaps),
 				slog.String("probeError", err.Error()))
 		}
-		if src != nil && src.Selection != nil && inRow >= src.Selection.ReplaceAfterFailures {
+		if !waiting && src != nil && src.Selection != nil && inRow >= src.Selection.ReplaceAfterFailures {
 			if done, err := ReplaceFailed(ctx, d, sub, *src, ref.id); done || err != nil {
 				return err
 			}

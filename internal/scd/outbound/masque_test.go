@@ -13,6 +13,7 @@ import (
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/common/serial"
 	pmasque "github.com/xtls/xray-core/proxy/masque"
+	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/masque"
 	"github.com/xtls/xray-core/transport/internet/tls"
 
@@ -54,7 +55,7 @@ func TestBuildMasqueJSON(t *testing.T) {
 		golden string
 	}{{1, "masque-h3.json"}, {2, "masque-h2.json"}} {
 		t.Run(tc.golden, func(t *testing.T) {
-			m := BuildMasque(mqFixture(t, tc.line), "x-observe-mq-nl-amsterdam-mq-00000000")
+			m := BuildMasque(mqFixture(t, tc.line), "x-observe-mq-nl-amsterdam-mq-00000000", "")
 			got := encodeJSON(t, m)
 			want, err := os.ReadFile("testdata/" + tc.golden)
 			if err != nil {
@@ -76,7 +77,7 @@ func TestBuildMasqueJSON(t *testing.T) {
 func TestMasqueToProto(t *testing.T) {
 	for _, n := range []int{1, 2, 5} {
 		c := mqFixture(t, n)
-		h, err := ToProto(BuildMasque(c, "mq"))
+		h, err := ToProto(BuildMasque(c, "mq", ""))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +125,7 @@ func TestMasqueKeyOnlyInXrayJSON(t *testing.T) {
 	c := mqFixture(t, 1)
 	sec1, _ := x509.MarshalECPrivateKey(c.PrivateKey)
 	key := base64.StdEncoding.EncodeToString(sec1)
-	m := BuildMasque(c, "mq")
+	m := BuildMasque(c, "mq", "")
 	raw, err := m.xrayJSON()
 	if err != nil || !strings.Contains(string(raw), `"privateKey":"`+key+`"`) {
 		t.Fatalf("xray JSON %s, %v", raw, err)
@@ -132,5 +133,36 @@ func TestMasqueKeyOnlyInXrayJSON(t *testing.T) {
 	b, _ := json.Marshal(m)
 	if strings.Contains(string(b), key) || strings.Contains(Hash([]Spec{m}), key) {
 		t.Fatal("the key leaked")
+	}
+}
+
+// A dialer proxy adds sockopt with dialerProxy only (no domainStrategy) to
+// the golden JSON, in the hash JSON and the Xray JSON alike; the proto has
+// it and no domain strategy.
+func TestMasqueDialerProxy(t *testing.T) {
+	c := mqFixture(t, 1)
+	m := BuildMasque(c, "x-observe-mq-nl-amsterdam-mq-00000000", "chain-up")
+	want, err := os.ReadFile("testdata/masque-h3-dialer-proxy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := encodeJSON(t, m); got != string(want) {
+		t.Fatalf("JSON\n%s\nwant\n%s", got, want)
+	}
+	raw, err := m.xrayJSON()
+	if err != nil || !strings.Contains(string(raw), `"sockopt":{"dialerProxy":"chain-up"}`) {
+		t.Fatalf("xray JSON %s, %v", raw, err)
+	}
+	h, err := ToProto(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sm, err := h.SenderSettings.GetInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	so := sm.(*proxyman.SenderConfig).GetStreamSettings().GetSocketSettings()
+	if so.GetDialerProxy() != "chain-up" || so.GetDomainStrategy() != internet.DomainStrategy_AS_IS {
+		t.Fatalf("sockopt %+v", so)
 	}
 }

@@ -140,7 +140,8 @@ func HoldsPrivateKey(h *core.OutboundHandlerConfig) bool {
 
 // describeMasque is the "parsed" object of a MASQUE outbound: protocol,
 // endpoint, publicKey (the endpoint's, std base64 PKIX DER), address (the
-// device addresses), remoteDNS, network, security, sni and alpn. The device
+// device addresses), remoteDNS, network, security, sni, alpn and
+// dialerProxy. The device
 // private key is never shown, whatever includeSecrets.
 func describeMasque(mq *pmasque.ClientConfig, sender *proxyman.SenderConfig) map[string]any {
 	p := map[string]any{"protocol": "masque"}
@@ -163,12 +164,13 @@ func describeMasque(mq *pmasque.ClientConfig, sender *proxyman.SenderConfig) map
 	if stream != nil {
 		describeSecurity(p, stream, false)
 	}
+	setString(p, "dialerProxy", stream.GetSocketSettings().GetDialerProxy())
 	return p
 }
 
 // describeWireGuard is the "parsed" object of a WireGuard outbound:
 // protocol, endpoint, publicKey (the peer's), address, mtu, remoteDNS,
-// noKernelTun and domainStrategy. The private and preshared keys are never
+// noKernelTun, domainStrategy and dialerProxy. The private and preshared keys are never
 // shown, whatever includeSecrets.
 func describeWireGuard(wg *wireguard.DeviceConfig, sender *proxyman.SenderConfig) map[string]any {
 	p := map[string]any{"protocol": "wireguard", "noKernelTun": wg.NoKernelTun}
@@ -190,6 +192,7 @@ func describeWireGuard(wg *wireguard.DeviceConfig, sender *proxyman.SenderConfig
 	if ds := sender.GetStreamSettings().GetSocketSettings().GetDomainStrategy(); ds != internet.DomainStrategy_AS_IS {
 		p["domainStrategy"] = ds.String()
 	}
+	setString(p, "dialerProxy", sender.GetStreamSettings().GetSocketSettings().GetDialerProxy())
 	return p
 }
 

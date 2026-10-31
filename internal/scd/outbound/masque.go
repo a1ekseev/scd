@@ -34,6 +34,17 @@ type MasqueStream struct {
 	MasqueSettings MasqueTransport `json:"masqueSettings"`
 	Security       string          `json:"security"`
 	TLSSettings    MasqueTLS       `json:"tlsSettings"`
+	// Sockopt is set only with a dialer proxy. It has no domainStrategy:
+	// the endpoint is an IP, and a strategy would resolve names locally,
+	// past the chain.
+	Sockopt *MasqueSockopt `json:"sockopt,omitempty"`
+}
+
+// MasqueSockopt is "streamSettings.sockopt" of a MASQUE outbound.
+type MasqueSockopt struct {
+	// DialerProxy is the tag of the outbound the MASQUE connection is sent
+	// through.
+	DialerProxy string `json:"dialerProxy"`
 }
 
 // MasqueTransport is "masqueSettings": the device block only, so Xray sets
@@ -59,8 +70,9 @@ type MasqueTLS struct {
 	ALPN       []string `json:"alpn,omitempty"`
 }
 
-// BuildMasque returns the JSON outbound of candidate c under tag.
-func BuildMasque(c candidate.Masque, tag string) Masque {
+// BuildMasque returns the JSON outbound of candidate c under tag with the
+// dialer proxy ("" for none).
+func BuildMasque(c candidate.Masque, tag, dialerProxy string) Masque {
 	sec1, err := x509.MarshalECPrivateKey(c.PrivateKey)
 	if err != nil {
 		panic(err) // unreachable: ParseMasque returns P-256 keys only
@@ -88,6 +100,9 @@ func BuildMasque(c candidate.Masque, tag string) Masque {
 	}
 	if c.Transport == candidate.TransportH2 {
 		m.StreamSettings.TLSSettings.ALPN = []string{"h2"}
+	}
+	if dialerProxy != "" {
+		m.StreamSettings.Sockopt = &MasqueSockopt{DialerProxy: dialerProxy}
 	}
 	return m
 }

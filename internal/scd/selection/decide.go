@@ -58,6 +58,20 @@ func (s *State) QuarantinePair(c Candidate, now time.Time, minutes int) {
 	s.Quarantine[c.Pair()] = now.Add(time.Duration(minutes) * time.Minute)
 }
 
+// ReleaseSince removes the quarantines that started at from or later (a
+// quarantine of minutes starts at its end minus minutes) and returns how
+// many it removed.
+func (s *State) ReleaseSince(from time.Time, minutes int) int {
+	n := 0
+	for k, until := range s.Quarantine {
+		if !until.Add(-time.Duration(minutes) * time.Minute).Before(from) {
+			delete(s.Quarantine, k)
+			n++
+		}
+	}
+	return n
+}
+
 // Replacement returns the first candidate of ranked that may take a slot:
 // not active, its pair not in quarantine at now, its key not in keys.
 func Replacement(ranked []Candidate, active map[string]bool, keys map[[32]byte]bool, st *State, now time.Time) (Candidate, bool) {

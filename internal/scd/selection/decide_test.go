@@ -240,3 +240,15 @@ func TestRankWireGuardNotGrouped(t *testing.T) {
 		t.Fatalf("rank %v", got)
 	}
 }
+
+// ReleaseSince drops the quarantines that started at or after from.
+func TestReleaseSince(t *testing.T) {
+	now := time.Unix(1000, 0)
+	var st State
+	st.QuarantinePair(cand("old", 1, 1), now.Add(-5*time.Minute), 10)
+	st.QuarantinePair(cand("edge", 2, 1), now.Add(-3*time.Minute), 10)
+	st.QuarantinePair(cand("new", 3, 1), now, 10)
+	if n := st.ReleaseSince(now.Add(-3*time.Minute), 10); n != 2 || len(st.Quarantine) != 1 || !st.Quarantined(cand("old", 1, 1), now) {
+		t.Fatalf("released %d, left %v", n, st.Quarantine)
+	}
+}

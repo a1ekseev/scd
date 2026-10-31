@@ -81,6 +81,34 @@ type SourceConfig struct {
 	// not configured.
 	Monitor   *SourceMonitorConfig `json:"monitor,omitempty"`
 	WireGuard *WireGuardConfig     `json:"wireguard,omitempty"`
+	// Balancer is the routing.balancers[].tag in Xray whose selector picks
+	// the source's outbounds; "" when not configured. It changes nothing in
+	// Xray.
+	Balancer string `json:"balancer,omitempty"`
+	// DialerProxy is a target.fixedOutbounds tag the outbounds of a
+	// wireguard or masque source dial through (sockopt.dialerProxy); ""
+	// when not configured.
+	DialerProxy string `json:"dialerProxy,omitempty"`
+	// DependsOn are the sources of the same subscription this source is
+	// applied and monitored after.
+	DependsOn []DependencyConfig `json:"dependsOn,omitempty"`
+}
+
+// HealthBalancer is the dependsOn health of a dependency whose balancer
+// selects an outbound.
+const HealthBalancer = "balancer"
+
+// DefaultRecoverGraceSeconds is the default dependsOn[].recoverGraceSeconds.
+const DefaultRecoverGraceSeconds = 180
+
+// DependencyConfig is one sources[].dependsOn entry.
+type DependencyConfig struct {
+	// Source is the id of a source of the same subscription.
+	Source string `json:"source"`
+	// Health is how the dependency's health is judged: HealthBalancer.
+	Health string `json:"health"`
+	// RecoverGraceSeconds is the pause after the dependency recovers.
+	RecoverGraceSeconds int `json:"recoverGraceSeconds"`
 }
 
 // SelectionConfig chooses the active candidates of a wireguard or masque

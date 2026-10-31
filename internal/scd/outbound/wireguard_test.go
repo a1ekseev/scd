@@ -42,7 +42,7 @@ func TestBuildWireGuardJSON(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w := BuildWireGuard(wgCandidate(t, tc.extra), "x-wg", "UseIPv4")
+			w := BuildWireGuard(wgCandidate(t, tc.extra), "x-wg", "UseIPv4", "")
 			var buf bytes.Buffer
 			enc := json.NewEncoder(&buf)
 			enc.SetEscapeHTML(false)
@@ -61,7 +61,7 @@ func TestBuildWireGuardJSON(t *testing.T) {
 
 // ToProto sees the keys; the JSON never does.
 func TestWireGuardToProto(t *testing.T) {
-	w := BuildWireGuard(wgCandidate(t, "&reserved=1,2,3&presharedkey="+wgKey(3)), "x-wg", "UseIPv6v4")
+	w := BuildWireGuard(wgCandidate(t, "&reserved=1,2,3&presharedkey="+wgKey(3)), "x-wg", "UseIPv6v4", "")
 	h, err := ToProto(w.WithTag("wg"))
 	if err != nil {
 		t.Fatal(err)
@@ -85,5 +85,30 @@ func TestWireGuardToProto(t *testing.T) {
 	}
 	if ds := sm.(*proxyman.SenderConfig).GetStreamSettings().GetSocketSettings().GetDomainStrategy(); ds != internet.DomainStrategy_USE_IP64 {
 		t.Fatalf("domain strategy %v", ds)
+	}
+}
+
+// A dialer proxy is sockopt.dialerProxy next to domainStrategy in the JSON
+// and in the proto; without one the JSON keeps no dialerProxy key.
+func TestWireGuardDialerProxy(t *testing.T) {
+	w := BuildWireGuard(wgCandidate(t, ""), "x-wg", "UseIPv4", "chain-up")
+	b, err := json.Marshal(w.StreamSettings)
+	if err != nil || string(b) != `{"sockopt":{"domainStrategy":"UseIPv4","dialerProxy":"chain-up"}}` {
+		t.Fatalf("streamSettings %s, %v", b, err)
+	}
+	if b, _ := json.Marshal(BuildWireGuard(wgCandidate(t, ""), "x-wg", "", "").StreamSettings); string(b) != `{"sockopt":{"domainStrategy":""}}` {
+		t.Fatalf("without dialer proxy %s", b)
+	}
+	h, err := ToProto(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sm, err := h.SenderSettings.GetInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	so := sm.(*proxyman.SenderConfig).GetStreamSettings().GetSocketSettings()
+	if so.GetDialerProxy() != "chain-up" || so.GetDomainStrategy() != internet.DomainStrategy_USE_IP4 {
+		t.Fatalf("sockopt %+v", so)
 	}
 }

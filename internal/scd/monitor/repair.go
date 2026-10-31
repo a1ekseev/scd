@@ -76,7 +76,10 @@ func capRefused(m *state.Memory, key string, tn topology.Tunnel, err error) {
 // "Tunnel repaired; …" until the next successful check; an RPC failure is
 // recorded on the tunnel and logged (tunnel_repair_failed, at debug when
 // the error is the same as the last repair's or the Xray API is
-// unavailable). A successful repair of the first failed check of a series
+// unavailable or the source waits). While the source waits for a dependency
+// (state.SourceWaiting) tunnel_repaired is debug and counts no flap, and so
+// does a series that started before the end of its last wait (ResetAt). A
+// successful repair of the first failed check of a series
 // is a flap: the third within flapWindow logs tunnel_flapping, and inside
 // the episode tunnel_repaired is debug. A tunnel that is
 // gone is ignored. A tunnel that already runs on its unprefixed outbound
@@ -124,6 +127,25 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 	}
 	defer func() { _ = client.Close() }()
 
+	// Inside the source's episode without a live candidate or its
+	// dependency wait the repair lines are debug; a series that started
+	// before the end of the last wait (ResetAt) is not a new one.
+	var (
+		quiet, waiting bool
+		resetAt        *time.Time
+	)
+	d.Memory.View(key, func(tg *state.Target) {
+		id := cur.Mapping.SourceID
+		waiting = tg.SourceWaiting(id)
+		quiet = waiting
+		if st := tg.Sources[id]; st != nil && st.NoLiveSince != nil {
+			quiet = true
+		}
+		if w := tg.Waits[id]; w != nil {
+			resetAt = w.ResetAt
+		}
+	})
+
 	actx := context.WithoutCancel(ctx)
 	repaired := cur.Mapping
 	repaired.OutboundTagCurrent = repaired.OutboundWithoutPrefix.Tag
@@ -152,8 +174,8 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 			tn.Monitor.State = state.TunnelDegraded
 			tn.Monitor.LastFailureAt = &failedAt
 			tn.Monitor.LastError = err.Error()
-			if down || tn.Monitor.LastRepairError == err.Error() {
-				level = slog.LevelDebug // xray_unavailable, or the same failure as the last repair
+			if down || waiting || tn.Monitor.LastRepairError == err.Error() {
+				level = slog.LevelDebug // xray_unavailable, waiting, or the same failure as the last repair
 			}
 			tn.Monitor.LastRepairError = err.Error()
 		})
@@ -169,23 +191,22 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 
 	now := d.now()
 	level := slog.LevelWarn
-	d.Memory.View(key, func(tg *state.Target) {
-		if st := tg.Sources[cur.Mapping.SourceID]; st != nil && st.NoLiveSince != nil {
-			level = slog.LevelDebug // the source has no live candidate: candidate_no_replacement covers it
-		}
-	})
+	if quiet {
+		level = slog.LevelDebug // no live candidate (candidate_no_replacement covers it) or waiting
+	}
 	var flap state.FlapState
 	flapping := false
 	updateTunnel(d.Memory, key, tunnelID, func(tn *state.Tunnel) {
 		tn.Mapping = repaired
 		m := &tn.Monitor
-		if m.FailuresInRow == 1 {
+		fresh := freshSeries(*m, waiting, resetAt)
+		if m.FailuresInRow == 1 && fresh {
 			flapping = addFlap(&m.Flap, now)
 		}
 		// A tunnel without a prefix is repaired on every failed check; only
 		// the first repair of a series (ConsecutiveFailures not yet reset
 		// by one) and none inside a flap episode is warn.
-		if m.ConsecutiveFailures != m.FailuresInRow || !m.Flap.Since.IsZero() {
+		if !fresh || m.ConsecutiveFailures != m.FailuresInRow || !m.Flap.Since.IsZero() {
 			level = slog.LevelDebug
 		}
 		flap = m.Flap
@@ -217,6 +238,13 @@ func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID
 			slog.String("probeError", cur.Monitor.LastError))
 	}
 	return nil
+}
+
+// freshSeries reports whether the failure series of m may count as a new
+// one (a flap, the warn tunnel_repaired): not while its source waits, and
+// not for a series that started before resetAt, the end of the last wait.
+func freshSeries(m state.TunnelMonitor, waiting bool, resetAt *time.Time) bool {
+	return !waiting && (resetAt == nil || m.FailingSince == nil || !m.FailingSince.Before(*resetAt))
 }
 
 // addFlap records a flap of the tunnel at now and reports whether it

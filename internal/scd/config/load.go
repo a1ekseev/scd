@@ -88,7 +88,7 @@ const (
 
 // foreignKeys are the source keys not allowed for each type.
 var foreignKeys = map[string][]string{
-	SourceVLESS:     {"maxActive", "selection", "wireguard"},
+	SourceVLESS:     {"maxActive", "selection", "wireguard", "dialerProxy"},
 	SourceWireGuard: {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders"},
 	SourceMasque:    {"format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "wireguard"},
 }
@@ -98,7 +98,7 @@ var foreignKeys = map[string][]string{
 func parseSource(n *schema.Node, dir string) SourceConfig {
 	n.Strict("id", "type", "input", "enabled", "format", "fetchTimeoutMs", "allowInsecure",
 		"fetchUserAgent", "fetchHeaders", "maxInputBytes", "portRange", "filters",
-		"maxActive", "selection", "monitor", "wireguard")
+		"maxActive", "selection", "monitor", "wireguard", "balancer", "dialerProxy", "dependsOn")
 	var s SourceConfig
 	s.ID, _ = n.String("id", required)
 	s.Type = n.Enum("type", []string{SourceVLESS, SourceWireGuard, SourceMasque}, "")
@@ -146,7 +146,27 @@ func parseSource(n *schema.Node, dir string) SourceConfig {
 		wn.Strict("endpointDomainStrategy")
 		s.WireGuard = &WireGuardConfig{EndpointDomainStrategy: wn.Enum("endpointDomainStrategy", EndpointDomainStrategies, "")}
 	}
+	s.Balancer, _ = n.String("balancer", schema.StrOpt{Trim: true, MinLen: 1})
+	if CandidateType(s.Type) {
+		s.DialerProxy, _ = n.String("dialerProxy", schema.StrOpt{Trim: true, MinLen: 1})
+	}
+	for _, dn := range n.Array("dependsOn", false, 0) {
+		if dn != nil {
+			s.DependsOn = append(s.DependsOn, parseDependency(dn))
+		}
+	}
 	return s
+}
+
+// parseDependency reads one sources[].dependsOn object.
+func parseDependency(n *schema.Node) DependencyConfig {
+	n.Strict("source", "health", "recoverGraceSeconds")
+	var d DependencyConfig
+	d.Source, _ = n.String("source", required)
+	d.Health = n.Enum("health", []string{HealthBalancer}, "")
+	grace := DefaultRecoverGraceSeconds
+	d.RecoverGraceSeconds = n.Int("recoverGraceSeconds", schema.IntOpt{Default: &grace, Min: new(0)})
+	return d
 }
 
 // parseSelection reads the selection object of a wireguard or masque

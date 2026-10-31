@@ -64,6 +64,9 @@ type PrintedSource struct {
 	Selection      *SelectionConfig     `json:"selection,omitempty"`
 	Monitor        *SourceMonitorConfig `json:"monitor,omitempty"`
 	WireGuard      *WireGuardConfig     `json:"wireguard,omitempty"`
+	Balancer       string               `json:"balancer,omitempty"`
+	DialerProxy    string               `json:"dialerProxy,omitempty"`
+	DependsOn      []DependencyConfig   `json:"dependsOn,omitempty"`
 }
 
 // Printed returns s for printing: unless includeSecrets, the input is
@@ -76,6 +79,7 @@ func (s SourceConfig) Printed(includeSecrets bool) PrintedSource {
 		FetchHeaders: s.FetchHeaders.Printed(includeSecrets), MaxInputBytes: s.MaxInputBytes,
 		PortRange: s.PortRange, Filters: s.Filters,
 		MaxActive: s.MaxActive, Selection: s.Selection, Monitor: s.Monitor, WireGuard: s.WireGuard,
+		Balancer: s.Balancer, DialerProxy: s.DialerProxy, DependsOn: s.DependsOn,
 	}
 	if !includeSecrets {
 		p.Input = inputsrc.RedactInput(s.Input)

@@ -53,7 +53,8 @@ func generateCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				m = manifest.BuildCandidates(candidate.Kind(sourceType), loaded.Content, loaded.Source, sourceID, domainStrategy, time.Now())
+				m = manifest.BuildCandidates(candidate.Kind(sourceType), loaded.Content, loaded.Source, sourceID,
+					manifest.CandidateOptions{DomainStrategy: domainStrategy}, time.Now())
 			} else {
 				loaded, err := inputsrc.Load(cmd.Context(), input, inputsrc.Options{Stdin: cmd.InOrStdin()})
 				if err != nil {

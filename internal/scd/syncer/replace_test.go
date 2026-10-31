@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xtls/xray-core/app/proxyman"
+
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/monitor"
 	"github.com/a1ekseev/scd/internal/scd/socks"
@@ -253,6 +255,53 @@ func TestWireGuardConfigHashChange(t *testing.T) {
 	f.s.Config = cfg(allKinds, sub)
 	if r := f.run(t); r.Failed != 0 || len(srv.OutboundTags()) != 3 {
 		t.Fatalf("report %+v, outbounds %v", r, srv.OutboundTags())
+	}
+}
+
+// A changed dialerProxy applies the source in full (the tags stay): the
+// same tags are removed and added again with sockopt.dialerProxy, every
+// AddOutbound after a ListOutbounds (apply.Capped), never more than
+// maxActive outbounds of the source at once.
+func TestWireGuardDialerProxyChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wg")
+	writeCandidates(t, path, wgFixtureLines(t), 1, 2, 4, 5)
+	sub := wgSub(path)
+	sub.Target.FixedOutbounds = []string{"chain-up"}
+	f := newSourcesFixture(t, sub, nil, xrayfake.WithStaticOutbounds("chain-up"))
+	srv := f.x.servers[addrA]
+	if r := f.run(t); r.Failed != 0 {
+		t.Fatalf("report %+v", r)
+	}
+	before := srv.OutboundTags()
+	sub.Sources[0].DialerProxy = "chain-up"
+	f.s.Config = cfg(allKinds, sub)
+	n := len(srv.Calls())
+	if r := f.run(t); r.Failed != 0 || len(f.logs.events(t, "resource_apply_started")) != 6 {
+		t.Fatalf("no full apply: %+v", r)
+	}
+	if after := srv.OutboundTags(); !slices.Equal(after, before) {
+		t.Fatalf("outbounds %v, before %v", after, before)
+	}
+	for _, tag := range before {
+		if tag == "chain-up" {
+			continue
+		}
+		sm, err := srv.Outbound(tag).SenderSettings.GetInstance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p := sm.(*proxyman.SenderConfig).GetStreamSettings().GetSocketSettings().GetDialerProxy(); p != "chain-up" {
+			t.Errorf("%s: dialerProxy %q", tag, p)
+		}
+	}
+	calls := srv.Calls()[n:]
+	for i, c := range calls {
+		if strings.HasPrefix(c, "AddOutbound:") && (i == 0 || calls[i-1] != "ListOutbounds") {
+			t.Errorf("%s not after ListOutbounds: %q", c, calls)
+		}
+	}
+	if p := peakOutbounds(srv.Calls(), "wg"); p > 2 {
+		t.Fatalf("peak %d > maxActive 2: %q", p, srv.Calls())
 	}
 }
 

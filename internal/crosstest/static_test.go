@@ -70,7 +70,7 @@ outputs:
 	if loaded.Content != strings.Join(res.Lines, "\n")+"\n" {
 		t.Fatal("bytes differ from the provider lines")
 	}
-	m := manifest.BuildCandidates(candidate.KindWireGuard, loaded.Content, path, "wg", "UseIPv4", time.Unix(0, 0))
+	m := manifest.BuildCandidates(candidate.KindWireGuard, loaded.Content, path, "wg", manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 	if len(m.Skipped) != 0 || m.Summary.Parsed != len(entries) {
 		t.Fatalf("parsed %d of %d, skipped %+v", m.Summary.Parsed, len(entries), m.Skipped)
 	}

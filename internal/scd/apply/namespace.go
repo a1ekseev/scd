@@ -44,8 +44,9 @@ type Orphan struct {
 // tags from before sources existed. Rules without ruleTag are never
 // touched (RemoveRule("") is not called). Each kind is listed right before
 // its removals; the first error (List or Remove) stops the removal and is
-// returned with what was removed so far.
-func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionTargetConfig, kinds []Kind, namespaces []Namespace) ([]Orphan, error) {
+// returned with what was removed so far. outbounds are the outbound tags
+// left in Xray after the removals, nil when outbounds were not listed.
+func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionTargetConfig, kinds []Kind, namespaces []Namespace) (removed []Orphan, outbounds []string, err error) {
 	orphan := func(kind Kind, fixed []string, tag string) bool {
 		if tag == "" || slices.Contains(fixed, tag) {
 			return false
@@ -57,7 +58,6 @@ func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionT
 		}
 		return true
 	}
-	var removed []Orphan
 	for _, kind := range []Kind{KindRouting, KindInbound, KindOutbound} {
 		if !slices.Contains(kinds, kind) {
 			continue
@@ -71,7 +71,7 @@ func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionT
 		case KindRouting:
 			list, err := c.ListRules(ctx)
 			if err != nil {
-				return removed, err
+				return removed, nil, err
 			}
 			for _, r := range list {
 				tags = append(tags, r.RuleTag)
@@ -80,7 +80,7 @@ func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionT
 		case KindInbound:
 			list, err := c.ListInbounds(ctx)
 			if err != nil {
-				return removed, err
+				return removed, nil, err
 			}
 			for _, h := range list {
 				tags = append(tags, h.GetTag())
@@ -89,22 +89,27 @@ func RemoveOrphans(ctx context.Context, c xrayapi.Client, t config.SubscriptionT
 		case KindOutbound:
 			list, err := c.ListOutbounds(ctx)
 			if err != nil {
-				return removed, err
+				return removed, nil, err
 			}
 			for _, h := range list {
 				tags = append(tags, h.GetTag())
 			}
 			fixed, remove = t.FixedOutbounds, c.RemoveOutbound
 		}
+		var kept []string
 		for _, tag := range tags {
 			if !orphan(kind, fixed, tag) {
+				kept = append(kept, tag)
 				continue
 			}
 			if err := remove(ctx, tag); err != nil {
-				return removed, err
+				return removed, nil, err
 			}
 			removed = append(removed, Orphan{Kind: kind, Tag: tag})
 		}
+		if kind == KindOutbound {
+			outbounds = append([]string{}, kept...)
+		}
 	}
-	return removed, nil
+	return removed, outbounds, nil
 }

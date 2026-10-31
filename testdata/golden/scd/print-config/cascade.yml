@@ -1,0 +1,40 @@
+# A cascade: vless carries warp (masque), warp carries proton (wireguard).
+subscriptions:
+  - id: s1
+    sources:
+      - id: vless
+        type: vless
+        input: ./sub.txt
+        portRange: {start: 20000, end: 20009}
+        balancer: x-balancer
+      - id: warp
+        type: masque
+        input: /app/wgp/warp
+        portRange: {start: 20100, end: 20101}
+        maxActive: 1
+        selection: {strategy: label, switchMarginPercent: 20, switchConfirmChecks: 2, deadPairCooldownMinutes: 10, replaceAfterFailures: 2}
+        balancer: x-warp-balancer
+        dialerProxy: chain-blanc
+        dependsOn: [{source: vless, health: balancer}]
+      - id: proton
+        type: wireguard
+        input: /app/wgp/proton
+        portRange: {start: 20110, end: 20111}
+        maxActive: 1
+        selection: {strategy: score, switchMarginPercent: 20, switchConfirmChecks: 2, deadPairCooldownMinutes: 10, replaceAfterFailures: 2}
+        wireguard: {endpointDomainStrategy: UseIPv4}
+        balancer: x-proton-balancer
+        dialerProxy: chain-warp
+        dependsOn: [{source: warp, health: balancer, recoverGraceSeconds: 240}]
+    target:
+      address: 127.0.0.1:8080
+      inboundSocks: {listen: 127.0.0.1}
+      fixedOutbounds: [chain-blanc, chain-warp]
+      visionUdp443Override: true
+      balancers:
+        - {tag: x-balancer, selection: {strategy: leastPing}}
+runtime: {}
+logging: {}
+resources:
+  inbounds: {enabled: true}
+  routing: {enabled: true}

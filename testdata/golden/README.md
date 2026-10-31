@@ -8,7 +8,7 @@ committing. Corpora and vectors are frozen inputs with recorded expectations
 | Path | What | Kind |
 |---|---|---|
 | `scd/status/` | status fixtures, API, dashboard and runtime-state (below) | golden, `go test ./internal/scd/status/ -run Golden -update` |
-| `scd/print-config/{minimal.sources,docker-example}.json` | `scd print-config` of `minimal.sources.yml` and `docker/scd/config.example.yml`, repository root removed from paths | golden, `go test ./internal/scd/cli/ -run PrintConfig -update` |
+| `scd/print-config/{minimal.sources,cascade,docker-example}.json` | `scd print-config` of `minimal.sources.yml`, `cascade.yml` (sources with `balancer`, `dialerProxy`, `dependsOn`) and `docker/scd/config.example.yml`, repository root removed from paths | golden, `go test ./internal/scd/cli/ -run PrintConfig -update` |
 | `sfc/print-config-docker-example.json` | `scd sfc print-config` of the example | golden, `go test ./internal/sfc/cli/ -run PrintConfig -update` |
 | `sfc/refresh-docker-example.json`, `sfc/real-shapes-{provider2,remnawave}.json` | sfc refresh reports of the example and of `docker/sfc/config.real-shape.go.yml` over `docker/fixtures/real-shapes/` | golden, `go test ./internal/sfc/refresh/ -run 'DockerExample\|RealShapes' -update` |
 | `gtl/print-config-docker-example.json` | `scd gtl print-config` of the example | golden, `go test ./internal/gtl/cli/ -run PrintConfig -update` |

@@ -55,7 +55,7 @@ func mqManifest(t *testing.T) Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", "", time.Unix(0, 0))
+	return BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", CandidateOptions{}, time.Unix(0, 0))
 }
 
 func TestBuildMasqueFixture(t *testing.T) {

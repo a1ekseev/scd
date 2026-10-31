@@ -125,11 +125,11 @@ func FromSource(s LoadedSource, now time.Time) (Manifest, error) {
 	id := s.Config.ID
 	var m Manifest
 	if config.CandidateType(s.Config.Type) {
-		ds := ""
+		o := CandidateOptions{DialerProxy: s.Config.DialerProxy}
 		if wg := s.Config.WireGuard; wg != nil {
-			ds = wg.EndpointDomainStrategy
+			o.DomainStrategy = wg.EndpointDomainStrategy
 		}
-		m = BuildCandidates(candidate.Kind(s.Config.Type), strings.TrimSpace(s.Content), id, id, ds, now)
+		m = BuildCandidates(candidate.Kind(s.Config.Type), strings.TrimSpace(s.Content), id, id, o, now)
 		m = applyCandidateFilters(m, s.Config.Filters)
 		if m.Summary.TotalLines == 0 {
 			return m, nil // an empty candidate file: no live candidates, not a failure

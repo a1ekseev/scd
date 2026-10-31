@@ -36,7 +36,7 @@ func wgManifest(t *testing.T) Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return BuildWireGuard(string(b), "wg", "wg", "UseIPv4", time.Unix(0, 0))
+	return BuildWireGuard(string(b), "wg", "wg", CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 }
 
 func TestBuildWireGuardFixture(t *testing.T) {
@@ -189,7 +189,7 @@ func TestWireGuardLabelWithoutFlag(t *testing.T) {
 	line = strings.Replace(line, "&entry=NL&exit=NL", "", 1)
 	var tags []string
 	for _, label := range []string{"WARP", "%E2%98%81%EF%B8%8F%20WARP"} {
-		m := BuildWireGuard(line+"#"+label, "wg", "wg", "UseIPv4", time.Unix(0, 0))
+		m := BuildWireGuard(line+"#"+label, "wg", "wg", CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 		if len(m.Entries) != 1 || len(m.Skipped) != 0 {
 			t.Fatalf("%s: entries %d, skipped %+v", label, len(m.Entries), m.Skipped)
 		}

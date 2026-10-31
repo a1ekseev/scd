@@ -1,0 +1,144 @@
+{
+  "subscriptions": [
+    {
+      "id": "s1",
+      "enabled": true,
+      "sources": [
+        {
+          "id": "vless",
+          "type": "vless",
+          "input": "testdata/golden/scd/print-config/sub.txt",
+          "enabled": true,
+          "format": "auto",
+          "fetchTimeoutMs": 5000,
+          "allowInsecure": "deny",
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20000,
+            "end": 20009
+          },
+          "balancer": "x-balancer"
+        },
+        {
+          "id": "warp",
+          "type": "masque",
+          "input": "/app/wgp/warp",
+          "enabled": true,
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20100,
+            "end": 20101
+          },
+          "maxActive": 1,
+          "selection": {
+            "strategy": "label",
+            "switchMarginPercent": 20,
+            "switchConfirmChecks": 2,
+            "deadPairCooldownMinutes": 10,
+            "replaceAfterFailures": 2
+          },
+          "balancer": "x-warp-balancer",
+          "dialerProxy": "chain-blanc",
+          "dependsOn": [
+            {
+              "source": "vless",
+              "health": "balancer",
+              "recoverGraceSeconds": 180
+            }
+          ]
+        },
+        {
+          "id": "proton",
+          "type": "wireguard",
+          "input": "/app/wgp/proton",
+          "enabled": true,
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20110,
+            "end": 20111
+          },
+          "maxActive": 1,
+          "selection": {
+            "strategy": "score",
+            "switchMarginPercent": 20,
+            "switchConfirmChecks": 2,
+            "deadPairCooldownMinutes": 10,
+            "replaceAfterFailures": 2
+          },
+          "wireguard": {
+            "endpointDomainStrategy": "UseIPv4"
+          },
+          "balancer": "x-proton-balancer",
+          "dialerProxy": "chain-warp",
+          "dependsOn": [
+            {
+              "source": "warp",
+              "health": "balancer",
+              "recoverGraceSeconds": 240
+            }
+          ]
+        }
+      ],
+      "target": {
+        "address": "127.0.0.1:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [
+          "chain-blanc",
+          "chain-warp"
+        ],
+        "fixedInbounds": [],
+        "fixedRouting": [],
+        "visionUdp443Override": true,
+        "inboundSocks": {
+          "listen": "127.0.0.1"
+        },
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "selection": {
+              "enabled": false,
+              "observatory": true,
+              "strategy": "leastPing"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "runtime": {
+    "mode": "run-once"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "resources": {
+    "outbounds": {
+      "enabled": true
+    },
+    "inbounds": {
+      "enabled": true
+    },
+    "routing": {
+      "enabled": true
+    }
+  },
+  "statusServer": {
+    "enabled": true,
+    "listen": "127.0.0.1:9090",
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  }
+}

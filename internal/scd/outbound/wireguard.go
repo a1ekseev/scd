@@ -67,20 +67,26 @@ type WireGuardPeer struct {
 	AllowedIPs   []string `json:"allowedIPs"`
 }
 
-// WireGuardStream is the "streamSettings" of a WireGuard outbound: only the
-// endpoint domain strategy (without it Xray picks a random A or AAAA).
+// WireGuardStream is the "streamSettings" of a WireGuard outbound: only
+// sockopt, the endpoint domain strategy (without it Xray picks a random A or
+// AAAA) and the optional dialer proxy.
 type WireGuardStream struct {
 	Sockopt Sockopt `json:"sockopt"`
 }
 
-// Sockopt is "streamSettings.sockopt".
+// Sockopt is "streamSettings.sockopt" of a WireGuard outbound.
+// DomainStrategy is always written, so an outbound without a dialer proxy
+// keeps its JSON (and its hash).
 type Sockopt struct {
 	DomainStrategy string `json:"domainStrategy"`
+	// DialerProxy is the tag of the outbound the WireGuard UDP is sent
+	// through; "" dials directly.
+	DialerProxy string `json:"dialerProxy,omitempty"`
 }
 
 // BuildWireGuard returns the JSON outbound of candidate c under tag with the
-// endpoint domain strategy.
-func BuildWireGuard(c candidate.WireGuard, tag, domainStrategy string) WireGuard {
+// endpoint domain strategy and the dialer proxy ("" for none).
+func BuildWireGuard(c candidate.WireGuard, tag, domainStrategy, dialerProxy string) WireGuard {
 	strs := func(n int, f func(int) string) []string {
 		out := make([]string, n)
 		for i := range out {
@@ -110,7 +116,7 @@ func BuildWireGuard(c candidate.WireGuard, tag, domainStrategy string) WireGuard
 		p.PreSharedKey = Secret(base64.StdEncoding.EncodeToString(c.PresharedKey[:]))
 	}
 	s.Peers = []WireGuardPeer{p}
-	return WireGuard{Tag: tag, Protocol: "wireguard", Settings: s, StreamSettings: WireGuardStream{Sockopt{domainStrategy}}}
+	return WireGuard{Tag: tag, Protocol: "wireguard", Settings: s, StreamSettings: WireGuardStream{Sockopt{domainStrategy, dialerProxy}}}
 }
 
 // GetTag implements Spec.

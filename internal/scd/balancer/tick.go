@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -99,8 +100,20 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig, b config.B
 	d.Memory.Update(key, func(tg *state.Target) {
 		sel := &tg.EnsureBalancer(b.Tag).Selection
 		events = record(sel, b.Tag, now, info, infoErr)
+		if infoErr == nil {
+			events = append(events, recordForeign(sel, sub, b.Tag, info)...)
+		}
 		if obsChecked || !bs.Observatory {
-			events = append(events, recordObservatory(sel, bs.Observatory, now, obs, obsErr)...)
+			for _, e := range recordObservatory(sel, bs.Observatory, now, obs, obsErr) {
+				// One observatory per Xray: a failure is logged once per target.
+				if tg.ObservatoryError == sel.ObservatoryError {
+					e.level = slog.LevelDebug
+				}
+				events = append(events, e)
+			}
+			if obsChecked {
+				tg.ObservatoryError = sel.ObservatoryError
+			}
 		}
 	})
 
@@ -118,6 +131,59 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig, b config.B
 		}
 		attrs := append([]slog.Attr{slog.String("event", e.event)}, base...)
 		d.Log.LogAttrs(ctx, e.level, e.msg, append(attrs, e.details...)...)
+	}
+	return nil
+}
+
+// recordForeign checks one successful selection of balancer tag against
+// the namespaces of the enabled sources of sub with that balancer: an
+// override or principle targets outside them are foreign
+// (balancer_foreign_selection with selectedTag, the first, and selectedTags;
+// warn when the set of foreign tags is new, else debug); the return to the
+// sources' own outbounds logs balancer_foreign_selection_recovered. A
+// balancer without sources is never foreign; an empty selection changes
+// nothing (a flapping selection does not end and restart the episode).
+func recordForeign(s *state.SelectionState, sub config.SubscriptionConfig, tag string, info xrayapi.BalancerInfo) []logEvent {
+	var owners []apply.Namespace
+	for _, src := range sub.EnabledSources() {
+		if src.Balancer == tag {
+			owners = append(owners, apply.Namespace{ObsPrefix: sub.Target.ObservatorySubjectSelectorPrefix, SourceID: src.ID})
+		}
+	}
+	selected := info.PrincipleTargets
+	if info.OverrideTarget != "" {
+		selected = []string{info.OverrideTarget}
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	var foreign []string
+	if len(owners) > 0 {
+		for _, t := range selected {
+			if !slices.ContainsFunc(owners, func(n apply.Namespace) bool { return n.Owns(apply.KindOutbound, t) }) {
+				foreign = append(foreign, t)
+			}
+		}
+	}
+	slices.Sort(foreign)
+	prev := s.Foreign
+	s.Foreign = foreign
+	switch {
+	case len(foreign) > 0:
+		level := slog.LevelWarn
+		if slices.Equal(foreign, prev) {
+			level = slog.LevelDebug
+		}
+		return []logEvent{{
+			level, "The balancer selects an outbound outside the namespaces of its sources.",
+			"balancer_foreign_selection",
+			[]slog.Attr{slog.String("selectedTag", foreign[0]), slog.Any("selectedTags", foreign)},
+		}}
+	case len(prev) > 0:
+		return []logEvent{{
+			slog.LevelInfo, "The balancer selects its sources' outbounds again.",
+			"balancer_foreign_selection_recovered", nil,
+		}}
 	}
 	return nil
 }

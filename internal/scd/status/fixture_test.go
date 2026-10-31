@@ -134,7 +134,7 @@ type fixtureBalancer struct {
 	FailingSince                                                          *time.Time `json:"-"`
 }
 
-// fixtureSelection is targets[].balancerSelection: the keys of the JSON
+// fixtureSelection is targets[].balancers[].selection: the keys of the JSON
 // view where they overlap, plus the state-only ones
 // (previousSelectedTag, consecutiveFailures, observatoryCheckedAt and the
 // observatory list; null observatory = unavailable).

@@ -5,10 +5,13 @@ package crosstest
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +21,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/candidate"
 	"github.com/a1ekseev/scd/internal/common/wgpstatus"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
+	"github.com/a1ekseev/scd/internal/scd/outbound"
 	"github.com/a1ekseev/scd/internal/wgp/config"
 	"github.com/a1ekseev/scd/internal/wgp/daemon"
 	"github.com/a1ekseev/scd/internal/wgp/provider"
@@ -35,7 +39,7 @@ func fixture(t *testing.T, kind candidate.Kind) (lines []string, yaml string) {
 	}
 	all := strings.Split(string(b), "\n")
 	var quoted []string
-	for _, e := range manifest.BuildCandidates(kind, string(b), "fixture", "f", "UseIPv4", time.Unix(0, 0)).Entries {
+	for _, e := range manifest.BuildCandidates(kind, string(b), "fixture", "f", manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0)).Entries {
 		lines = append(lines, all[e.Line-1])
 		quoted = append(quoted, strconv.Quote(all[e.Line-1]))
 	}
@@ -142,9 +146,50 @@ outputs:
 				t.Errorf("%s line %d: %v", tc.path, i+1, err)
 			}
 		}
-		m := manifest.BuildCandidates(tc.kind, loaded.Content, tc.path, string(tc.kind), "UseIPv4", time.Unix(0, 0))
+		m := manifest.BuildCandidates(tc.kind, loaded.Content, tc.path, string(tc.kind), manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 		if len(m.Skipped) != 0 || m.Summary.Parsed != len(tc.lines) {
 			t.Errorf("%s: parsed %d of %d, skipped %+v", tc.path, m.Summary.Parsed, len(tc.lines), m.Skipped)
+		}
+		if tc.kind == candidate.KindMasque {
+			checkMasqueDialerProxy(t, loaded.Content, tc.path)
+		}
+	}
+}
+
+// checkMasqueDialerProxy builds the published masque lines behind a dialer
+// proxy, as a cascade source does: every outbound has sockopt with
+// dialerProxy only (no domainStrategy: the endpoint is an IP) and Xray's
+// conf.Build accepts it.
+func checkMasqueDialerProxy(t *testing.T, content, path string) {
+	t.Helper()
+	m := manifest.BuildCandidates(candidate.KindMasque, content, path, "mq", manifest.CandidateOptions{DialerProxy: "chain-up"}, time.Unix(0, 0))
+	if len(m.Entries) == 0 || len(m.Skipped) != 0 {
+		t.Fatalf("%s behind chain-up: %d entries, skipped %+v", path, len(m.Entries), m.Skipped)
+	}
+	for _, e := range m.Entries {
+		b, err := json.Marshal(e.JSONOutbound)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ob struct {
+			Settings struct {
+				Address string `json:"address"`
+			} `json:"settings"`
+			StreamSettings struct {
+				Sockopt map[string]any `json:"sockopt"`
+			} `json:"streamSettings"`
+		}
+		if err := json.Unmarshal(b, &ob); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(ob.StreamSettings.Sockopt, map[string]any{"dialerProxy": "chain-up"}) {
+			t.Errorf("%s: sockopt %v", e.Tag, ob.StreamSettings.Sockopt)
+		}
+		if _, err := netip.ParseAddr(ob.Settings.Address); err != nil {
+			t.Errorf("%s: endpoint %q is not an IP", e.Tag, ob.Settings.Address)
+		}
+		if _, err := outbound.ToProto(e.JSONOutbound); err != nil {
+			t.Errorf("%s: %v", e.Tag, err)
 		}
 	}
 }

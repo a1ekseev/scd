@@ -106,6 +106,11 @@ type SelectionState struct {
 	// ObservatoryCheckedAt is the time of the last successful
 	// GetOutboundStatus.
 	ObservatoryCheckedAt *time.Time
+	// Foreign holds the selected tags outside the namespaces of the
+	// sources of the balancer, sorted, as last logged
+	// (balancer_foreign_selection); nil while the selection is the
+	// sources' own.
+	Foreign []string
 }
 
 // TunnelMonitor is the monitor state of one tunnel.
@@ -285,6 +290,17 @@ type Target struct {
 	// state of each balancer; an entry is created by EnsureBalancer on the
 	// first write. It survives topology replacements (10 §6.4).
 	Balancers map[string]*Balancer
+	// ObservatoryError is the last GetOutboundStatus error logged for the
+	// target (balancer_observatory_unavailable): Xray has one observatory,
+	// so several balancers log a failure once. "" after a success.
+	ObservatoryError string
+	// Waits holds the dependency wait of each source with dependsOn, by
+	// source id (the tunnel monitor writes it).
+	Waits map[string]*SourceWait
+	// CheckFailed holds, by source id, the reason code of a failed check
+	// before the last apply of the source (source_check_failed); the
+	// monitor treats such a source as waiting.
+	CheckFailed map[string]string
 	// XrayDown is set while the Xray API of the target does not answer
 	// (logging only).
 	XrayDown *XrayIssue
@@ -493,7 +509,8 @@ func (t *Target) ResetSourceHashes(sourceID string) {
 }
 
 // DropSource forgets source sourceID of key (its resources are gone from
-// Xray): its hashes, topology and tunnels. Generation++ when it existed.
+// Xray): its hashes, topology, tunnels, dependency wait and failed check.
+// Generation++ when it existed.
 func (m *Memory) DropSource(key, sourceID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -501,6 +518,8 @@ func (m *Memory) DropSource(key, sourceID string) {
 	if !ok {
 		return
 	}
+	delete(t.Waits, sourceID)
+	delete(t.CheckFailed, sourceID)
 	if _, ok := t.Sources[sourceID]; !ok {
 		return
 	}

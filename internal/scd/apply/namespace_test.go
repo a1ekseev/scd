@@ -71,9 +71,13 @@ func orphanFake(t *testing.T) (*xrayfake.Server, xrayapi.Client) {
 func TestRemoveOrphans(t *testing.T) {
 	srv, c := orphanFake(t)
 	ns := []apply.Namespace{{ObsPrefix: "x-observe-", SourceID: "a"}, {ObsPrefix: "x-observe-", SourceID: "b"}}
-	removed, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, apply.Order, ns)
+	removed, outbounds, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, apply.Order, ns)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The outbound list after the removals is the one Xray has.
+	if got := slices.Sorted(slices.Values(outbounds)); !slices.Equal(got, srv.OutboundTags()) {
+		t.Errorf("returned outbounds %v, Xray %v", got, srv.OutboundTags())
 	}
 	var got []string
 	for _, o := range removed {
@@ -112,7 +116,7 @@ func TestRemoveOrphans(t *testing.T) {
 func TestRemoveOrphansOnlyEnabledKinds(t *testing.T) {
 	srv, c := orphanFake(t)
 	ns := []apply.Namespace{{ObsPrefix: "x-observe-", SourceID: "a"}}
-	if _, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, []apply.Kind{apply.KindOutbound}, ns); err != nil {
+	if _, _, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, []apply.Kind{apply.KindOutbound}, ns); err != nil {
 		t.Fatal(err)
 	}
 	for _, call := range srv.Calls() {
@@ -127,8 +131,8 @@ func TestRemoveOrphansStopsOnError(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			srv, c := orphanFake(t)
 			srv.FailNext(method, status.Error(codes.Unknown, "boom"))
-			_, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, apply.Order, nil)
-			if err == nil || !strings.Contains(err.Error(), "boom") {
+			_, outbounds, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, apply.Order, nil)
+			if err == nil || !strings.Contains(err.Error(), "boom") || outbounds != nil {
 				t.Fatalf("err %v", err)
 			}
 			calls := srv.Calls()
@@ -180,5 +184,14 @@ func TestApplyTouchesOnlyItsSource(t *testing.T) {
 	}
 	if !slices.Equal(calls, want) {
 		t.Errorf("calls = %q\nwant    %q", calls, want)
+	}
+}
+
+// Without the outbound kind the outbound list is nil: nothing was listed.
+func TestRemoveOrphansNoOutboundList(t *testing.T) {
+	_, c := orphanFake(t)
+	_, outbounds, err := apply.RemoveOrphans(context.Background(), c, orphanTarget, []apply.Kind{apply.KindRouting}, nil)
+	if err != nil || outbounds != nil {
+		t.Fatalf("outbounds %v, %v", outbounds, err)
 	}
 }

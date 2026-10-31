@@ -191,11 +191,9 @@ poll "gtl /load/1 is 1024 bytes" gtl_load_len
 poll "sfc /s/test-all decodes to 8 lines" sfc_test_all_lines
 poll "scd /api/instance-status version 1" scd_instance_status
 poll "scd runtime-state: outbounds applied to Xray" scd_runtime_state
-# The example has target.balancers[] with a selection (the status API shows
-# the first balancer).
-if grep -qE '^[[:space:]]*balancers:' docker/scd/config.example.yml; then
-  poll "scd balancer selection state" scd_balancer_selection
-fi
+# The example's first balancer has a selection (the status API shows the
+# first balancer).
+poll "scd balancer selection state" scd_balancer_selection
 poll "wgp /api/status: static ok, $static_count candidates" wgp_status_ok
 poll "wgp wrote wg ($static_count lines) and status.json, 0600 65532:65532" wgp_files
 poll "wgp logged the ignored .conf keys" wgp_logged_ignored_keys

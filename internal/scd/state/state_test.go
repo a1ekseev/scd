@@ -333,3 +333,45 @@ func TestXrayMarkers(t *testing.T) {
 		t.Fatal("new loss next to a stuck source is not first")
 	}
 }
+
+// A source waits during its dependency wait, while Xray is down if it has a
+// wait entry, and after a failed check before its apply.
+func TestSourceWaiting(t *testing.T) {
+	tg := newTarget()
+	if tg.SourceWaiting("a") {
+		t.Fatal("waiting without state")
+	}
+	w := tg.EnsureWait("a")
+	if tg.SourceWaiting("a") {
+		t.Fatal("waiting without a wait")
+	}
+	tg.XrayDown = &XrayIssue{}
+	if !tg.SourceWaiting("a") || tg.SourceWaiting("b") {
+		t.Fatal("Xray down: only a source with dependencies waits")
+	}
+	tg.XrayDown = nil
+	w.Since = new(time.Now())
+	if !tg.SourceWaiting("a") {
+		t.Fatal("not waiting in a wait")
+	}
+	tg.CheckFailed = map[string]string{"b": "balancer_not_found"}
+	if !tg.SourceWaiting("b") {
+		t.Fatal("not waiting after a failed check")
+	}
+}
+
+// DropSource forgets the wait and the failed check of the source too.
+func TestDropSourceForgetsWaitAndCheck(t *testing.T) {
+	m := New()
+	m.ReplaceSourceTopology("k", "a", topology.Topology{}, nil)
+	m.Update("k", func(tg *Target) {
+		tg.EnsureWait("a")
+		tg.CheckFailed = map[string]string{"a": "balancer_not_found"}
+	})
+	m.DropSource("k", "a")
+	m.View("k", func(tg *Target) {
+		if len(tg.Waits) != 0 || len(tg.CheckFailed) != 0 {
+			t.Fatalf("waits %v, checks %v", tg.Waits, tg.CheckFailed)
+		}
+	})
+}

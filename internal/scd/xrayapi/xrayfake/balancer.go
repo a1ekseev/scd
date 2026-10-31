@@ -50,6 +50,14 @@ func WithBalancer(tag string, selectors []string, strategy string) Option {
 	}
 }
 
+// AddBalancer adds a balancer at run time, like a static config change and
+// an Xray restart would; the arguments are those of WithBalancer.
+func (s *Server) AddBalancer(tag string, selectors []string, strategy string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	WithBalancer(tag, selectors, strategy)(s)
+}
+
 // SetOverride sets the override target of balancer like
 // OverrideBalancerTarget ("" resets it). It panics on an unknown balancer.
 func (s *Server) SetOverride(balancer, target string) {

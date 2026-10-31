@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/a1ekseev/scd/internal/scd/apply"
+	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/resources"
 	"github.com/a1ekseev/scd/internal/scd/topology"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -167,5 +168,29 @@ func TestAddTunnel(t *testing.T) {
 				t.Fatalf("left %v %v %v", srv.OutboundTags(), srv.InboundTags(), srv.Rules())
 			}
 		})
+	}
+}
+
+// ConfigHash changes with dialerProxy (a full apply re-adds the outbounds
+// under the same tags), not with balancer or dependsOn, and is the same as
+// before dialerProxy existed when it is not set.
+func TestConfigHashDialerProxy(t *testing.T) {
+	src := config.SourceConfig{Type: config.SourceMasque, PortRange: &config.PortRange{Start: 1, End: 2}, MaxActive: 1}
+	tg := config.SubscriptionTargetConfig{ObservatorySubjectSelectorPrefix: "x-", InboundSocks: &config.InboundSocksConfig{Listen: "127.0.0.1"}}
+	base := apply.ConfigHash(src, tg)
+	withProxy := src
+	withProxy.DialerProxy = "chain-up"
+	if apply.ConfigHash(withProxy, tg) == base {
+		t.Error("dialerProxy does not change the hash")
+	}
+	same := src
+	same.Balancer, same.DependsOn = "b", []config.DependencyConfig{{Source: "up", Health: config.HealthBalancer}}
+	if apply.ConfigHash(same, tg) != base {
+		t.Error("balancer or dependsOn change the hash")
+	}
+	// The hash without dialerProxy is the one of the scd before it, so an
+	// upgrade applies no source in full.
+	if want := "a1922907ccf604c000a905ecec6fc61bf634426cf2365f38e1c247918de6dcfb"; base != want {
+		t.Errorf("hash %s, want %s", base, want)
 	}
 }

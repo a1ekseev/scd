@@ -21,10 +21,12 @@ import (
 	"github.com/xtls/xray-core/proxy/socks"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/a1ekseev/scd/internal/common/candidate"
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/subscription"
 	vlesslink "github.com/a1ekseev/scd/internal/common/vless"
+	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/normalize"
 	"github.com/a1ekseev/scd/internal/scd/outbound"
 	"github.com/a1ekseev/scd/internal/scd/resources"
@@ -516,5 +518,34 @@ func TestRawBase64(t *testing.T) {
 	var back core.OutboundHandlerConfig
 	if err := proto.Unmarshal(b, &back); err != nil || !proto.Equal(&back, h) {
 		t.Fatalf("round trip: %v", err)
+	}
+}
+
+// parsed.dialerProxy of a WireGuard and a MASQUE outbound is the dialer
+// proxy of its sockopt, absent without one.
+func TestDescribeCandidateDialerProxy(t *testing.T) {
+	for kind, file := range map[candidate.Kind]string{
+		candidate.KindWireGuard: "../../../docker/fixtures/wireguard/candidates.txt",
+		candidate.KindMasque:    "../../../docker/fixtures/masque/candidates.txt",
+	} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, proxy := range []string{"chain-up", ""} {
+			o := manifest.CandidateOptions{DialerProxy: proxy}
+			if kind == candidate.KindWireGuard {
+				o.DomainStrategy = "UseIPv4"
+			}
+			m := manifest.BuildCandidates(kind, string(b), "f", "f", o, time.Unix(0, 0))
+			h, err := outbound.ToProto(m.Entries[0].JSONOutbound)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, ok := resources.DescribeOutbound(h, true)
+			if got, has := p["dialerProxy"]; !ok || p["protocol"] != string(kind) || (proxy == "" && has) || (proxy != "" && got != proxy) {
+				t.Errorf("%s %q: parsed %v", kind, proxy, p)
+			}
+		}
 	}
 }

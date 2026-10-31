@@ -42,7 +42,7 @@ func TestLiveWireGuardOutbound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := manifest.BuildWireGuard(string(b), "wg", "wg", "UseIPv4", time.Unix(0, 0))
+	m := manifest.BuildWireGuard(string(b), "wg", "wg", manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 	if len(m.Entries) == 0 {
 		t.Fatal("no entries")
 	}
@@ -129,7 +129,7 @@ func TestLiveWireGuardReplaceAndFill(t *testing.T) {
 		Selection: &config.SelectionConfig{Strategy: config.StrategyScore, SwitchConfirmChecks: 1, DeadPairCooldownMinutes: 4, ReplaceAfterFailures: 1},
 		WireGuard: &config.WireGuardConfig{EndpointDomainStrategy: "UseIPv4"},
 	}
-	m := manifest.BuildWireGuard(string(b), "wg", "wg", "UseIPv4", time.Unix(0, 0))
+	m := manifest.BuildWireGuard(string(b), "wg", "wg", manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 	var topo topology.Topology
 	for _, kind := range apply.Order {
 		p, err := apply.PlanForSource(kind, m, src, tc)

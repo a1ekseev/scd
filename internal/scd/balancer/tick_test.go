@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/xtls/xray-core/app/observatory"
+	"github.com/xtls/xray-core/core"
 
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -598,5 +599,134 @@ func TestTickObservatoryDebugWithInfoError(t *testing.T) {
 	}
 	if ev := e.logs.events(t, "balancer_selection_failed"); len(ev) != 1 || ev[0]["level"] != "WARN" {
 		t.Fatalf("balancer_selection_failed %v", ev)
+	}
+}
+
+// A selection outside the namespaces of the balancer's sources warns once
+// per tag (a repeat is debug, a new tag warns again) and its end recovers;
+// a pool with one foreign candidate is foreign too.
+func TestTickForeignSelection(t *testing.T) {
+	srv, _ := xrayfake.Start(t,
+		xrayfake.WithStaticOutbounds(prefix+"wg-1", prefix+"other-1", prefix+"other-2"),
+		xrayfake.WithBalancer("x-balancer", []string{prefix}, "leastPing"))
+	sub := selSub(false)
+	sub.Sources = []config.SourceConfig{{ID: "wg", Type: config.SourceWireGuard, Enabled: true, Balancer: "x-balancer"}}
+	logs := &logSink{}
+	d := Deps{Memory: state.New(), Log: logs.logger(), Dial: srv.Dialer()}
+	tick := func() {
+		t.Helper()
+		if err := Tick(t.Context(), d, sub, sub.Target.Balancers[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	levels := func(event string) []any {
+		var out []any
+		for _, e := range logs.events(t, event) {
+			out = append(out, e["level"], e["selectedTag"])
+		}
+		return out
+	}
+	srv.SetOverride("x-balancer", prefix+"other-1")
+	tick()
+	tick()
+	srv.SetOverride("x-balancer", prefix+"other-2")
+	tick()
+	if got, want := levels("balancer_foreign_selection"), []any{"WARN", prefix + "other-1", "DEBUG", prefix + "other-1", "WARN", prefix + "other-2"}; !slices.Equal(got, want) {
+		t.Fatalf("balancer_foreign_selection %v, want %v", got, want)
+	}
+	srv.SetOverride("x-balancer", prefix+"wg-1")
+	tick()
+	if e := logs.events(t, "balancer_foreign_selection_recovered"); len(e) != 1 || e[0]["level"] != "INFO" || e[0]["balancerTag"] != "x-balancer" {
+		t.Fatalf("recovered %v", e)
+	}
+
+	// A pool over every candidate (random) holds foreign ones.
+	srv2, _ := xrayfake.Start(t,
+		xrayfake.WithStaticOutbounds(prefix+"wg-1", prefix+"other-1"),
+		xrayfake.WithBalancer("x-balancer", []string{prefix}, "random"))
+	d.Dial = srv2.Dialer()
+	d.Memory = state.New()
+	tick()
+	if e := logs.events(t, "balancer_foreign_selection"); e[len(e)-1]["selectedTag"] != prefix+"other-1" || e[len(e)-1]["level"] != "WARN" {
+		t.Fatalf("pool %v", e)
+	}
+}
+
+// Two balancers whose observatory fails with the same error log it once
+// per target; a success clears it.
+func TestTickObservatoryOncePerTarget(t *testing.T) {
+	srv, _ := xrayfake.Start(t,
+		xrayfake.WithBalancer("x-balancer", []string{prefix}, "leastPing"),
+		xrayfake.WithBalancer("up-balancer", []string{"up-"}, "leastPing"),
+		xrayfake.WithoutObservatoryService())
+	sub := selSub(true)
+	sub.Target.Balancers = append(sub.Target.Balancers, config.BalancerConfig{
+		Tag: "up-balancer", Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *", Observatory: true},
+	})
+	logs := &logSink{}
+	d := Deps{Memory: state.New(), Log: logs.logger(), Dial: srv.Dialer()}
+	for _, b := range sub.Target.Balancers {
+		if err := Tick(t.Context(), d, sub, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var levels []any
+	for _, e := range logs.events(t, "balancer_observatory_unavailable") {
+		levels = append(levels, e["level"])
+	}
+	if !slices.Equal(levels, []any{"WARN", "DEBUG"}) {
+		t.Fatalf("balancer_observatory_unavailable levels %v", levels)
+	}
+}
+
+// An empty selection does not end a foreign episode; the set of foreign
+// tags of a pool is compared, not its first tag.
+func TestTickForeignEmptyAndPoolSet(t *testing.T) {
+	srv, _ := xrayfake.Start(t,
+		xrayfake.WithStaticOutbounds(prefix+"other-1"),
+		xrayfake.WithBalancer("x-balancer", []string{"none-"}, "leastPing"))
+	sub := selSub(false)
+	sub.Sources = []config.SourceConfig{{ID: "wg", Type: config.SourceWireGuard, Enabled: true, Balancer: "x-balancer"}}
+	logs := &logSink{}
+	d := Deps{Memory: state.New(), Log: logs.logger(), Dial: srv.Dialer()}
+	for _, o := range []string{prefix + "other-1", "", prefix + "other-1", ""} {
+		srv.SetOverride("x-balancer", o)
+		if err := Tick(t.Context(), d, sub, sub.Target.Balancers[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var levels []any
+	for _, e := range logs.events(t, "balancer_foreign_selection") {
+		levels = append(levels, e["level"])
+	}
+	if !slices.Equal(levels, []any{"WARN", "DEBUG"}) || len(logs.events(t, "balancer_foreign_selection_recovered")) != 0 {
+		t.Fatalf("foreign %v, recovered %v", levels, logs.events(t, "balancer_foreign_selection_recovered"))
+	}
+
+	// A pool whose first foreign tag stays while another joins warns again.
+	srv2, _ := xrayfake.Start(t,
+		xrayfake.WithStaticOutbounds(prefix+"a-1", prefix+"wg-1"),
+		xrayfake.WithBalancer("x-balancer", []string{prefix}, "random"))
+	d = Deps{Memory: state.New(), Log: logs.logger(), Dial: srv2.Dialer()}
+	tick := func() {
+		t.Helper()
+		if err := Tick(t.Context(), d, sub, sub.Target.Balancers[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick()
+	c, err := srv2.Dialer()("bufconn", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddOutbound(t.Context(), &core.OutboundHandlerConfig{Tag: prefix + "b-1"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Close()
+	tick()
+	ev := logs.events(t, "balancer_foreign_selection")
+	last := ev[len(ev)-1]
+	if last["level"] != "WARN" || !slices.Equal(last["selectedTags"].([]any), []any{prefix + "a-1", prefix + "b-1"}) {
+		t.Fatalf("pool events %v", ev[len(ev)-2:])
 	}
 }

@@ -43,7 +43,12 @@ type Syncer struct {
 
 	// Edge-triggered logging (sourceKey keys). Only perform touches these
 	// and Run never overlaps it (Memory.TryStartSync), so no lock.
-	lastFetch  map[string]failure // the current fetch failure per source
+	lastFetch map[string]failure // the current fetch failure per source
+	lastCheck map[string]failure // the current source_check_failed per source
+	// outbounds holds, by subscription id, the outbound tags of its target
+	// after the orphan removal of this sync (nil when not listed); the
+	// dialerProxy check reads it.
+	outbounds  map[string][]string
 	lastOrphan map[string]failure // the current orphan removal failure per subscription id
 	lastApply  map[string]string  // the last logged apply_failed text per source
 	lastWarn   map[string]string  // the warning fingerprint per source and kind of warning
@@ -146,9 +151,10 @@ func (s *Syncer) perform(ctx context.Context) Report {
 	startedAt := s.now()
 	if s.lastFetch == nil {
 		s.lastFetch, s.lastApply, s.lastWarn = map[string]failure{}, map[string]string{}, map[string]string{}
-		s.lastOrphan, s.blocked = map[string]failure{}, map[string]bool{}
+		s.lastOrphan, s.blocked, s.lastCheck = map[string]failure{}, map[string]bool{}, map[string]failure{}
 	}
 	s.applyLogged, s.drifted, s.startedAt = map[string]bool{}, map[string]bool{}, startedAt
+	s.outbounds = map[string][]string{}
 	subs := s.Config.Config.Subscriptions
 	enabledSources := 0
 	for _, sub := range subs {
@@ -343,11 +349,12 @@ func (s *Syncer) meta(c config.SubscriptionConfig, sourceID string) apply.Meta {
 }
 
 // syncSubscription removes the orphans of the subscription's target and
-// then syncs every loaded source, in id order. It returns one report per
-// source and the manifests' skipped lines; ok is false when ctx was
-// cancelled before an apply started, and the remaining sources are then
-// left out. A failed orphan removal fails every loaded source without an
-// apply.
+// then syncs every loaded source, in dependsOn order, then id order; a
+// source that fails checkSource is reported failed and not applied. It
+// returns one report per source and the manifests' skipped lines; ok is
+// false when ctx was cancelled before an apply started, and the remaining
+// sources are then left out. A failed orphan removal fails every loaded
+// source without an apply.
 func (s *Syncer) syncSubscription(ctx context.Context, sl subscriptionLoad) (reports []TargetReport, skipped []vless.Skip, ok bool) {
 	c := sl.sub
 	s.logRestoreBlocked(ctx, sl)
@@ -363,7 +370,17 @@ func (s *Syncer) syncSubscription(ctx context.Context, sl subscriptionLoad) (rep
 		return reports, nil, true
 	}
 	var applied []string
-	for _, l := range sl.loaded {
+	for _, l := range dependencyOrder(sl.loaded) {
+		if ctx.Err() != nil {
+			return reports, skipped, false
+		}
+		if r, ok := s.checkSource(ctx, l); !ok {
+			if ctx.Err() != nil {
+				return reports, skipped, false
+			}
+			reports = append(reports, r)
+			continue
+		}
 		r, sk, ok := s.syncSource(ctx, l)
 		if !ok {
 			return reports, skipped, false
@@ -496,12 +513,16 @@ func (s *Syncer) removeOrphans(ctx context.Context, c config.SubscriptionConfig)
 		enabled[src.ID] = true
 		namespaces = append(namespaces, apply.Namespace{ObsPrefix: t.ObservatorySubjectSelectorPrefix, SourceID: src.ID})
 	}
-	var removed []apply.Orphan
+	var (
+		removed   []apply.Orphan
+		outbounds []string
+	)
 	client, err := s.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
 	if err == nil {
-		removed, err = apply.RemoveOrphans(actx, client, t, kinds, namespaces)
+		removed, outbounds, err = apply.RemoveOrphans(actx, client, t, kinds, namespaces)
 		_ = client.Close()
 	}
+	s.outbounds[c.ID] = outbounds
 	if len(removed) > 0 {
 		s.Log.LogAttrs(ctx, slog.LevelInfo, "Orphaned resources removed.",
 			slog.String("event", "orphans_removed"),

@@ -21,14 +21,16 @@ var ErrReplaceFailed = errors.New("candidate replace failed")
 
 // ConfigHash is the hash of what a full apply of a wireguard or masque source
 // depends on besides its candidates: type, portRange, inboundSocks.listen,
-// the observatory prefix, endpointDomainStrategy and maxActive. A change
-// makes the next sync apply the source in full.
+// the observatory prefix, endpointDomainStrategy, maxActive and
+// dialerProxy (tags do not depend on it, so a change must re-add every
+// outbound). A change makes the next sync apply the source in full.
 func ConfigHash(src config.SourceConfig, t config.SubscriptionTargetConfig) string {
 	v := struct {
 		Type, Listen, Prefix, DomainStrategy string
 		PortRange                            *config.PortRange
 		MaxActive                            int
-	}{Type: src.Type, Prefix: t.ObservatorySubjectSelectorPrefix, PortRange: src.PortRange, MaxActive: src.MaxActive}
+		DialerProxy                          string `json:",omitempty"`
+	}{Type: src.Type, Prefix: t.ObservatorySubjectSelectorPrefix, PortRange: src.PortRange, MaxActive: src.MaxActive, DialerProxy: src.DialerProxy}
 	if t.InboundSocks != nil {
 		v.Listen = t.InboundSocks.Listen
 	}

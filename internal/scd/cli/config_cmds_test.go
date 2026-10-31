@@ -100,6 +100,12 @@ func TestPrintConfigDockerExample(t *testing.T) {
 	printConfigGolden(t, exampleConfig, printConfigDir+"docker-example.json")
 }
 
+// The cascade keys of a source (balancer, dialerProxy, dependsOn) are
+// printed after its other keys.
+func TestPrintConfigCascade(t *testing.T) {
+	printConfigGolden(t, printConfigDir+"cascade.yml", printConfigDir+"cascade.json")
+}
+
 func TestValidateConfigJSON(t *testing.T) {
 	for _, p := range []string{exampleConfig, realShapeGo, printConfigDir + "minimal.sources.yml"} {
 		abs, err := filepath.Abs(p)

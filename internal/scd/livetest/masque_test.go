@@ -42,7 +42,7 @@ func TestLiveMasqueOutbound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := manifest.BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", "", time.Unix(0, 0))
+	m := manifest.BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", manifest.CandidateOptions{}, time.Unix(0, 0))
 	transports := map[string]bool{}
 	for _, e := range m.Entries {
 		transports[e.SelectionCandidate().Transport] = true
@@ -89,7 +89,7 @@ func TestLiveMasqueNeedsTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := manifest.BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", "", time.Unix(0, 0))
+	m := manifest.BuildCandidates(candidate.KindMasque, string(b), "mq", "mq", manifest.CandidateOptions{}, time.Unix(0, 0))
 	ob := m.Entries[0].JSONOutbound.(outbound.Masque)
 	ob.StreamSettings.Security = "none"
 	h, err := outbound.ToProto(ob)
@@ -207,5 +207,47 @@ func TestLiveMasqueTraffic(t *testing.T) {
 				t.Fatalf("%s left in Xray (%v)", h.Tag, err)
 			}
 		})
+	}
+}
+
+// A real Xray accepts WireGuard and MASQUE outbounds with
+// sockopt.dialerProxy (here the static "direct"), keeps it (runtime-state
+// parsed.dialerProxy) and removes them.
+func TestLiveDialerProxyOutbounds(t *testing.T) {
+	c, _, _ := startXray(t)
+	for kind, o := range map[candidate.Kind]manifest.CandidateOptions{
+		candidate.KindWireGuard: {DomainStrategy: "UseIPv4", DialerProxy: "direct"},
+		candidate.KindMasque:    {DialerProxy: "direct"},
+	} {
+		b, err := os.ReadFile(root + "docker/fixtures/" + string(kind) + "/candidates.txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := manifest.BuildCandidates(kind, string(b), "f", "dp", o, time.Unix(0, 0))
+		if len(m.Entries) == 0 {
+			t.Fatalf("%s: no entries", kind)
+		}
+		tag := "x-observe-" + m.Entries[0].Tag
+		h, err := outbound.ToProto(m.Entries[0].JSONOutbound.WithTag(tag))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.AddOutbound(t.Context(), h); err != nil {
+			t.Fatalf("AddOutbound %s: %v", tag, err)
+		}
+		list, err := c.ListOutbounds(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(list, func(h *core.OutboundHandlerConfig) bool { return h.GetTag() == tag })
+		if i < 0 {
+			t.Fatalf("%s not in Xray", tag)
+		}
+		if p, ok := resources.DescribeOutbound(list[i], false); !ok || p["dialerProxy"] != "direct" {
+			t.Errorf("%s: parsed %v", tag, p)
+		}
+		if err := c.RemoveOutbound(t.Context(), tag); err != nil {
+			t.Fatalf("RemoveOutbound %s: %v", tag, err)
+		}
 	}
 }

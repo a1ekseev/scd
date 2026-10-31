@@ -550,6 +550,25 @@ replacement, quarantine and hysteresis, secrets and status
   `candidate_replace_failed` with `stage: remove_rule`. Any failed step
   logs `candidate_replace_failed`, leaves the slot empty and makes the next
   sync apply the source in full.
+- **Waiting for a dependency** (`sources[].dependsOn`, `health: balancer`).
+  Each tick of the tunnel monitor first asks Xray (`GetBalancerInfo`, once
+  per balancer) whether the balancer of every dependency selects an
+  outbound. While one does not, or for `recoverGraceSeconds` (default 180)
+  after it selects again, the source **waits**: its failed tunnels are only
+  repaired and rejoined, never replaced, no pair goes into quarantine, no
+  episode without a live tunnel starts, and its repair lines are debug. A
+  replacement asks the dependency again right before it acts. When a wait
+  starts, the quarantines the source started within `recoverGraceSeconds`
+  before are released. When it ends, the failed-check counts of the
+  source's tunnels are reset, so failures during the cascade's comeback
+  do not trigger replacements. Logs: `source_dependency_unhealthy` (warn,
+  `dependsOn`, `quarantineReleased`) and `source_dependency_recovered`
+  (info, `waitedForMs`, `failuresReset`); none while the Xray API is
+  unavailable (the source counts as waiting then). A source whose last check
+  before an apply failed (`source_check_failed`) is also only repaired.
+  Observatory marks the upper stage dead only after its `probeInterval`, so
+  keep `replaceAfterFailures` × `target.monitor.schedule` ≥ 2 ×
+  `observatory.probeInterval` + the probe timeout.
 - **No replacement.** A failed tunnel with no candidate outside quarantine
   stays in repair (out of the balancer, still checked, rejoined when it
   recovers); a candidate gone from the file with none to replace it is
@@ -801,7 +820,15 @@ What is shown, per strategy:
 - Logs: `balancer_selection_changed` (`info` for the first pick, a mode
   change or a move to or from no pick; Xray moving its pick within a mode
   is `debug`), `balancer_selection_failed`, `balancer_selection_recovered`,
-  `balancer_observatory_unavailable`.
+  `balancer_observatory_unavailable` (once per target: Xray has one
+  observatory, whatever the number of balancers).
+- **Foreign selection.** When sources name the balancer
+  (`sources[].balancer`), an override or a principle target outside their
+  tag namespaces (for example a selector wider than the sources) logs
+  `balancer_foreign_selection` (warn, `selectedTag` and every foreign tag in
+  `selectedTags`; the same set again is debug, another set warns again) and
+  `balancer_foreign_selection_recovered` (info) when the selection is the
+  sources' own again. An empty selection changes nothing.
 
 ## scd sfc
 

@@ -28,7 +28,9 @@ import (
 // returned error is a failure to create the client. While the source's
 // hashes are reset (it waits for a full apply) nothing is replaced, and a
 // tunnel whose inbound is gone from Xray is handled as by Repair
-// (xray_state_lost, done is true).
+// (xray_state_lost, done is true). A source with dependsOn asks its
+// dependencies again after the inbound check (freshWait): when one is not
+// healthy it starts waiting and nothing is replaced.
 func ReplaceFailed(ctx context.Context, d Deps, sub config.SubscriptionConfig, src config.SourceConfig, tunnelID string) (done bool, err error) {
 	t := sub.Target
 	key := state.Key(sub.ID, t.Address)
@@ -50,7 +52,8 @@ func ReplaceFailed(ctx context.Context, d Deps, sub config.SubscriptionConfig, s
 		if st == nil {
 			return
 		}
-		waiting, noLive = len(st.Hashes) == 0, st.NoLiveSince != nil
+		// Hashes reset, or a dependency wait that another worker started.
+		waiting, noLive = len(st.Hashes) == 0 || tg.SourceWaiting(src.ID), st.NoLiveSince != nil
 		ranked, sel = st.Candidates, st.Selection.Clone()
 		for _, tn := range tg.Tunnels {
 			switch {
@@ -81,6 +84,10 @@ func ReplaceFailed(ctx context.Context, d Deps, sub config.SubscriptionConfig, s
 	if !present {
 		d.stateLost(ctx, sub, old)
 		return true, nil
+	}
+	// The tick's dependency check may be older than this failure: ask again.
+	if d.freshWait(context.WithoutCancel(ctx), client, sub, src) {
+		return false, nil
 	}
 	now := d.now()
 	byTag := map[string]manifest.Entry{}

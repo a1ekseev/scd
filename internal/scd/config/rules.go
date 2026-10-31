@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/a1ekseev/scd/internal/common/cron"
@@ -44,6 +45,7 @@ func checkRules(root *schema.Node, cfg *AppConfig, subNodes []*schema.Node) []st
 	var warnings []string
 	for i, s := range cfg.Subscriptions {
 		warnings = append(warnings, checkTarget(subNodes[i], s.Target, res)...)
+		warnings = append(warnings, checkDependencies(subNodes[i], s)...)
 		if s.Enabled && len(s.Sources) > 0 && len(s.EnabledSources()) == 0 {
 			warnings = append(warnings, subNodes[i].Path()+": "+noSourcesWarning)
 		}
@@ -274,4 +276,162 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 			}
 		}
 	}
+}
+
+// checkDependencies applies the cascade rules (balancer, dialerProxy,
+// dependsOn) to the sources of sub, whose node is n, and returns the
+// warnings. Disabled sources are checked too, except that only an enabled
+// source may not depend on a disabled one.
+func checkDependencies(n *schema.Node, sub SubscriptionConfig) []string {
+	byID := make(map[string]SourceConfig, len(sub.Sources))
+	for _, src := range sub.Sources {
+		if _, dup := byID[src.ID]; !dup {
+			byID[src.ID] = src
+		}
+	}
+	strategy := map[string]string{}
+	for _, b := range sub.Target.Balancers {
+		if b.Selection != nil {
+			strategy[b.Tag] = b.Selection.Strategy
+		}
+	}
+
+	var warnings []string
+	edges := map[string][]string{}
+	for j, src := range sub.Sources {
+		key := fmt.Sprintf("sources.%d.", j)
+		if src.DialerProxy != "" {
+			if !slices.Contains(sub.Target.FixedOutbounds, src.DialerProxy) {
+				n.Addf(key+"dialerProxy", "must be in target.fixedOutbounds")
+			}
+			if src.Enabled && src.Type == SourceMasque && !sub.Target.VisionUDP443Override {
+				warnings = append(warnings, n.Path()+"."+key+"dialerProxy: "+masqueVisionWarning)
+			}
+		}
+		seen := map[string]bool{}
+		for k, d := range src.DependsOn {
+			dkey := fmt.Sprintf("%sdependsOn.%d.", key, k)
+			if d.Source == "" {
+				continue
+			}
+			dep, ok := byID[d.Source]
+			switch {
+			case !ok:
+				n.Addf(dkey+"source", "unknown source %q", d.Source)
+				continue
+			case d.Source == src.ID:
+				n.Addf(dkey+"source", "a source cannot depend on itself")
+				continue
+			case seen[d.Source]:
+				n.Addf(dkey+"source", "duplicate dependency %q", d.Source)
+				continue
+			}
+			seen[d.Source] = true
+			edges[src.ID] = append(edges[src.ID], d.Source)
+			if src.Enabled && !dep.Enabled {
+				n.Addf(dkey+"source", "source %q is disabled", d.Source)
+			}
+			if d.Health == HealthBalancer {
+				if dep.Balancer == "" {
+					n.Addf(dkey+"health", "source %q has no balancer", d.Source)
+				} else if st := strategy[dep.Balancer]; st == "random" || st == "roundRobin" {
+					warnings = append(warnings, fmt.Sprintf("%s.%shealth: balancer %q has strategy %q, which selects every candidate; "+
+						"the dependency is always healthy", n.Path(), dkey, dep.Balancer, st))
+				}
+			}
+		}
+	}
+
+	cyclic := checkCycles(n, sub.Sources, edges)
+	for j, src := range sub.Sources {
+		if src.Balancer == "" || cyclic[src.ID] {
+			continue
+		}
+		for _, id := range dependencies(src.ID, edges) {
+			if byID[id].Balancer == src.Balancer {
+				n.Addf(fmt.Sprintf("sources.%d.balancer", j), "balancer %q is also the balancer of dependency %q", src.Balancer, id)
+			}
+		}
+	}
+	return warnings
+}
+
+const masqueVisionWarning = "a masque source behind dialerProxy with target.visionUdp443Override false: " +
+	"an XTLS vision outbound on the way rejects UDP/443, so h3 lines do not connect"
+
+// checkCycles reports every dependsOn cycle of edges once, at the source of
+// the cycle that comes first in config order, and returns the ids on a
+// cycle.
+func checkCycles(n *schema.Node, sources []SourceConfig, edges map[string][]string) map[string]bool {
+	const (
+		unseen = iota
+		active
+		done
+	)
+	mark := map[string]int{}
+	cyclic := map[string]bool{}
+	reported := map[string]bool{}
+	index := map[string]int{}
+	for j, src := range sources {
+		if _, ok := index[src.ID]; !ok {
+			index[src.ID] = j
+		}
+	}
+	var path []string
+	var visit func(id string)
+	visit = func(id string) {
+		mark[id] = active
+		path = append(path, id)
+		for _, next := range edges[id] {
+			switch mark[next] {
+			case unseen:
+				visit(next)
+			case active:
+				cycle := slices.Clone(path[slices.Index(path, next):])
+				for _, c := range cycle {
+					cyclic[c] = true
+				}
+				// Rotate to the source first in config order: one report per cycle.
+				first := 0
+				for i, c := range cycle {
+					if index[c] < index[cycle[first]] {
+						first = i
+					}
+				}
+				cycle = append(cycle[first:], cycle[:first]...)
+				if k := strings.Join(cycle, " "); !reported[k] {
+					reported[k] = true
+					n.Addf(fmt.Sprintf("sources.%d.dependsOn", index[cycle[0]]), "dependsOn cycle: %s",
+						strings.Join(append(cycle, cycle[0]), " → "))
+				}
+			}
+		}
+		path = path[:len(path)-1]
+		mark[id] = done
+	}
+	for _, src := range sources {
+		if mark[src.ID] == unseen {
+			visit(src.ID)
+		}
+	}
+	return cyclic
+}
+
+// dependencies returns the transitive dependencies of id in edges, each
+// once, in depth-first order; edges must have no cycle through id.
+func dependencies(id string, edges map[string][]string) []string {
+	var out []string
+	seen := map[string]bool{id: true}
+	var walk func(string)
+	walk = func(id string) {
+		for _, d := range edges[id] {
+			if !seen[d] {
+				seen[d] = true
+				out = append(out, d)
+				walk(d)
+			}
+		}
+	}
+	walk(id)
+	return out
 }

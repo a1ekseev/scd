@@ -46,7 +46,7 @@ func wgEnv(t *testing.T, replaceAfter int, lines ...int) *env {
 		}}
 	})
 	e := newEnv(t, sub)
-	m := manifest.BuildWireGuard(strings.Join(text, "\n"), "inline", "wg", "UseIPv4", time.Unix(0, 0))
+	m := manifest.BuildWireGuard(strings.Join(text, "\n"), "inline", "wg", manifest.CandidateOptions{DomainStrategy: "UseIPv4"}, time.Unix(0, 0))
 	topo, _ := topology.BuildSource(m, sub.Sources[0], sub.Target)
 	e.mem.ReplaceSourceTopology(e.key, "wg", topo, map[apply.Kind]string{apply.KindOutbound: "h", apply.KindInbound: "h", apply.KindRouting: "h"})
 	e.mem.Update(e.key, func(tg *state.Target) {

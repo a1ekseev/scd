@@ -12,11 +12,11 @@ import (
 // masqueEntry is the entry of masque candidate c. Its selection key is the
 // SHA-256 of the PKIX device public key, so the h3 and h2 lines of one
 // device share it.
-func masqueEntry(c candidate.Masque, line int, tagPrefix string) Entry {
+func masqueEntry(c candidate.Masque, line int, tagPrefix, dialerProxy string) Entry {
 	ep := c.Endpoint.String()
 	e := newCandidateEntry(ProtocolMasque, "mq", c.Label, c.Meta.Exit, ep, c.Endpoint.Addr().String(), int(c.Endpoint.Port()),
 		line, tagPrefix, c.PublicHash(), c.Redacted())
-	ob := outbound.BuildMasque(c, e.Tag)
+	ob := outbound.BuildMasque(c, e.Tag, dialerProxy)
 	e.JSONOutbound = ob
 	n := &e.Normalized
 	n.Network, n.Security, n.SNI = "masque", "tls", c.SNI
