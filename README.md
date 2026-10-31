@@ -52,7 +52,7 @@ output goes to stdout and logs go to stderr.
 | Command | Purpose |
 |---|---|
 | `scd validate-config --config f` | Validate. Prints `{"configPath": "<abs>", "valid": true}`. Warnings go to stderr as `warning: <path>: <text>`, exit code 0. |
-| `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancerMonitor.request.url` and `balancerMonitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
+| `scd print-config --config f [--include-secrets]` | Print the normalized config as JSON (defaults applied, `input` made absolute). Secrets are redacted unless `--include-secrets`: an http(s) `input` and the `monitor.request.url`, `balancers[].monitor.request.url` and `balancers[].monitor.remotePing.url` show as `<scheme>://<host>/<redacted>`, `fetchHeaders` values as `<redacted>`. |
 | `scd sync --config f` | Run one sync and print the JSON report. Exit code 1 when `failed > 0`; orphans are checked first, so an unreachable Xray fails the sync even when no manifest changed. On SIGINT/SIGTERM the Xray apply in flight finishes, the remaining subscriptions and targets are skipped, `sync_canceled` (warn) is logged, the partial report is printed and the exit code is 130 (SIGINT) or 143 (SIGTERM). |
 | `scd daemon --config f` | Run sync, monitors, balancer selection, the status server and remote status polling on cron schedules. Needs `runtime.mode: daemon`. |
 | `scd generate --source-id <id> [--type vless\|wireguard\|masque] [--endpoint-domain-strategy <s>] --input <file\|url\|-> --output m.json --log log.json` | Low-level: build the outbound manifest and parse log from one source without touching Xray. `--source-id` (required) is the tag prefix, as `sources[].id` in the config; `--source-id vless` gives the tags of earlier versions. `--type wireguard` reads a candidate file (a private file, see [WireGuard sources](#wireguard-sources)), needs `--endpoint-domain-strategy` and builds every candidate; `--type masque` reads a MASQUE candidate file the same way, without `--endpoint-domain-strategy`. Keys are written as `<redacted>`. |
@@ -183,20 +183,21 @@ subscriptions:
         maxParallel: 10
         retry: {attempts: 2, delayMs: 250}
         request: {url: https://example.com/, method: GET, expectedStatus: 200, timeoutMs: 5000}
-      balancerMonitor:
-        enabled: true
-        schedule: "*/2 * * * *"
-        socks5: {host: 127.0.0.1, port: 1080}
-        request: {url: https://example.com/health, expectedStatus: 200}
-        remotePing:
-          enabled: true
-          url: https://uptime.example.com/api/push/<token>
-          timeoutMs: 5000
-          viaSocks: true
-      balancerSelection:
-        enabled: true
-        balancerTag: x-balancer
-        schedule: "*/15 * * * * *"
+      balancers:
+        - tag: x-balancer        # routing.balancers[].tag in Xray
+          monitor:
+            enabled: true
+            schedule: "*/2 * * * *"
+            socks5: {host: 127.0.0.1, port: 1080}
+            request: {url: https://example.com/health, expectedStatus: 200}
+            remotePing:
+              enabled: true
+              url: https://uptime.example.com/api/push/<token>
+              timeoutMs: 5000
+              viaSocks: true
+          selection:
+            enabled: true
+            schedule: "*/15 * * * * *"
 runtime:
   mode: daemon                   # run-once | daemon
   schedule: "*/5 * * * *"
@@ -235,13 +236,14 @@ statusServer:
 | `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
-| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. A fixed tag must not lie in a source namespace (`<id>-…`, `in-<id>-…`, `route-<id>-…`). | `[]` |
+| `.target.fixedOutbounds` / `fixedInbounds` / `fixedRouting` | Outbound/inbound tags and routing `ruleTag`s that scd never deletes. A fixed tag must not lie in the namespace of an enabled source (`<id>-…`, `in-<id>-…`, `route-<id>-…`); a disabled source owns no tags, so a static outbound may use its namespace. | `[]` |
 | `.target.visionUdp443Override` | Rewrite REALITY `xtls-rprx-vision` to `xtls-rprx-vision-udp443` on this target. | `false` |
 | `.target.observatorySubjectSelectorPrefix` | Prefix added to every applied outbound tag, so that the static `observatory.subjectSelector` / `balancers[].selector` match them. | none |
 | `.target.inboundSocks.listen` | IP address or `localhost` for the generated SOCKS inbounds; the ports come from `sources[].portRange`. Required when inbounds or routing are enabled or the monitor is on. | — |
 | `.target.monitor` | Per-tunnel HTTP check through each generated SOCKS inbound: `enabled`, `schedule`, `maxParallel`, `retry.{attempts,delayMs}`, `request.{url,method GET\|HEAD\|POST,expectedStatus,timeoutMs}`. Requires all three resource kinds. | off; `10`; `1`/`250`; `GET`, `5000` |
-| `.target.balancerMonitor` | Observe-only check of the Xray balancer through an external SOCKS5: `enabled`, `schedule`, `socks5.{host,port}`, `request`, `retry`, `remotePing.{enabled,url,timeoutMs,viaSocks}`. | off |
-| `.target.balancerSelection` | Dashboard view of the outbound the Xray balancer selects, see [Balancer selection](#balancer-selection). | `{enabled: false, observatory: true}` |
+| `.target.balancers[]` | Xray balancers scd watches, each with its own loops. `tag` (required, unique) is `routing.balancers[].tag` in Xray. `monitor` and `selection` are optional. The status API and dashboard show only the first balancer. | `[]` |
+| `.target.balancers[].monitor` | Observe-only check of the balancer through an external SOCKS5: `enabled`, `schedule`, `socks5.{host,port}`, `request`, `retry`, `remotePing.{enabled,url,timeoutMs,viaSocks}`. | off |
+| `.target.balancers[].selection` | Dashboard view of the outbound the balancer selects: `enabled`, `schedule`, `observatory`, `strategy`, see [Balancer selection](#balancer-selection). | `{enabled: false, observatory: true}` |
 | `runtime.mode` / `runtime.schedule` | `run-once` or `daemon`. A schedule is required for `daemon`. | `run-once` |
 | `logging.level` / `logging.format` | `fatal\|error\|warn\|info\|debug\|trace\|silent`; `json\|pretty`. | `info` / `json` |
 | `resources.{outbounds,inbounds,routing}.enabled` | Resource kinds to manage. Inbounds require outbounds. Routing requires both. | `true` / `false` / `false` |
@@ -414,8 +416,9 @@ replacement, quarantine and hysteresis, secrets and status
 - Every sync first removes **orphans** on each target: non-fixed resources
   outside the namespace of every enabled source (tags of a removed or
   disabled source, tags from before a source id change), in the order
-  routing rules → inbounds → outbounds, for the enabled resource kinds.
-  Routing rules without a `ruleTag` are never touched. If an orphan cannot be
+  routing rules → inbounds → outbounds, for the enabled resource kinds. A
+  fixed tag is never an orphan, even inside the namespace of a disabled
+  source. Routing rules without a `ruleTag` are never touched. If an orphan cannot be
   removed (or Xray cannot be reached), scd logs `orphan_remove_failed` and
   applies nothing to that target on this sync; removed orphans are logged as
   `orphans_removed`. Because of this check, `scd sync` exits with an error
@@ -564,7 +567,7 @@ replacement, quarantine and hysteresis, secrets and status
   `no_replacement`, and candidates coming back fill them again. A file with
   lines none of which is accepted still fails the source
   (`manifest_validation_failed`) and its tunnels stay.
-- `balancerMonitor` checks the balancer end-to-end through an external SOCKS5.
+- `balancers[].monitor` checks a balancer end-to-end through an external SOCKS5.
   It never repairs or applies anything. `remotePing` then pushes one group
   result (`status`, `msg`, `ping` query parameters) to an Uptime-Kuma-style
   push URL. With `viaSocks: true` the push goes through the balancer SOCKS5.
@@ -758,13 +761,13 @@ fetchHeaders:
 
 ## Balancer selection
 
-`target.balancerSelection` shows on the dashboard which outbound Xray's
+`target.balancers[].selection` shows on the dashboard which outbound Xray's
 balancer is choosing **now**. A separate read-only loop calls
 `RoutingService.GetBalancerInfo` and `ObservatoryService.GetOutboundStatus`
 in parallel on its own schedule, without the target lock. It does not need a
 sync first, but tunnel names are shown only after a sync.
 
-- `balancerTag` is `routing.balancers[].tag` in the Xray config, not a
+- The balancer's `tag` is `routing.balancers[].tag` in the Xray config, not a
   `ruleTag`. Xray does not expose it over the API.
 - `schedule` usually has 6 fields with seconds, for example
   `"*/15 * * * * *"`, matching the observatory `probeInterval`. Polling more
@@ -1375,6 +1378,12 @@ Of scd:
   `ghcr.io/a1ekseev/gtl` images are no longer published; their last tags are
   the old version. Use `ghcr.io/a1ekseev/scd` with the `command:` values from
   [Docker](#docker).
+- `target.balancerMonitor` and `target.balancerSelection` are replaced by
+  the list `target.balancers[]` (breaking, no compatibility layer; the old
+  keys are unknown): `balancerMonitor` becomes `balancers[0].monitor`,
+  `balancerSelection` becomes `balancers[0].selection` without
+  `balancerTag`, whose value moves to `balancers[0].tag`. Each balancer has
+  its own monitor and selection loops, and logs carry `balancerTag`.
 - Subscriptions now have `sources` (breaking, no compatibility layer): move
   `input`, `format`, `fetchTimeoutMs`, `fetchUserAgent`, `fetchHeaders`,
   `allowInsecure` and `filters` into `sources[0]` with `id: vless` and

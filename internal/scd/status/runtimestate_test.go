@@ -1,6 +1,7 @@
 package status
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,13 +37,17 @@ func startFake(t *testing.T, opts ...xrayfake.Option) (*xrayfake.Server, xrayapi
 
 // rsCase is one entry of runtime-state/cases.json.
 type rsCase struct {
-	Name            string          `json:"name"`
-	Line            string          `json:"line"`
-	Input           string          `json:"input"`
-	Target          json.RawMessage `json:"target"`
-	Options         struct{ IncludeRaw, IncludeSecrets bool }
-	BalancerMonitor *fixtureBalancer `json:"balancerMonitor"`
-	Runtime         struct {
+	Name    string          `json:"name"`
+	Line    string          `json:"line"`
+	Input   string          `json:"input"`
+	Target  json.RawMessage `json:"target"`
+	Options struct{ IncludeRaw, IncludeSecrets bool }
+	// Balancers is the balancer state by tag (monitor only).
+	Balancers []struct {
+		Tag     string          `json:"tag"`
+		Monitor fixtureBalancer `json:"monitor"`
+	} `json:"balancers"`
+	Runtime struct {
 		Outbounds []struct {
 			FixedTag string `json:"fixedTag"`
 			Tunnel   *int   `json:"tunnel"`
@@ -154,9 +159,9 @@ func loadCases(t *testing.T) []rsCase {
 func applyTargetOverrides(t *testing.T, tgt *config.SubscriptionTargetConfig, raw json.RawMessage) {
 	t.Helper()
 	var o struct {
-		VisionUDP443Override *bool                               `json:"visionUdp443Override"`
-		Monitor              *config.TargetMonitorConfig         `json:"monitor"`
-		BalancerMonitor      *config.TargetBalancerMonitorConfig `json:"balancerMonitor"`
+		VisionUDP443Override *bool                       `json:"visionUdp443Override"`
+		Monitor              *config.TargetMonitorConfig `json:"monitor"`
+		Balancers            []config.BalancerConfig     `json:"balancers"`
 	}
 	if err := json.Unmarshal(raw, &o); err != nil {
 		t.Fatal(err)
@@ -168,9 +173,13 @@ func applyTargetOverrides(t *testing.T, tgt *config.SubscriptionTargetConfig, ra
 		o.Monitor.MaxParallel, o.Monitor.Retry = tgt.Monitor.MaxParallel, tgt.Monitor.Retry
 		tgt.Monitor = *o.Monitor
 	}
-	if o.BalancerMonitor != nil {
-		o.BalancerMonitor.Retry = tgt.BalancerMonitor.Retry
-		tgt.BalancerMonitor = *o.BalancerMonitor
+	for _, b := range o.Balancers {
+		// The defaults of the config loader.
+		if m := b.Monitor; m != nil {
+			m.Retry = config.RetryConfig{Attempts: 1, DelayMs: 250}
+			m.RemotePing.TimeoutMs = cmp.Or(m.RemotePing.TimeoutMs, 5000)
+		}
+		tgt.Balancers = append(tgt.Balancers, b)
 	}
 }
 
@@ -221,10 +230,14 @@ func TestRuntimeStateGolden(t *testing.T) {
 					return cl.AddRule(context.Background(), resources.Rule(tn, tn.OutboundTagInitial))
 				})
 			}
-			if c.BalancerMonitor != nil {
+			if len(c.Balancers) > 0 {
 				key := state.Key("source-1", "127.0.0.1:8080")
 				env.deps.Memory.MarkSynced(key)
-				env.deps.Memory.Update(key, func(st *state.Target) { st.Balancer = state.BalancerMonitor(*c.BalancerMonitor) })
+				env.deps.Memory.Update(key, func(st *state.Target) {
+					for _, b := range c.Balancers {
+						st.EnsureBalancer(b.Tag).Monitor = state.BalancerMonitor(b.Monitor)
+					}
+				})
 			}
 
 			got, body := env.build(t)

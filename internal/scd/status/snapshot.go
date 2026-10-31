@@ -119,7 +119,7 @@ type SourceView struct {
 }
 
 // BalancerSelectionView is the balancer selection of a grouped target
-// (D22, 10 §6.6): present only when target.balancerSelection is enabled.
+// (D22, 10 §6.6): present only when the selection of target.balancers[0] is enabled.
 // The selected* fields describe the effective selection (override or single
 // principle target); they keep the last successful value while state is
 // error.
@@ -129,7 +129,7 @@ type BalancerSelectionView struct {
 	State string `json:"state"`
 	// Mode is override, single, pool, none or unknown.
 	Mode string `json:"mode,omitempty"`
-	// Strategy is the optional balancerSelection.strategy UI hint (D22 p.3).
+	// Strategy is the optional selection.strategy UI hint (D22 p.3).
 	Strategy            string `json:"strategy,omitempty"`
 	SelectedOutboundTag string `json:"selectedOutboundTag,omitempty"`
 	SelectedTunnelID    string `json:"selectedTunnelId,omitempty"`
@@ -264,10 +264,11 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 		}
 		m.View(key, func(t *state.Target) {
 			withSource := sourceViews(sub, t) != nil
+			bal := balancerState(t, firstBalancer(sub))
 			for _, tn := range t.Tunnels {
-				st := statusTunnel(subID, addr, tn, &t.Balancer)
-				if t.BalancerSelection.State != "" {
-					addSelection(&st, tn, &t.BalancerSelection)
+				st := statusTunnel(subID, addr, tn, &bal.Monitor)
+				if bal.Selection.State != "" {
+					addSelection(&st, tn, &bal.Selection)
 				}
 				if withSource {
 					st.SourceID = tn.Mapping.SourceID
@@ -283,6 +284,34 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 			strings.Compare(a.DisplayName, b.DisplayName))
 	})
 	return tunnels
+}
+
+// firstBalancer is target.balancers[0] of sub, or the zero value without
+// balancers: the balancer views of the status API show only the first
+// balancer of a target.
+func firstBalancer(sub config.SubscriptionConfig) config.BalancerConfig {
+	if len(sub.Target.Balancers) == 0 {
+		return config.BalancerConfig{}
+	}
+	return sub.Target.Balancers[0]
+}
+
+// balancerState returns the state of balancer b in t, or an idle state when
+// t has none for it.
+func balancerState(t *state.Target, b config.BalancerConfig) *state.Balancer {
+	if s, ok := t.BalancerState(b.Tag); ok && b.Tag != "" {
+		return s
+	}
+	return &state.Balancer{Monitor: state.BalancerMonitor{State: state.BalancerIdle, RemotePingState: state.RemotePingIdle}}
+}
+
+// enabledSelection returns the selection config of b when it is enabled,
+// else nil.
+func enabledSelection(b config.BalancerConfig) *config.BalancerSelectionConfig {
+	if b.Selection != nil && b.Selection.Enabled {
+		return b.Selection
+	}
+	return nil
 }
 
 // sourceViews is the sources[] of target t (nil before any state) of sub:
@@ -370,15 +399,15 @@ func addSelection(st *StatusTunnel, tn *state.Tunnel, s *state.SelectionState) {
 // durationMs is d in (fractional) milliseconds.
 func durationMs(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
-// selectionView is the grouped balancer selection of a target: s with the
-// selected tag mapped onto tunnels (prefix is the target's
+// selectionView is the grouped selection of balancer tag of a target: s
+// with the selected tag mapped onto tunnels (prefix is the target's
 // observatorySubjectSelectorPrefix). s is nil before any state exists.
-func selectionView(cfg config.BalancerSelectionConfig, prefix string, s *state.SelectionState, tunnels []*state.Tunnel) BalancerSelectionView {
-	v := BalancerSelectionView{BalancerTag: cfg.BalancerTag, State: state.SelectionIdle}
+func selectionView(cfg config.BalancerSelectionConfig, tag, prefix string, s *state.SelectionState, tunnels []*state.Tunnel) BalancerSelectionView {
+	v := BalancerSelectionView{BalancerTag: tag, State: state.SelectionIdle}
 	if s == nil || s.State == "" {
 		return v
 	}
-	v.BalancerTag, v.State = cmp.Or(s.BalancerTag, cfg.BalancerTag), s.State
+	v.BalancerTag, v.State = cmp.Or(s.BalancerTag, tag), s.State
 	v.Mode, v.Strategy = string(s.Mode), cfg.Strategy
 	if tag := s.SelectedTag; tag != "" {
 		v.SelectedOutboundTag = tag
@@ -505,9 +534,9 @@ func sortGroups(subs []GroupedSubscription) {
 
 // BuildConfiguredGroups groups tunnels and makes sure that every enabled
 // subscription of cfg and its target are present, even without tunnels or
-// memory state. A configured target's
-// balancer monitor is its memory state, else the group's, else idle; with
-// balancerSelection enabled it also gets the selection view (idle until
+// memory state. A configured target's balancer monitor is the memory state
+// of its first balancer, else the group's, else idle; when the selection of
+// the first balancer is enabled it also gets the selection view (idle until
 // polled), and its sources when sourceViews has them.
 func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *state.Memory) []GroupedSubscription {
 	subs := GroupTunnels(tunnels)
@@ -533,18 +562,21 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			sel *BalancerSelectionView
 		)
 		srcs := sourceViews(c, nil)
-		bs := c.Target.BalancerSelection
-		if bs.Enabled {
-			sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, nil, nil))
+		b := firstBalancer(c)
+		bs := enabledSelection(b)
+		prefix := c.Target.ObservatorySubjectSelectorPrefix
+		if bs != nil {
+			sel = new(selectionView(*bs, b.Tag, prefix, nil, nil))
 		}
 		m.View(state.Key(c.ID, addr), func(t *state.Target) {
+			bal := balancerState(t, b)
 			if t.SyncSeen {
-				v := balancerView(&t.Balancer)
+				v := balancerView(&bal.Monitor)
 				bm = &v
 			}
 			srcs = sourceViews(c, t)
-			if bs.Enabled {
-				sel = new(selectionView(bs, c.Target.ObservatorySubjectSelectorPrefix, &t.BalancerSelection, t.Tunnels))
+			if bs != nil {
+				sel = new(selectionView(*bs, b.Tag, prefix, &bal.Selection, t.Tunnels))
 			}
 		})
 		if j >= 0 {

@@ -7,7 +7,16 @@
         "id": "sub-1",
         "enabled": true,
         "address": "127.0.0.1:8080",
-        "observatorySubjectSelectorPrefix": "x-observe-"
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            }
+          }
+        ]
       }
     ],
     "remoteInstances": [
@@ -27,14 +36,19 @@
     {
       "subscriptionId": "sub-1",
       "targetAddress": "127.0.0.1:8080",
-      "balancerMonitor": {
-        "state": "degraded",
-        "remotePingState": "idle",
-        "consecutiveFailures": 0,
-        "lastCheckedAt": "2026-08-15T10:00:00.000Z",
-        "lastFailureAt": "2026-08-15T10:00:00.000Z",
-        "lastError": "<script>alert(\"x\")</script> & 'q'"
-      },
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "degraded",
+            "remotePingState": "idle",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "lastError": "<script>alert(\"x\")</script> & 'q'"
+          }
+        }
+      ],
       "tunnels": [
         {
           "baseTunnelId": "hostile-1",

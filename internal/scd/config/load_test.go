@@ -241,51 +241,70 @@ func TestS10MonitorAndRuntimeStateDefaults(t *testing.T) {
 	}
 }
 
+// withBalancer appends one target.balancers[] entry with tag x-balancer
+// and the keys of lines (one per line, no indentation) to s1.
+func withBalancer(t *testing.T, lines ...string) string {
+	t.Helper()
+	var body strings.Builder
+	body.WriteString("      balancers:\n        - tag: x-balancer\n")
+	for _, l := range lines {
+		body.WriteString("          " + l + "\n")
+	}
+	return withTarget(t, body.String())
+}
+
+const bal = "subscriptions.0.target.balancers.0."
+
 func TestS11BalancerMonitor(t *testing.T) {
-	valid := withTarget(t, `      balancerMonitor:
-        enabled: true
-        schedule: "*/1 * * * *"
-        socks5: {host: xray, port: 1080}
-        request: `+request+`
-        remotePing: {enabled: true, url: https://ping.example.com/push, timeoutMs: 3000, viaSocks: true}
-`)
-	l, _ := mustLoad(t, valid)
-	bm := l.Config.Subscriptions[0].Target.BalancerMonitor
+	l, _ := mustLoad(t, withBalancer(t, "monitor:",
+		"  enabled: true",
+		`  schedule: "*/1 * * * *"`,
+		"  socks5: {host: xray, port: 1080}",
+		"  request: "+request,
+		"  remotePing: {enabled: true, url: https://ping.example.com/push, timeoutMs: 3000, viaSocks: true}"))
+	b := l.Config.Subscriptions[0].Target.Balancers
+	if len(b) != 1 || b[0].Tag != "x-balancer" || b[0].Monitor == nil || b[0].Selection != nil {
+		t.Fatalf("balancers %+v", b)
+	}
+	bm := b[0].Monitor
 	if !bm.Enabled || bm.Socks5 == nil || bm.Socks5.Port != 1080 || bm.Request == nil || bm.Request.Method != http.MethodGet || bm.Request.TimeoutMs != 5000 {
-		t.Fatalf("balancerMonitor %+v", bm)
+		t.Fatalf("monitor %+v", bm)
 	}
 	if rp := bm.RemotePing; !rp.Enabled || rp.TimeoutMs != 3000 || !rp.ViaSocks || rp.URL != "https://ping.example.com/push" {
 		t.Fatalf("remotePing %+v", rp)
 	}
-	mustFail(t, withTarget(t, "      balancerMonitor: {enabled: true}\n"),
-		"subscriptions.0.target.balancerMonitor.schedule: required when balancerMonitor.enabled is true",
-		"subscriptions.0.target.balancerMonitor.socks5: required when balancerMonitor.enabled is true",
-		"subscriptions.0.target.balancerMonitor.request: required when balancerMonitor.enabled is true")
+	mustFail(t, withBalancer(t, "monitor: {enabled: true}"),
+		bal+"monitor.schedule: required when monitor.enabled is true",
+		bal+"monitor.socks5: required when monitor.enabled is true",
+		bal+"monitor.request: required when monitor.enabled is true")
 }
 
 func TestS12Retry(t *testing.T) {
-	l, _ := mustLoad(t, withTarget(t, "      monitor: {retry: {attempts: 2, delayMs: 100}}\n      balancerMonitor: {retry: {attempts: 3, delayMs: 150}}\n"))
-	tg := l.Config.Subscriptions[0].Target
-	if tg.Monitor.Retry != (RetryConfig{2, 100}) || tg.BalancerMonitor.Retry != (RetryConfig{3, 150}) {
-		t.Fatalf("retry %+v %+v", tg.Monitor.Retry, tg.BalancerMonitor.Retry)
+	l, _ := mustLoad(t, withTarget(t, "      monitor: {retry: {attempts: 2, delayMs: 100}}\n"))
+	if tg := l.Config.Subscriptions[0].Target; tg.Monitor.Retry != (RetryConfig{2, 100}) {
+		t.Fatalf("retry %+v", tg.Monitor.Retry)
+	}
+	l, _ = mustLoad(t, withBalancer(t, "monitor: {retry: {attempts: 3, delayMs: 150}}"))
+	if r := l.Config.Subscriptions[0].Target.Balancers[0].Monitor.Retry; r != (RetryConfig{3, 150}) {
+		t.Fatalf("balancer retry %+v", r)
 	}
 	mustFail(t, withTarget(t, "      monitor: {retry: {attempts: 0}}\n"), "subscriptions.0.target.monitor.retry.attempts: must be at least 1")
-	mustFail(t, withTarget(t, "      balancerMonitor: {retry: {delayMs: -1}}\n"), "subscriptions.0.target.balancerMonitor.retry.delayMs: must be at least 0")
+	mustFail(t, withBalancer(t, "monitor: {retry: {delayMs: -1}}"), bal+"monitor.retry.delayMs: must be at least 0")
 }
 
 func TestS13RemotePing(t *testing.T) {
-	enabled := "      balancerMonitor:\n        enabled: true\n        schedule: '@hourly'\n        socks5: {host: x, port: 1}\n        request: " + request + "\n"
-	mustFail(t, withTarget(t, enabled+"        remotePing: {enabled: true}\n"),
-		"subscriptions.0.target.balancerMonitor.remotePing.url: required when remotePing.enabled is true")
-	mustFail(t, withTarget(t, enabled+"        remotePing: {timeoutMs: 0}\n"),
-		"subscriptions.0.target.balancerMonitor.remotePing.timeoutMs: must be at least 1")
-	mustFail(t, withTarget(t, "      balancerMonitor: {remotePing: {enabled: true, url: 'https://p.example.com/'}}\n"),
-		"subscriptions.0.target.balancerMonitor.remotePing.enabled: requires balancerMonitor.enabled")
+	enabled := []string{"monitor:", "  enabled: true", "  schedule: '@hourly'", "  socks5: {host: x, port: 1}", "  request: " + request}
+	mustFail(t, withBalancer(t, append(enabled, "  remotePing: {enabled: true}")...),
+		bal+"monitor.remotePing.url: required when remotePing.enabled is true")
+	mustFail(t, withBalancer(t, append(enabled, "  remotePing: {timeoutMs: 0}")...),
+		bal+"monitor.remotePing.timeoutMs: must be at least 1")
+	mustFail(t, withBalancer(t, "monitor: {remotePing: {enabled: true, url: 'https://p.example.com/'}}"),
+		bal+"monitor.remotePing.enabled: requires monitor.enabled")
 	mustFail(t, withTarget(t, "      monitor: {remotePing: {}}\n"), `subscriptions.0.target.monitor: unknown key "remotePing"`)
 }
 
 func TestS14LegacySuccessGet(t *testing.T) {
-	mustFail(t, withTarget(t, "      balancerMonitor: {successGet: {}}\n"), `unknown key "successGet"`)
+	mustFail(t, withBalancer(t, "monitor: {successGet: {}}"), `unknown key "successGet"`)
 }
 
 func TestMonitorCrossFieldRules(t *testing.T) {
@@ -375,41 +394,76 @@ func TestAllowInsecureRejectsOther(t *testing.T) {
 	mustFail(t, withSource(t, "        allowInsecure: yes\n"), "subscriptions.0.sources.0.allowInsecure: must be one of deny|allow")
 }
 
-func TestBalancerSelectionDefaults(t *testing.T) {
+func TestBalancersDefaults(t *testing.T) {
 	l, _ := mustLoad(t, base)
-	if bs := l.Config.Subscriptions[0].Target.BalancerSelection; bs != (BalancerSelectionConfig{Observatory: true}) {
-		t.Fatalf("balancerSelection %+v", bs)
+	if b := l.Config.Subscriptions[0].Target.Balancers; b == nil || len(b) != 0 {
+		t.Fatalf("balancers %#v", b)
 	}
-	mustFail(t, withTarget(t, "      balancerSelection: {strategy: fastest}\n"),
-		"subscriptions.0.target.balancerSelection.strategy: must be one of leastPing|leastLoad|random|roundRobin")
-	mustFail(t, withTarget(t, "      balancerSelection: {tag: x}\n"), `subscriptions.0.target.balancerSelection: unknown key "tag"`)
+	l, _ = mustLoad(t, withBalancer(t, "selection: {}"))
+	if bs := l.Config.Subscriptions[0].Target.Balancers[0].Selection; bs == nil || *bs != (BalancerSelectionConfig{Observatory: true}) {
+		t.Fatalf("selection %+v", bs)
+	}
+	mustFail(t, withBalancer(t, "selection: {strategy: fastest}"),
+		bal+"selection.strategy: must be one of leastPing|leastLoad|random|roundRobin")
+	mustFail(t, withBalancer(t, "selection: {balancerTag: x}"), bal+`selection: unknown key "balancerTag"`)
+	mustFail(t, withBalancer(t, "bogus: 1"), `subscriptions.0.target.balancers.0: unknown key "bogus"`)
 }
 
-func TestBalancerSelectionRequiresTagAndSchedule(t *testing.T) {
-	mustFail(t, withTarget(t, "      balancerSelection: {enabled: true}\n"),
-		"subscriptions.0.target.balancerSelection.balancerTag: required when balancerSelection.enabled is true",
-		"subscriptions.0.target.balancerSelection.schedule: required when balancerSelection.enabled is true")
-	mustFail(t, withTarget(t, "      balancerSelection: {enabled: true, balancerTag: b, schedule: 'nope'}\n"),
-		"subscriptions.0.target.balancerSelection.schedule: ")
+// The old single-balancer keys are unknown: there is no compatibility.
+func TestOldBalancerKeysRejected(t *testing.T) {
+	mustFail(t, withTarget(t, "      balancerMonitor: {enabled: false}\n"), `subscriptions.0.target: unknown key "balancerMonitor"`)
+	mustFail(t, withTarget(t, "      balancerSelection: {enabled: false}\n"), `subscriptions.0.target: unknown key "balancerSelection"`)
+}
+
+func TestBalancerTags(t *testing.T) {
+	mustFail(t, withTarget(t, "      balancers:\n        - monitor: {}\n"), "subscriptions.0.target.balancers.0.tag: required")
+	mustFail(t, withTarget(t, "      balancers:\n        - {tag: ''}\n"), "subscriptions.0.target.balancers.0.tag: ")
+	mustFail(t, withTarget(t, "      balancers:\n        - {tag: a}\n        - {tag: b}\n        - {tag: a}\n"),
+		`subscriptions.0.target.balancers.2.tag: duplicate balancer tag "a"`)
+	l, _ := mustLoad(t, withTarget(t, "      balancers:\n        - {tag: a, monitor: {}}\n        - {tag: b, selection: {}}\n"))
+	if b := l.Config.Subscriptions[0].Target.Balancers; len(b) != 2 || b[0].Tag != "a" || b[1].Tag != "b" || b[0].Selection != nil || b[1].Monitor != nil {
+		t.Fatalf("balancers %+v", b)
+	}
+}
+
+func TestBalancerSelectionRequiresSchedule(t *testing.T) {
+	mustFail(t, withBalancer(t, "selection: {enabled: true}"),
+		bal+"selection.schedule: required when selection.enabled is true")
+	mustFail(t, withBalancer(t, "selection: {enabled: true, schedule: 'nope'}"), bal+"selection.schedule: ")
 }
 
 func TestBalancerSelectionSixFieldCron(t *testing.T) {
-	l, warnings := mustLoad(t, withTarget(t, "      observatorySubjectSelectorPrefix: x-observe-\n"+
-		"      balancerSelection: {enabled: true, balancerTag: x-balancer, schedule: '*/15 * * * * *', observatory: false, strategy: leastPing}\n"))
+	l, warnings := mustLoad(t, strings.Replace(withBalancer(t, "selection: {enabled: true, schedule: '*/15 * * * * *', observatory: false, strategy: leastPing}"),
+		"      address: 127.0.0.1:8080\n", "      address: 127.0.0.1:8080\n      observatorySubjectSelectorPrefix: x-observe-\n", 1))
 	if len(warnings) != 0 {
 		t.Fatalf("warnings %v", warnings)
 	}
-	want := BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: "*/15 * * * * *", Strategy: "leastPing"}
-	if bs := l.Config.Subscriptions[0].Target.BalancerSelection; bs != want {
-		t.Fatalf("balancerSelection %+v", bs)
+	want := BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *", Strategy: "leastPing"}
+	if bs := l.Config.Subscriptions[0].Target.Balancers[0].Selection; *bs != want {
+		t.Fatalf("selection %+v", bs)
 	}
 }
 
 func TestBalancerSelectionWarnsWithoutPrefix(t *testing.T) {
-	_, warnings := mustLoad(t, withTarget(t, "      balancerSelection: {enabled: true, balancerTag: x-balancer, schedule: '*/15 * * * * *'}\n"))
-	want := []string{"subscriptions.0.target.balancerSelection: balancerSelection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector"}
+	_, warnings := mustLoad(t, withBalancer(t, "selection: {enabled: true, schedule: '*/15 * * * * *'}"))
+	want := []string{bal + "selection: the selection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector"}
 	if !reflect.DeepEqual(warnings, want) {
 		t.Fatalf("warnings %q", warnings)
+	}
+}
+
+// RedactSecrets copies the balancers: the original config keeps its URLs.
+func TestRedactSecretsDeepCopy(t *testing.T) {
+	l, _ := mustLoad(t, withBalancer(t, "monitor:",
+		"  request: {url: 'https://probe.example.com/p?token=s', expectedStatus: 204}",
+		"  remotePing: {url: 'https://ping.example.com/push/s?token=s'}"))
+	tg := l.Config.Subscriptions[0].Target
+	red := tg.RedactSecrets()
+	if m := red.Balancers[0].Monitor; m.Request.URL != "https://probe.example.com/<redacted>" || m.RemotePing.URL != "https://ping.example.com/<redacted>" {
+		t.Fatalf("redacted %+v %+v", m.Request, m.RemotePing)
+	}
+	if m := tg.Balancers[0].Monitor; m.Request.URL != "https://probe.example.com/p?token=s" || m.RemotePing.URL != "https://ping.example.com/push/s?token=s" {
+		t.Fatalf("original changed %+v %+v", m.Request, m.RemotePing)
 	}
 }
 
@@ -491,10 +545,10 @@ func TestUnknownKeysRejectedEverywhere(t *testing.T) {
 		{"monitor", withTarget(t, "      monitor: {bogus: 1}\n"), `subscriptions.0.target.monitor: unknown key "bogus"`},
 		{"monitor.retry", withTarget(t, "      monitor: {retry: {bogus: 1}}\n"), `subscriptions.0.target.monitor.retry: unknown key "bogus"`},
 		{"monitor.request", withTarget(t, "      monitor: {request: {url: 'https://a.example.com', expectedStatus: 204, bogus: 1}}\n"), `subscriptions.0.target.monitor.request: unknown key "bogus"`},
-		{"balancerMonitor.socks5", withTarget(t, "      balancerMonitor: {socks5: {host: h, port: 1, bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.socks5: unknown key "bogus"`},
-		{"balancerMonitor.request", withTarget(t, "      balancerMonitor: {request: {url: 'https://a.example.com', expectedStatus: 204, bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.request: unknown key "bogus"`},
-		{"remotePing", withTarget(t, "      balancerMonitor: {remotePing: {bogus: 1}}\n"), `subscriptions.0.target.balancerMonitor.remotePing: unknown key "bogus"`},
-		{"balancerSelection", withTarget(t, "      balancerSelection: {bogus: 1}\n"), `subscriptions.0.target.balancerSelection: unknown key "bogus"`},
+		{"monitor.socks5", withBalancer(t, "monitor: {socks5: {host: h, port: 1, bogus: 1}}"), bal + `monitor.socks5: unknown key "bogus"`},
+		{"monitor.request", withBalancer(t, "monitor: {request: {url: 'https://a.example.com', expectedStatus: 204, bogus: 1}}"), bal + `monitor.request: unknown key "bogus"`},
+		{"remotePing", withBalancer(t, "monitor: {remotePing: {bogus: 1}}"), bal + `monitor.remotePing: unknown key "bogus"`},
+		{"selection", withBalancer(t, "selection: {bogus: 1}"), bal + `selection: unknown key "bogus"`},
 		{"runtime", replace(t, "runtime: {}", "runtime: {bogus: 1}"), `runtime: unknown key "bogus"`},
 		{"logging", replace(t, "logging: {}", "logging: {bogus: 1}"), `logging: unknown key "bogus"`},
 		{"resources", replace(t, "resources: {}", "resources: {bogus: 1}"), `resources: unknown key "bogus"`},
@@ -569,7 +623,10 @@ func TestSCDRealShapeGoFormValid(t *testing.T) {
 		if tg.ObservatorySubjectSelectorPrefix != "x-observe-" || tg.VisionUDP443Override || tg.InboundSocks == nil || tg.InboundSocks.Listen != "0.0.0.0" {
 			t.Fatalf("%s target %+v", s.ID, tg)
 		}
-		bm := tg.BalancerMonitor
+		if len(tg.Balancers) != 1 || tg.Balancers[0].Tag != "x-balancer" || tg.Balancers[0].Monitor == nil {
+			t.Fatalf("%s balancers %+v", s.ID, tg.Balancers)
+		}
+		bm := tg.Balancers[0].Monitor
 		if !bm.Enabled || bm.Socks5 == nil || bm.Socks5.Port != 1080 || !bm.RemotePing.ViaSocks || bm.Retry != (RetryConfig{3, 500}) {
 			t.Fatalf("%s balancerMonitor %+v", s.ID, bm)
 		}
@@ -583,10 +640,11 @@ func TestSCDRealShapeGoFormValid(t *testing.T) {
 }
 
 func TestDisabledScheduleStillValidated(t *testing.T) {
-	mustFail(t, withTarget(t, "      monitor: {schedule: '61 * * * *'}\n      balancerMonitor: {schedule: nope}\n      balancerSelection: {schedule: '0 0 L * *'}\n"),
+	mustFail(t, strings.Replace(withBalancer(t, "monitor: {schedule: nope}", "selection: {schedule: '0 0 L * *'}"),
+		"      address: 127.0.0.1:8080\n", "      address: 127.0.0.1:8080\n      monitor: {schedule: '61 * * * *'}\n", 1),
 		"subscriptions.0.target.monitor.schedule: ",
-		"subscriptions.0.target.balancerMonitor.schedule: ",
-		"subscriptions.0.target.balancerSelection.schedule: ")
+		bal+"monitor.schedule: ",
+		bal+"selection.schedule: ")
 	mustFail(t, replace(t, "runtime: {}", "runtime: {schedule: nope}"), "runtime.schedule: ")
 	mustLoad(t, withTarget(t, "      monitor: {schedule: '*/1 * * * *'}\n"))
 }
@@ -695,6 +753,16 @@ func TestCheckSources(t *testing.T) {
 	if strings.Contains(msg, "duplicate source id") {
 		t.Errorf("duplicate source id across subscriptions:\n%s", msg)
 	}
+	// A disabled source owns no namespace: fixed tags in it are valid; its
+	// id, ports and observatory prefix rules still apply.
+	disabledB := []string{"{id: SRC2, type: vless,", "{id: SRC2, type: vless, enabled: false,"}
+	mustLoad(t, sources(append(disabledB, "FIXOUT", "x-observe-b-x", "FIXIN", "in-b-x", "FIXRULE", "route-b-1")...))
+	mustFail(t, sources(append(disabledB, "FIXOUT", "a-x")...), `subscriptions.0.target.fixedOutbounds: tag "a-x" is in the namespace of source "a"`)
+	mustFail(t, sources("{id: SRC2, type: vless,", "{id: a, type: vless, enabled: false,"), `subscriptions.0.sources.1.id: duplicate source id "a"`)
+	mustFail(t, sources(append(disabledB, "{start: 20010, end: 20019}", "{start: 20009, end: 20019}")...),
+		`subscriptions.0.sources.1.portRange: overlaps the portRange of source "a"`)
+	mustFail(t, sources("{id: SRC2, type: vless,", "{id: x, type: vless, enabled: false,"),
+		`subscriptions.0.sources.1.id: namespace "x-" overlaps target.observatorySubjectSelectorPrefix "x-observe-"`)
 	// Without inbounds and routing no portRange is needed.
 	mustLoad(t, strings.Replace(sources(", portRange: {start: 20010, end: 20019}", ""),
 		"resources: {outbounds: {enabled: true}, inbounds: {enabled: true}, routing: {enabled: true}}", "resources: {}", 1))

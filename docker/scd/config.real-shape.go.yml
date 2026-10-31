@@ -2,7 +2,8 @@
 # у обеих подписок id: vless, теги и порты прежние.
 # URL заменены на example.com — секретов нет. Изменены только фильтры меток (D29):
 # lookahead-регулярка заменена на labelExcludeRegex; остальные ключи не менялись,
-# новые ключи (allowInsecure, fetchUserAgent, fetchHeaders, balancerSelection) — по умолчанию.
+# новые ключи (allowInsecure, fetchUserAgent, fetchHeaders, balancers[].selection) — по умолчанию;
+# монитор балансировщика — в target.balancers[] (тег x-balancer из routing.balancers).
 subscriptions:
   - id: blanc-en
     enabled: true
@@ -33,13 +34,15 @@ subscriptions:
         maxParallel: 50
         retry: { attempts: 2, delayMs: 250 }
         request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
-      balancerMonitor:
-        enabled: true
-        schedule: "*/1 * * * *"
-        retry: { attempts: 3, delayMs: 500 }
-        socks5: { host: blanc-xray-en, port: 1080 }
-        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
-        remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
+      balancers:
+        - tag: x-balancer
+          monitor:
+            enabled: true
+            schedule: "*/1 * * * *"
+            retry: { attempts: 3, delayMs: 500 }
+            socks5: { host: blanc-xray-en, port: 1080 }
+            request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+            remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
   - id: blanc-ru
     enabled: true
     sources:
@@ -69,13 +72,15 @@ subscriptions:
         maxParallel: 50
         retry: { attempts: 2, delayMs: 250 }
         request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
-      balancerMonitor:
-        enabled: true
-        schedule: "*/1 * * * *"
-        retry: { attempts: 3, delayMs: 500 }
-        socks5: { host: blanc-xray-ru, port: 1080 }
-        request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
-        remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
+      balancers:
+        - tag: x-balancer
+          monitor:
+            enabled: true
+            schedule: "*/1 * * * *"
+            retry: { attempts: 3, delayMs: 500 }
+            socks5: { host: blanc-xray-ru, port: 1080 }
+            request: { url: https://probe.example.com/generate_204, method: GET, expectedStatus: 200, timeoutMs: 5000 }
+            remotePing: { enabled: true, url: https://ping.example.com/api/push, timeoutMs: 5000, viaSocks: true }
 runtime:
   mode: daemon
   schedule: "*/5 * * * *"

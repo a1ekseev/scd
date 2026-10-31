@@ -29,8 +29,8 @@ type pingPayload struct {
 // goroutine counted in d.Background and is not awaited by the tick; it is
 // detached from ctx cancellation (each request has remotePing.timeoutMs), so
 // a shutdown waits for it at most that long instead of recording a failure.
-func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionConfig, key string, p pingPayload) {
-	bm := sub.Target.BalancerMonitor
+func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionConfig, bal config.BalancerConfig, key string, p pingPayload) {
+	bm := *bal.Monitor
 	if !bm.RemotePing.Enabled || bm.RemotePing.URL == "" || bm.Socks5 == nil {
 		return
 	}
@@ -38,7 +38,7 @@ func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionCon
 	skipped := false
 	prevErr := ""
 	if !d.Memory.Update(key, func(tg *state.Target) {
-		b := &tg.Balancer
+		b := &tg.EnsureBalancer(bal.Tag).Monitor
 		if b.RemotePingState == state.RemotePingPending {
 			skipped = true
 			return
@@ -60,15 +60,16 @@ func (d Deps) scheduleRemotePing(ctx context.Context, sub config.SubscriptionCon
 		d.Log.LogAttrs(ctx, slog.LevelWarn, "Balancer monitor remote ping skipped because previous push is still in progress.",
 			slog.String("event", "balancer_monitor_remote_ping_skipped_overrun"),
 			slog.String("subscriptionId", sub.ID),
-			slog.String("targetAddress", sub.Target.Address))
+			slog.String("targetAddress", sub.Target.Address),
+			slog.String("balancerTag", bal.Tag))
 		return
 	}
 
 	d.logPing(ctx, slog.LevelDebug, "Balancer monitor remote ping started.", "balancer_monitor_remote_ping_started",
-		sub, p, slog.String("status", p.status))
+		sub, bal, p, slog.String("status", p.status))
 
 	pctx := context.WithoutCancel(ctx)
-	run := func() { d.pushRemotePing(pctx, sub, key, p, prevErr) }
+	run := func() { d.pushRemotePing(pctx, sub, bal, key, p, prevErr) }
 	if d.Background != nil {
 		d.Background.Go(run)
 	} else {
@@ -94,66 +95,67 @@ func pingAttrs(bm config.TargetBalancerMonitorConfig, p pingPayload) []slog.Attr
 // ok, any other status or an error is failed. The balancer state is never
 // changed by a push. A failure is logged at warn when its text differs from
 // prevErr, the error of the push before, else at debug.
-func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig, key string, p pingPayload, prevErr string) {
+func (d Deps) pushRemotePing(ctx context.Context, sub config.SubscriptionConfig, bal config.BalancerConfig, key string, p pingPayload, prevErr string) {
 	failLevel := func(msg string) slog.Level {
 		if msg == prevErr {
 			return slog.LevelDebug
 		}
 		return slog.LevelWarn
 	}
-	bm := sub.Target.BalancerMonitor
+	bm := *bal.Monitor
 	code, pushURL, err := d.sendRemotePing(ctx, bm, p)
 	if err != nil {
 		msg := pingErrorText(err, bm.RemotePing.URL, pushURL)
 		failedAt := d.now()
 		d.Memory.Update(key, func(tg *state.Target) {
-			b := &tg.Balancer
+			b := &tg.EnsureBalancer(bal.Tag).Monitor
 			b.RemotePingState = state.RemotePingFailed
 			b.RemotePingLastFailureAt = &failedAt
 			b.RemotePingLastStatusCode = nil
 			b.RemotePingLastError = msg
 		})
 		d.logPing(ctx, failLevel(msg), "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
-			sub, p, slog.String("error", msg))
+			sub, bal, p, slog.String("error", msg))
 		return
 	}
 	if code < 200 || code >= 300 {
 		msg := "Remote ping returned HTTP " + strconv.Itoa(code) + "."
 		failedAt := d.now()
 		d.Memory.Update(key, func(tg *state.Target) {
-			b := &tg.Balancer
+			b := &tg.EnsureBalancer(bal.Tag).Monitor
 			b.RemotePingState = state.RemotePingFailed
 			b.RemotePingLastFailureAt = &failedAt
 			b.RemotePingLastStatusCode = new(code)
 			b.RemotePingLastError = msg
 		})
 		d.logPing(ctx, failLevel(msg), "Balancer monitor remote ping failed.", "balancer_monitor_remote_ping_failed",
-			sub, p, slog.Int("statusCode", code), slog.String("error", msg))
+			sub, bal, p, slog.Int("statusCode", code), slog.String("error", msg))
 		return
 	}
 
 	doneAt := d.now()
 	d.Memory.Update(key, func(tg *state.Target) {
-		b := &tg.Balancer
+		b := &tg.EnsureBalancer(bal.Tag).Monitor
 		b.RemotePingState = state.RemotePingOK
 		b.RemotePingLastSuccessAt = &doneAt
 		b.RemotePingLastStatusCode = new(code)
 		b.RemotePingLastError = ""
 	})
 	d.logPing(ctx, slog.LevelDebug, "Balancer monitor remote ping succeeded.", "balancer_monitor_remote_ping_succeeded",
-		sub, p, slog.Int("statusCode", code))
+		sub, bal, p, slog.Int("statusCode", code))
 }
 
 // logPing logs a remote ping event: event, subscriptionId, targetAddress,
-// the event's own attributes, then pingAttrs.
-func (d Deps) logPing(ctx context.Context, level slog.Level, msg, event string, sub config.SubscriptionConfig, p pingPayload, own ...slog.Attr) {
+// balancerTag, the event's own attributes, then pingAttrs.
+func (d Deps) logPing(ctx context.Context, level slog.Level, msg, event string, sub config.SubscriptionConfig, bal config.BalancerConfig, p pingPayload, own ...slog.Attr) {
 	attrs := []slog.Attr{
 		slog.String("event", event),
 		slog.String("subscriptionId", sub.ID),
 		slog.String("targetAddress", sub.Target.Address),
+		slog.String("balancerTag", bal.Tag),
 	}
 	attrs = append(attrs, own...)
-	attrs = append(attrs, pingAttrs(sub.Target.BalancerMonitor, p)...)
+	attrs = append(attrs, pingAttrs(*bal.Monitor, p)...)
 	d.Log.LogAttrs(ctx, level, msg, attrs...)
 }
 

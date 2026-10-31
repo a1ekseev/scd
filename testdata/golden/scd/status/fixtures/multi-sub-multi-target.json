@@ -7,13 +7,31 @@
         "id": "sub-b",
         "enabled": true,
         "address": "127.0.0.1:8081",
-        "observatorySubjectSelectorPrefix": "x-observe-"
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            }
+          }
+        ]
       },
       {
         "id": "sub-a",
         "enabled": true,
         "address": "127.0.0.1:8080",
-        "observatorySubjectSelectorPrefix": "x-observe-"
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            }
+          }
+        ]
       },
       {
         "id": "sub-c",
@@ -33,23 +51,28 @@
     {
       "subscriptionId": "sub-b",
       "targetAddress": "127.0.0.1:8081",
-      "balancerMonitor": {
-        "state": "healthy",
-        "remotePingState": "ok",
-        "consecutiveFailures": 0,
-        "lastCheckedAt": "2026-08-15T09:59:00.000Z",
-        "lastSuccessAt": "2026-08-15T09:59:00.000Z",
-        "lastStatusCode": 204,
-        "lastLatencyMs": 17,
-        "lastSuccessStatusCode": 204,
-        "lastSuccessLatencyMs": 17,
-        "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
-        "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
-        "remotePingLastStatusCode": 200,
-        "remotePingLastReportedStatus": "up",
-        "remotePingLastReportedMsg": "OK",
-        "remotePingLastReportedPingMs": 17
-      },
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "ok",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 17,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 17,
+            "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastStatusCode": 200,
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastReportedMsg": "OK",
+            "remotePingLastReportedPingMs": 17
+          }
+        }
+      ],
       "tunnels": [
         {
           "baseTunnelId": "beta-2",
@@ -96,11 +119,16 @@
     {
       "subscriptionId": "sub-a",
       "targetAddress": "127.0.0.1:8080",
-      "balancerMonitor": {
-        "state": "idle",
-        "remotePingState": "idle",
-        "consecutiveFailures": 0
-      },
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "idle",
+            "remotePingState": "idle",
+            "consecutiveFailures": 0
+          }
+        }
+      ],
       "tunnels": [
         {
           "baseTunnelId": "gamma",

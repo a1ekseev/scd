@@ -9,18 +9,21 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/state"
 )
 
-// BalancerTick checks the target's Xray balancer through the external
-// SOCKS5 of balancerMonitor (03 §4.5): observe-only (no repair, no target
+// BalancerTick checks the Xray balancer b of the target through the
+// external SOCKS5 of its monitor (03 §4.5): observe-only (no repair, no target
 // lock), with retries; it records the result in the balancer monitor state
-// and schedules a remote push (up/OK/<latency> or down/<error>). Only a
+// of b and schedules a remote push (up/OK/<latency> or down/<error>). Only a
 // change of the check result is logged: balancer_degraded when it starts
 // failing, balancer_recovered when it passes again. It is a no-op without socks5 and request or
 // before a sync reached the target (SyncSeen; the balancer selection tick
 // may have created it earlier). The error is reserved for a
 // cancelled ctx, in which case nothing is recorded or pushed.
-func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
+func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig, b config.BalancerConfig) error {
 	t := sub.Target
-	bm := t.BalancerMonitor
+	if b.Monitor == nil {
+		return nil
+	}
+	bm := *b.Monitor
 	if !bm.Enabled || bm.Socks5 == nil || bm.Request == nil {
 		return nil
 	}
@@ -41,6 +44,7 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 		attrs: []slog.Attr{
 			slog.String("subscriptionId", sub.ID),
 			slog.String("targetAddress", t.Address),
+			slog.String("balancerTag", b.Tag),
 		},
 	})
 	if ctx.Err() != nil {
@@ -51,24 +55,25 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 		msg := err.Error()
 		degraded := false
 		d.Memory.Update(key, func(tg *state.Target) {
-			b := &tg.Balancer
-			if b.State != state.BalancerDegraded {
-				degraded, b.FailingSince = true, new(failedAt)
+			m := &tg.EnsureBalancer(b.Tag).Monitor
+			if m.State != state.BalancerDegraded {
+				degraded, m.FailingSince = true, new(failedAt)
 			}
-			b.State = state.BalancerDegraded
-			b.LastCheckedAt, b.LastFailureAt = new(failedAt), new(failedAt)
-			b.LastStatusCode, b.LastLatencyMs = nil, nil
-			b.LastError = msg
-			b.ConsecutiveFailures++
+			m.State = state.BalancerDegraded
+			m.LastCheckedAt, m.LastFailureAt = new(failedAt), new(failedAt)
+			m.LastStatusCode, m.LastLatencyMs = nil, nil
+			m.LastError = msg
+			m.ConsecutiveFailures++
 		})
 		if degraded {
 			d.Log.LogAttrs(ctx, slog.LevelWarn, "Balancer monitor check failed; the balancer is degraded.",
 				slog.String("event", "balancer_degraded"),
 				slog.String("subscriptionId", sub.ID),
 				slog.String("targetAddress", t.Address),
+				slog.String("balancerTag", b.Tag),
 				slog.String("error", msg))
 		}
-		d.scheduleRemotePing(ctx, sub, key, pingPayload{status: "down", msg: msg})
+		d.scheduleRemotePing(ctx, sub, b, key, pingPayload{status: "down", msg: msg})
 		return nil
 	}
 
@@ -77,14 +82,14 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 	var since *time.Time
 	recovered := false
 	d.Memory.Update(key, func(tg *state.Target) {
-		b := &tg.Balancer
-		recovered, since, b.FailingSince = b.State == state.BalancerDegraded, b.FailingSince, nil
-		b.State = state.BalancerHealthy
-		b.LastCheckedAt, b.LastSuccessAt = new(checkedAt), new(checkedAt)
-		b.LastStatusCode, b.LastLatencyMs = new(code), new(latency)
-		b.LastSuccessStatusCode, b.LastSuccessLatencyMs = new(code), new(latency)
-		b.LastError = ""
-		b.ConsecutiveFailures = 0
+		m := &tg.EnsureBalancer(b.Tag).Monitor
+		recovered, since, m.FailingSince = m.State == state.BalancerDegraded, m.FailingSince, nil
+		m.State = state.BalancerHealthy
+		m.LastCheckedAt, m.LastSuccessAt = new(checkedAt), new(checkedAt)
+		m.LastStatusCode, m.LastLatencyMs = new(code), new(latency)
+		m.LastSuccessStatusCode, m.LastSuccessLatencyMs = new(code), new(latency)
+		m.LastError = ""
+		m.ConsecutiveFailures = 0
 	})
 	if recovered {
 		var failedFor int64
@@ -95,8 +100,9 @@ func BalancerTick(ctx context.Context, d Deps, sub config.SubscriptionConfig) er
 			slog.String("event", "balancer_recovered"),
 			slog.String("subscriptionId", sub.ID),
 			slog.String("targetAddress", t.Address),
+			slog.String("balancerTag", b.Tag),
 			slog.Int64("failedForMs", failedFor))
 	}
-	d.scheduleRemotePing(ctx, sub, key, pingPayload{status: "up", msg: "OK", pingMs: &latency})
+	d.scheduleRemotePing(ctx, sub, b, key, pingPayload{status: "up", msg: "OK", pingMs: &latency})
 	return nil
 }

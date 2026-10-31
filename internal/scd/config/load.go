@@ -222,7 +222,7 @@ func countryList(n *schema.Node, key string) []string {
 // parseTarget reads the target object; n may be nil (missing target).
 func parseTarget(n *schema.Node) SubscriptionTargetConfig {
 	n.Strict("address", "timeoutMs", "fixedOutbounds", "fixedInbounds", "fixedRouting",
-		"visionUdp443Override", "inboundSocks", "monitor", "balancerMonitor", "balancerSelection",
+		"visionUdp443Override", "inboundSocks", "monitor", "balancers",
 		"observatorySubjectSelectorPrefix")
 	var t SubscriptionTargetConfig
 	t.Address, _ = n.String("address", required)
@@ -235,8 +235,12 @@ func parseTarget(n *schema.Node) SubscriptionTargetConfig {
 		t.InboundSocks = parseInboundSocks(sn)
 	}
 	t.Monitor = parseMonitor(n.Object("monitor", false))
-	t.BalancerMonitor = parseBalancerMonitor(n.Object("balancerMonitor", false))
-	t.BalancerSelection = parseBalancerSelection(n.Object("balancerSelection", false))
+	t.Balancers = []BalancerConfig{}
+	for _, bn := range n.Array("balancers", false, 0) {
+		if bn != nil {
+			t.Balancers = append(t.Balancers, parseBalancer(bn))
+		}
+	}
 	t.ObservatorySubjectSelectorPrefix, _ = n.String("observatorySubjectSelectorPrefix", optional)
 	return t
 }
@@ -289,7 +293,22 @@ func parseMonitor(n *schema.Node) TargetMonitorConfig {
 	return m
 }
 
-// parseBalancerMonitor reads the balancerMonitor object; nil gives the defaults.
+// parseBalancer reads one target.balancers[] object; a missing monitor or
+// selection stays nil.
+func parseBalancer(n *schema.Node) BalancerConfig {
+	n.Strict("tag", "monitor", "selection")
+	var b BalancerConfig
+	b.Tag, _ = n.String("tag", required)
+	if mn := n.Object("monitor", false); mn != nil {
+		b.Monitor = new(parseBalancerMonitor(mn))
+	}
+	if sn := n.Object("selection", false); sn != nil {
+		b.Selection = new(parseBalancerSelection(sn))
+	}
+	return b
+}
+
+// parseBalancerMonitor reads a balancers[].monitor object.
 func parseBalancerMonitor(n *schema.Node) TargetBalancerMonitorConfig {
 	n.Strict("enabled", "schedule", "socks5", "request", "retry", "remotePing")
 	b := TargetBalancerMonitorConfig{Enabled: n.Bool("enabled", false)}
@@ -318,15 +337,13 @@ func parseBalancerMonitor(n *schema.Node) TargetBalancerMonitorConfig {
 	return b
 }
 
-// parseBalancerSelection reads the balancerSelection object (10 §6.5); nil
-// gives the defaults.
+// parseBalancerSelection reads a balancers[].selection object (10 §6.5).
 func parseBalancerSelection(n *schema.Node) BalancerSelectionConfig {
-	n.Strict("enabled", "balancerTag", "schedule", "observatory", "strategy")
+	n.Strict("enabled", "schedule", "observatory", "strategy")
 	b := BalancerSelectionConfig{
 		Enabled:     n.Bool("enabled", false),
 		Observatory: n.Bool("observatory", true),
 	}
-	b.BalancerTag, _ = n.String("balancerTag", optional)
 	b.Schedule, _ = n.String("schedule", optional)
 	if n.Has("strategy") {
 		b.Strategy = n.Enum("strategy", []string{"leastPing", "leastLoad", "random", "roundRobin"}, "")

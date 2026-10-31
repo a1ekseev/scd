@@ -97,7 +97,7 @@ func target(addr string) config.SubscriptionTargetConfig {
 		FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
 		ObservatorySubjectSelectorPrefix: "x-observe-",
 		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1"},
-		BalancerSelection:                config.BalancerSelectionConfig{Observatory: true},
+		Balancers:                        []config.BalancerConfig{},
 	}
 }
 
@@ -365,7 +365,7 @@ func (failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 func TestDaemonStopsImmediatelyBetweenTicks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tg := target("127.0.0.1:8080")
-		tg.BalancerSelection = config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: never, Observatory: true}
+		tg.Balancers = []config.BalancerConfig{{Tag: "x-balancer", Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: never, Observatory: true}}}
 		tg.Monitor = config.TargetMonitorConfig{Enabled: true, Schedule: never, MaxParallel: 1}
 		l := daemonConfig(sub("source-1", subscriptionFile(t, vienna), tg))
 		l.Config.StatusServer.RemoteInstances = []config.RemoteStatusInstanceConfig{
@@ -394,14 +394,22 @@ func TestDaemonStopsImmediatelyBetweenTicks(t *testing.T) {
 	})
 }
 
-// TestDaemonStartsLoopsForDisabledSubscriptionMonitors: the
-// monitor, balancer monitor and balancer selection loops start for every
-// configured subscription, including disabled ones (03 §3.1).
+// TestDaemonStartsLoopsForDisabledSubscriptionMonitors: the tunnel monitor
+// loop, then the monitor and selection loops of every balancer in config
+// order, start for every configured subscription, including disabled ones
+// (03 §3.1); a balancer without an enabled, scheduled part has no loop.
 func TestDaemonStartsLoopsForDisabledSubscriptionMonitors(t *testing.T) {
 	tg := target("10.0.0.2:8080")
 	tg.Monitor = config.TargetMonitorConfig{Enabled: true, Schedule: never, MaxParallel: 1}
-	tg.BalancerMonitor = config.TargetBalancerMonitorConfig{Enabled: true, Schedule: never}
-	tg.BalancerSelection = config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: never, Observatory: true}
+	tg.Balancers = []config.BalancerConfig{
+		{
+			Tag:       "x-balancer",
+			Monitor:   &config.TargetBalancerMonitorConfig{Enabled: true, Schedule: never},
+			Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: never, Observatory: true},
+		},
+		{Tag: "idle-balancer", Monitor: &config.TargetBalancerMonitorConfig{Schedule: never}},
+		{Tag: "up-balancer", Monitor: &config.TargetBalancerMonitorConfig{Enabled: true, Schedule: never}},
+	}
 	disabled := sub("disabled-1", "/nonexistent", tg)
 	disabled.Enabled = false
 	off := sub("off-1", "/nonexistent", target("10.0.0.3:8080"))
@@ -420,8 +428,9 @@ func TestDaemonStartsLoopsForDisabledSubscriptionMonitors(t *testing.T) {
 	want := []string{
 		"sync_failed []",
 		"monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
-		"balancer_monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
-		"balancer_selection_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080]",
+		"balancer_monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080 balancerTag x-balancer]",
+		"balancer_selection_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080 balancerTag x-balancer]",
+		"balancer_monitor_tick_failed [subscriptionId disabled-1 targetAddress 10.0.0.2:8080 balancerTag up-balancer]",
 		"remote_status_tick_failed [remoteInstanceId remote-1 apiUrl http://remote.invalid/<redacted>]",
 	}
 	if !slices.Equal(got, want) {

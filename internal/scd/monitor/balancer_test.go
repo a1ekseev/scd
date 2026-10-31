@@ -43,7 +43,7 @@ func recordDirect(calls *[]directCall, code int) func(context.Context, string, t
 // 03 §10.6 p.16, on the real config shape (D30).
 func TestBalancerTickViaExternalSocks(t *testing.T) {
 	sub := realShapeSub(t)
-	sub.Target.BalancerMonitor.RemotePing.Enabled = false
+	sub.Target.Balancers[0].Monitor.RemotePing.Enabled = false
 	e := newEnv(t, sub)
 	var got []socks.Request
 	e.deps.Probe = func(_ context.Context, r socks.Request) (socks.Response, error) {
@@ -51,7 +51,7 @@ func TestBalancerTickViaExternalSocks(t *testing.T) {
 		return socks.Response{StatusCode: 200, LatencyMs: 33, BodyBytes: 128}, nil
 	}
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].ProxyHost != "blanc-xray-en" || got[0].ProxyPort != 1080 ||
@@ -75,7 +75,7 @@ func TestBalancerTickViaExternalSocks(t *testing.T) {
 func TestBalancerDegradedKeepsLastSuccess(t *testing.T) {
 	e := newEnv(t, newSub(withBalancer(204, "", false)))
 	e.mem.Update(e.key, func(tg *state.Target) {
-		tg.Balancer = state.BalancerMonitor{
+		tg.EnsureBalancer("x-balancer").Monitor = state.BalancerMonitor{
 			State: state.BalancerHealthy, RemotePingState: state.RemotePingIdle,
 			LastStatusCode: new(204), LastLatencyMs: new(12), LastSuccessStatusCode: new(204), LastSuccessLatencyMs: new(12),
 			ConsecutiveFailures: 2,
@@ -87,7 +87,7 @@ func TestBalancerDegradedKeepsLastSuccess(t *testing.T) {
 		return socks.Response{StatusCode: 200, LatencyMs: 40}, nil
 	}
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	if len(urls) != 1 || urls[0] != "https://example.test/health" {
@@ -112,7 +112,7 @@ func TestBalancerDegradedKeepsLastSuccess(t *testing.T) {
 // 03 §10.6 p.18.
 func TestBalancerRetryThenUpPush(t *testing.T) {
 	sub := newSub(withBalancer(200, "https://push.example.test/api/push/token", false))
-	sub.Target.BalancerMonitor.Retry = config.RetryConfig{Attempts: 2}
+	sub.Target.Balancers[0].Monitor.Retry = config.RetryConfig{Attempts: 2}
 	e := newEnv(t, sub)
 	var calls atomic.Int32
 	e.deps.Probe = func(context.Context, socks.Request) (socks.Response, error) {
@@ -124,7 +124,7 @@ func TestBalancerRetryThenUpPush(t *testing.T) {
 	var pushes []directCall
 	e.deps.Direct = recordDirect(&pushes, 200)
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -149,7 +149,7 @@ func TestBalancerRetryThenUpPush(t *testing.T) {
 // 03 §10.6 p.19.
 func TestBalancerDownPushAfterRetries(t *testing.T) {
 	sub := newSub(withBalancer(204, "https://push.example.test/api/push/token", false))
-	sub.Target.BalancerMonitor.Retry = config.RetryConfig{Attempts: 2}
+	sub.Target.Balancers[0].Monitor.Retry = config.RetryConfig{Attempts: 2}
 	e := newEnv(t, sub)
 	var calls atomic.Int32
 	e.deps.Probe = func(context.Context, socks.Request) (socks.Response, error) {
@@ -159,7 +159,7 @@ func TestBalancerDownPushAfterRetries(t *testing.T) {
 	var pushes []directCall
 	e.deps.Direct = recordDirect(&pushes, 200)
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -182,9 +182,9 @@ func TestBalancerDownPushAfterRetries(t *testing.T) {
 
 func TestBalancerTickNoop(t *testing.T) {
 	cases := map[string]func(c *config.SubscriptionConfig){
-		"disabled":   func(c *config.SubscriptionConfig) { c.Target.BalancerMonitor.Enabled = false },
-		"no socks5":  func(c *config.SubscriptionConfig) { c.Target.BalancerMonitor.Socks5 = nil },
-		"no request": func(c *config.SubscriptionConfig) { c.Target.BalancerMonitor.Request = nil },
+		"disabled":   func(c *config.SubscriptionConfig) { c.Target.Balancers[0].Monitor.Enabled = false },
+		"no socks5":  func(c *config.SubscriptionConfig) { c.Target.Balancers[0].Monitor.Socks5 = nil },
+		"no request": func(c *config.SubscriptionConfig) { c.Target.Balancers[0].Monitor.Request = nil },
 		"no target":  func(c *config.SubscriptionConfig) { c.ID = "other" },
 	}
 	for name, mut := range cases {
@@ -192,7 +192,7 @@ func TestBalancerTickNoop(t *testing.T) {
 			e := newEnv(t, newSub(withBalancer(200, "", false)))
 			sub := newSub(withBalancer(200, "", false))
 			mut(&sub)
-			if err := BalancerTick(t.Context(), e.deps, sub); err != nil {
+			if err := BalancerTick(t.Context(), e.deps, sub, sub.Target.Balancers[0]); err != nil {
 				t.Fatal(err)
 			}
 			if e.balancer().State != state.BalancerIdle {
@@ -211,7 +211,7 @@ func TestBalancerTickCancelled(t *testing.T) {
 		<-ctx.Done()
 		return socks.Response{}, textError("SOCKS HTTP request timed out after 5000ms.")
 	}
-	if err := BalancerTick(ctx, e.deps, e.sub); !errors.Is(err, context.Canceled) {
+	if err := BalancerTick(ctx, e.deps, e.sub, e.sub.Target.Balancers[0]); !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 	e.bg.Wait()
@@ -225,11 +225,11 @@ func TestBalancerTickCancelled(t *testing.T) {
 // reached the target — no probe, no remote push.
 func TestBalancerTickWaitsForSyncAfterSelectionTick(t *testing.T) {
 	sub := newSub(withBalancer(200, "https://push.example.test/api/push/token", false))
-	sub.Target.BalancerSelection = config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: "*/15 * * * * *"}
+	sub.Target.Balancers[0].Selection = &config.BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *"}
 	e := newEnv(t, sub)
 	e.mem = state.New()
 	e.deps.Memory = e.mem
-	if err := balancer.Tick(t.Context(), balancer.Deps{Memory: e.mem, Log: discardLog(), Dial: e.xray.Dialer()}, sub); err != nil {
+	if err := balancer.Tick(t.Context(), balancer.Deps{Memory: e.mem, Log: discardLog(), Dial: e.xray.Dialer()}, sub, sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	if !e.mem.View(e.key, func(*state.Target) {}) {
@@ -243,7 +243,7 @@ func TestBalancerTickWaitsForSyncAfterSelectionTick(t *testing.T) {
 		return socks.Response{StatusCode: 200, LatencyMs: 10}, nil
 	}
 	e.deps.Direct = recordDirect(&pushes, 200)
-	if err := BalancerTick(t.Context(), e.deps, sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, sub, sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := TunnelTick(t.Context(), e.deps, sub); err != nil {
@@ -256,7 +256,7 @@ func TestBalancerTickWaitsForSyncAfterSelectionTick(t *testing.T) {
 
 	// A sync pass reached the target (even if its apply failed).
 	e.mem.MarkSynced(e.key)
-	if err := BalancerTick(t.Context(), e.deps, sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, sub, sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()

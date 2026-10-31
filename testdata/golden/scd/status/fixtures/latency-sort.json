@@ -7,7 +7,16 @@
         "id": "sub-a",
         "enabled": true,
         "address": "127.0.0.1:8080",
-        "observatorySubjectSelectorPrefix": "x-observe-"
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            }
+          }
+        ]
       }
     ],
     "remoteInstances": [],
@@ -21,11 +30,16 @@
     {
       "subscriptionId": "sub-a",
       "targetAddress": "127.0.0.1:8080",
-      "balancerMonitor": {
-        "state": "idle",
-        "remotePingState": "idle",
-        "consecutiveFailures": 0
-      },
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "idle",
+            "remotePingState": "idle",
+            "consecutiveFailures": 0
+          }
+        }
+      ],
       "tunnels": [
         {
           "baseTunnelId": "idle",

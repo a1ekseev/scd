@@ -83,7 +83,7 @@ func TestPrintConfigMinimal(t *testing.T) {
 	order := []string{
 		`"id"`, `"enabled"`, `"sources"`, `"id"`, `"type"`, `"input"`, `"enabled"`, `"format"`, `"fetchTimeoutMs"`,
 		`"allowInsecure"`, `"maxInputBytes"`, `"target"`,
-		`"address"`, `"timeoutMs"`, `"fixedOutbounds"`, `"visionUdp443Override"`, `"monitor"`, `"balancerMonitor"`, `"balancerSelection"`,
+		`"address"`, `"timeoutMs"`, `"fixedOutbounds"`, `"visionUdp443Override"`, `"monitor"`, `"balancers"`,
 		`"runtime"`, `"logging"`, `"resources"`, `"statusServer"`,
 	}
 	pos := 0
@@ -147,7 +147,7 @@ func TestValidateConfigWarnings(t *testing.T) {
     sources: [{id: vless, type: vless, input: ./sub.txt}]
     target:
       address: 127.0.0.1:8080
-      balancerSelection: {enabled: true, balancerTag: x-balancer, schedule: "*/15 * * * * *"}
+      balancers: [{tag: x-balancer, selection: {enabled: true, schedule: "*/15 * * * * *"}}]
 runtime: {}
 logging: {}
 resources: {}
@@ -156,7 +156,7 @@ resources: {}
 		t.Fatal(err)
 	}
 	code, out, errs := run("validate-config", "--config", p)
-	want := "warning: subscriptions.0.target.balancerSelection: balancerSelection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector\n"
+	want := "warning: subscriptions.0.target.balancers.0.selection: the selection is enabled without observatorySubjectSelectorPrefix; scd tunnels are unlikely to match the balancer selector\n"
 	if code != 0 || !strings.Contains(out, `"valid": true`) || errs != want {
 		t.Fatalf("code %d out %q err %q", code, out, errs)
 	}
@@ -232,18 +232,24 @@ subscriptions:
         enabled: true
         schedule: "* * * * *"
         request: {url: "https://probe.example.com/p/MONTOKEN?q=MONQUERY", expectedStatus: 204}
-      balancerMonitor:
-        enabled: true
-        schedule: "* * * * *"
-        socks5: {host: 127.0.0.1, port: 1080}
-        request: {url: "https://bprobe.example.com/b/BALTOKEN", expectedStatus: 204}
-        remotePing: {enabled: true, url: "https://kuma.example.com/api/push/PUSHTOKEN?status=up"}
+      balancers:
+        - tag: x-balancer
+          monitor:
+            enabled: true
+            schedule: "* * * * *"
+            socks5: {host: 127.0.0.1, port: 1080}
+            request: {url: "https://bprobe.example.com/b/BALTOKEN", expectedStatus: 204}
+            remotePing: {enabled: true, url: "https://kuma.example.com/api/push/PUSHTOKEN?status=up"}
+        - tag: up-balancer
+          monitor:
+            request: {url: "https://uprobe.example.com/u/UPTOKEN", expectedStatus: 204}
+            remotePing: {url: "https://kuma2.example.com/api/push/UPPUSHTOKEN"}
 runtime: {mode: daemon, schedule: "* * * * *"}
 logging: {}
 resources: {outbounds: {enabled: true}, inbounds: {enabled: true}, routing: {enabled: true}}
 `
 
-var secretTokens = []string{"INPUTTOKEN", "INPUTQUERY", "HEADERSECRET", "MONTOKEN", "MONQUERY", "BALTOKEN", "PUSHTOKEN"}
+var secretTokens = []string{"INPUTTOKEN", "INPUTQUERY", "HEADERSECRET", "MONTOKEN", "MONQUERY", "BALTOKEN", "PUSHTOKEN", "UPTOKEN", "UPPUSHTOKEN"}
 
 func writeSecretConfig(t *testing.T) string {
 	t.Helper()
@@ -270,6 +276,8 @@ func TestPrintConfigRedactsSecretsByDefault(t *testing.T) {
 		`"url": "https://probe.example.com/<redacted>"`,
 		`"url": "https://bprobe.example.com/<redacted>"`,
 		`"url": "https://kuma.example.com/<redacted>"`,
+		`"url": "https://uprobe.example.com/<redacted>"`,
+		`"url": "https://kuma2.example.com/<redacted>"`,
 		`"x-hwid": "<redacted>"`,
 	} {
 		if !strings.Contains(out, want) {

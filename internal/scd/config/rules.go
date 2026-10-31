@@ -14,7 +14,7 @@ import (
 const noSourcesWarning = "the subscription is enabled but none of its sources is; " +
 	"sync will remove every non-fixed resource of its target"
 
-const noPrefixWarning = "balancerSelection is enabled without observatorySubjectSelectorPrefix; " +
+const noPrefixWarning = "the selection is enabled without observatorySubjectSelectorPrefix; " +
 	"scd tunnels are unlikely to match the balancer selector"
 
 // checkRules applies the cross-field rules (01 §2.3, 10 §6.5) to the parsed
@@ -110,29 +110,35 @@ func checkTarget(n *schema.Node, t SubscriptionTargetConfig, res ResourceConfig)
 		}
 	}
 
-	bm := t.BalancerMonitor
-	checkSchedule(n, "target.balancerMonitor", bm.Schedule, bm.Enabled)
-	if bm.Enabled {
-		if bm.Socks5 == nil {
-			n.Addf("target.balancerMonitor.socks5", "required when balancerMonitor.enabled is true")
-		}
-		if bm.Request == nil {
-			n.Addf("target.balancerMonitor.request", "required when balancerMonitor.enabled is true")
-		}
-	}
-	if bm.RemotePing.Enabled && !bm.Enabled {
-		n.Addf("target.balancerMonitor.remotePing.enabled", "requires balancerMonitor.enabled")
-	}
-
 	var warnings []string
-	bs := t.BalancerSelection
-	checkSchedule(n, "target.balancerSelection", bs.Schedule, bs.Enabled)
-	if bs.Enabled {
-		if bs.BalancerTag == "" {
-			n.Addf("target.balancerSelection.balancerTag", "required when balancerSelection.enabled is true")
+	seen := map[string]bool{}
+	for i, b := range t.Balancers {
+		key := fmt.Sprintf("target.balancers.%d", i)
+		if b.Tag != "" {
+			if seen[b.Tag] {
+				n.Addf(key+".tag", "duplicate balancer tag %q", b.Tag)
+			}
+			seen[b.Tag] = true
 		}
-		if t.ObservatorySubjectSelectorPrefix == "" {
-			warnings = append(warnings, n.Path()+".target.balancerSelection: "+noPrefixWarning)
+		if bm := b.Monitor; bm != nil {
+			checkSchedule(n, key+".monitor", bm.Schedule, bm.Enabled)
+			if bm.Enabled {
+				if bm.Socks5 == nil {
+					n.Addf(key+".monitor.socks5", "required when monitor.enabled is true")
+				}
+				if bm.Request == nil {
+					n.Addf(key+".monitor.request", "required when monitor.enabled is true")
+				}
+			}
+			if bm.RemotePing.Enabled && !bm.Enabled {
+				n.Addf(key+".monitor.remotePing.enabled", "requires monitor.enabled")
+			}
+		}
+		if bs := b.Selection; bs != nil {
+			checkSchedule(n, key+".selection", bs.Schedule, bs.Enabled)
+			if bs.Enabled && t.ObservatorySubjectSelectorPrefix == "" {
+				warnings = append(warnings, n.Path()+"."+key+".selection: "+noPrefixWarning)
+			}
 		}
 	}
 	return warnings
@@ -145,7 +151,7 @@ func checkSchedule(n *schema.Node, obj, expr string, enabled bool) {
 	if expr != "" {
 		checkCron(n, obj+".schedule", expr)
 	} else if enabled {
-		n.Addf(obj+".schedule", "required when %s.enabled is true", obj[len("target."):])
+		n.Addf(obj+".schedule", "required when %s.enabled is true", obj[strings.LastIndex(obj, ".")+1:])
 	}
 }
 
@@ -218,7 +224,9 @@ func checkSources(subs []SubscriptionConfig, subNodes []*schema.Node, res Resour
 }
 
 // checkTargetSources applies the per-target source rules to subscription
-// node n.
+// node n. A fixed tag may not lie in the namespace of an enabled source; a
+// disabled source owns nothing in Xray (its resources are orphans), so its
+// namespace is free.
 func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConfig) {
 	t := sub.Target
 	obs := t.ObservatorySubjectSelectorPrefix
@@ -243,6 +251,9 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 		p := src.ID + "-"
 		if obs != "" && (strings.HasPrefix(obs, p) || strings.HasPrefix(p, obs)) {
 			n.Addf(key+"id", "namespace %q overlaps target.observatorySubjectSelectorPrefix %q", p, obs)
+		}
+		if !src.Enabled {
+			continue
 		}
 		for _, fx := range []struct {
 			key      string

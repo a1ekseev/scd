@@ -28,6 +28,26 @@ func TestKey(t *testing.T) {
 	}
 }
 
+// EnsureBalancer creates an idle balancer once; BalancerState never
+// creates one; two balancers have independent states.
+func TestEnsureBalancer(t *testing.T) {
+	tg := newTarget()
+	if _, ok := tg.BalancerState("a"); ok || len(tg.Balancers) != 0 {
+		t.Fatal("BalancerState created a balancer")
+	}
+	a := tg.EnsureBalancer("a")
+	if a.Monitor.State != BalancerIdle || a.Monitor.RemotePingState != RemotePingIdle || a.Selection.State != "" {
+		t.Fatalf("new balancer %+v", a)
+	}
+	a.Monitor.State = BalancerDegraded
+	if tg.EnsureBalancer("a") != a {
+		t.Fatal("EnsureBalancer replaced an existing balancer")
+	}
+	if b := tg.EnsureBalancer("b"); b.Monitor.State != BalancerIdle {
+		t.Fatalf("balancer b shares state with a: %+v", b)
+	}
+}
+
 func TestEnsureInitialState(t *testing.T) {
 	m := New()
 	m.Ensure("k")
@@ -36,8 +56,8 @@ func TestEnsureInitialState(t *testing.T) {
 		if tg.Generation != 0 || tg.Sources == nil || len(tg.Sources) != 0 || len(tg.Tunnels) != 0 {
 			t.Errorf("target = %+v, want empty", tg)
 		}
-		if tg.Balancer.State != BalancerIdle || tg.Balancer.RemotePingState != RemotePingIdle {
-			t.Errorf("balancer = %+v, want idle/idle", tg.Balancer)
+		if tg.Balancers == nil || len(tg.Balancers) != 0 {
+			t.Errorf("balancers = %+v, want empty", tg.Balancers)
 		}
 	})
 	if !ok {
@@ -56,9 +76,10 @@ func TestReplaceSourceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 	m.Update("k", func(tg *Target) {
 		tg.Tunnels[0].Monitor = TunnelMonitor{State: TunnelDegraded, LastFailureAt: &now, LastError: "x", ConsecutiveFailures: 3}
 		tg.Tunnels[1].Monitor.State = TunnelHealthy
-		tg.Balancer.State = BalancerHealthy
-		tg.Balancer.RemotePingState = RemotePingOK
-		tg.Balancer.ConsecutiveFailures = 2
+		b := &tg.EnsureBalancer("x-balancer").Monitor
+		b.State = BalancerHealthy
+		b.RemotePingState = RemotePingOK
+		b.ConsecutiveFailures = 2
 	})
 
 	m.ReplaceSourceTopology("k", "vless", topo("c", "b"), map[apply.Kind]string{apply.KindOutbound: "h2", apply.KindRouting: "r2"})
@@ -83,8 +104,8 @@ func TestReplaceSourceTopologyResetsMonitorsKeepsBalancer(t *testing.T) {
 			}
 		}
 		want := BalancerMonitor{State: BalancerHealthy, RemotePingState: RemotePingOK, ConsecutiveFailures: 2}
-		if tg.Balancer != want {
-			t.Errorf("Balancer = %+v, want untouched %+v", tg.Balancer, want)
+		if b, _ := tg.BalancerState("x-balancer"); b.Monitor != want {
+			t.Errorf("Balancer = %+v, want untouched %+v", b.Monitor, want)
 		}
 	})
 }
@@ -188,13 +209,13 @@ func TestMarkSynced(t *testing.T) {
 	if seen("a") {
 		t.Error("Ensure set SyncSeen")
 	}
-	m.Update("a", func(tg *Target) { tg.BalancerSelection.State = SelectionOK })
+	m.Update("a", func(tg *Target) { tg.EnsureBalancer("b").Selection.State = SelectionOK })
 	m.MarkSynced("a")
 	if !seen("a") {
 		t.Error("MarkSynced did not set SyncSeen")
 	}
 	m.View("a", func(tg *Target) {
-		if tg.BalancerSelection.State != SelectionOK {
+		if b, ok := tg.BalancerState("b"); !ok || b.Selection.State != SelectionOK {
 			t.Error("MarkSynced reset the target")
 		}
 	})

@@ -1,6 +1,7 @@
 // Package state is the in-memory runtime state of scd (03 §1): per target
 // and source the saved manifest hashes and the tunnel topology, the monitor
-// state of every tunnel and the balancer monitor state, plus the sync overlap guard
+// state of every tunnel and, per balancer tag, the balancer monitor and
+// selection state, plus the sync overlap guard
 // and the per-target mutation lock shared by sync apply, repair and rejoin
 // (03 §1.1).
 //
@@ -75,7 +76,7 @@ const (
 	ModeUnknown Mode = "unknown"
 )
 
-// SelectionState is the balancer selection state of a target (D22, 10
+// SelectionState is the selection state of a balancer (D22, 10
 // §6.4), written by the balancer selection tick. It survives topology
 // replacements. On a GetBalancerInfo error the last selection is kept.
 type SelectionState struct {
@@ -175,6 +176,38 @@ type BalancerMonitor struct {
 	FailingSince *time.Time
 }
 
+// Balancer is the state of one balancer of a target.
+type Balancer struct {
+	Monitor   BalancerMonitor
+	Selection SelectionState
+}
+
+// newBalancer is the initial state of a balancer (03 §1).
+func newBalancer() *Balancer {
+	return &Balancer{Monitor: BalancerMonitor{State: BalancerIdle, RemotePingState: RemotePingIdle}}
+}
+
+// EnsureBalancer returns the state of balancer tag, created idle on first
+// use. Call it only inside Update.
+func (t *Target) EnsureBalancer(tag string) *Balancer {
+	b, ok := t.Balancers[tag]
+	if !ok {
+		b = newBalancer()
+		if t.Balancers == nil {
+			t.Balancers = map[string]*Balancer{}
+		}
+		t.Balancers[tag] = b
+	}
+	return b
+}
+
+// BalancerState returns the state of balancer tag without creating it (for
+// View).
+func (t *Target) BalancerState(tag string) (*Balancer, bool) {
+	b, ok := t.Balancers[tag]
+	return b, ok
+}
+
 // Tunnel is the runtime state of one tunnel: its mapping (whose
 // OutboundTagCurrent repair and rejoin change) and its monitor state.
 type Tunnel struct {
@@ -248,10 +281,10 @@ type Target struct {
 	// Tunnels are the tunnels of every source, ordered by source id, then
 	// in topology (tag) order (the monitor relies on it).
 	Tunnels []*Tunnel
-	// Balancer survives topology replacements.
-	Balancer BalancerMonitor
-	// BalancerSelection survives topology replacements (10 §6.4).
-	BalancerSelection SelectionState
+	// Balancers holds, by target.balancers[].tag, the monitor and selection
+	// state of each balancer; an entry is created by EnsureBalancer on the
+	// first write. It survives topology replacements (10 §6.4).
+	Balancers map[string]*Balancer
 	// XrayDown is set while the Xray API of the target does not answer
 	// (logging only).
 	XrayDown *XrayIssue
@@ -289,8 +322,8 @@ func Key(subscriptionID, targetAddress string) string {
 // newTarget is the initial state of a target (03 §1).
 func newTarget() *Target {
 	return &Target{
-		Sources:  map[string]*Source{},
-		Balancer: BalancerMonitor{State: BalancerIdle, RemotePingState: RemotePingIdle},
+		Sources:   map[string]*Source{},
+		Balancers: map[string]*Balancer{},
 	}
 }
 

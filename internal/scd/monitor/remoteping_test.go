@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/socks"
 	"github.com/a1ekseev/scd/internal/scd/state"
 )
@@ -33,7 +34,7 @@ func TestRemotePingAsync(t *testing.T) {
 		return 200, nil
 	}
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	b := e.balancer()
@@ -72,7 +73,7 @@ func TestRemotePingFailureKeepsHealth(t *testing.T) {
 	var pushes []directCall
 	e.deps.Direct = recordDirect(&pushes, 500)
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -98,12 +99,12 @@ func TestRemotePingFailureKeepsHealth(t *testing.T) {
 
 func TestRemotePingErrorClearsStatusCode(t *testing.T) {
 	e := newEnv(t, newSub(withBalancer(200, "https://push.example.test/api/push/token", false)))
-	e.mem.Update(e.key, func(tg *state.Target) { tg.Balancer.RemotePingLastStatusCode = new(200) })
+	e.mem.Update(e.key, func(tg *state.Target) { tg.EnsureBalancer("x-balancer").Monitor.RemotePingLastStatusCode = new(200) })
 	e.deps.Probe = ok(200, 33)
 	e.deps.Direct = func(context.Context, string, time.Duration) (int, error) {
 		return 0, textError("Remote ping timed out after 5000ms.")
 	}
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -124,12 +125,14 @@ func TestRemotePingErrorClearsStatusCode(t *testing.T) {
 // 03 §10.6 p.22.
 func TestRemotePingOverlapSkipped(t *testing.T) {
 	e := newEnv(t, newSub(withBalancer(200, "https://push.example.test/api/push/token", false)))
-	e.mem.Update(e.key, func(tg *state.Target) { tg.Balancer.RemotePingState = state.RemotePingPending })
+	e.mem.Update(e.key, func(tg *state.Target) {
+		tg.EnsureBalancer("x-balancer").Monitor.RemotePingState = state.RemotePingPending
+	})
 	e.deps.Probe = ok(200, 33)
 	var pushes []directCall
 	e.deps.Direct = recordDirect(&pushes, 200)
 
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -143,6 +146,54 @@ func TestRemotePingOverlapSkipped(t *testing.T) {
 	}
 	if b := e.balancer(); b.RemotePingState != state.RemotePingPending || b.State != state.BalancerHealthy {
 		t.Errorf("balancer = %+v", b)
+	}
+}
+
+// Two balancers of one target keep separate states: a push pending for one
+// does not skip the push of the other, and every log names its balancer.
+func TestRemotePingPerBalancer(t *testing.T) {
+	sub := newSub(withBalancer(200, "https://push.example.test/api/push/token", false))
+	second := *sub.Target.Balancers[0].Monitor
+	second.Socks5 = &config.BalancerMonitorSocks5Config{Host: "127.0.0.10", Port: 1081}
+	sub.Target.Balancers = append(sub.Target.Balancers, config.BalancerConfig{Tag: "up-balancer", Monitor: &second})
+	e := newEnv(t, sub)
+	e.mem.Update(e.key, func(tg *state.Target) {
+		tg.EnsureBalancer("x-balancer").Monitor.RemotePingState = state.RemotePingPending
+	})
+	e.deps.Probe = func(_ context.Context, r socks.Request) (socks.Response, error) {
+		if r.ProxyPort == 1081 {
+			return socks.Response{}, errors.New("connection refused")
+		}
+		return socks.Response{StatusCode: 200, LatencyMs: 33}, nil
+	}
+	var pushes []directCall
+	e.deps.Direct = recordDirect(&pushes, 200)
+
+	for _, b := range sub.Target.Balancers {
+		if err := BalancerTick(t.Context(), e.deps, sub, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.bg.Wait()
+	if len(pushes) != 1 || !strings.Contains(pushes[0].url, "status=down") {
+		t.Errorf("pushes = %+v, want one down push of up-balancer", pushes)
+	}
+	e.mem.View(e.key, func(tg *state.Target) {
+		x, _ := tg.BalancerState("x-balancer")
+		up, _ := tg.BalancerState("up-balancer")
+		if x.Monitor.State != state.BalancerHealthy || x.Monitor.RemotePingState != state.RemotePingPending ||
+			up.Monitor.State != state.BalancerDegraded || up.Monitor.RemotePingState != state.RemotePingOK {
+			t.Errorf("x-balancer %+v, up-balancer %+v", x.Monitor, up.Monitor)
+		}
+	})
+	for event, tag := range map[string]string{
+		"balancer_monitor_remote_ping_skipped_overrun": "x-balancer",
+		"balancer_degraded":                            "up-balancer",
+		"balancer_monitor_remote_ping_succeeded":       "up-balancer",
+	} {
+		if logs := e.logs.events(t, event); len(logs) != 1 || logs[0]["balancerTag"] != tag {
+			t.Errorf("%s logs = %v, want one of %s", event, logs, tag)
+		}
 	}
 }
 
@@ -160,7 +211,7 @@ func TestRemotePingSingleFlight(t *testing.T) {
 	}
 	done := make(chan error, 8)
 	for range 8 {
-		go func() { done <- BalancerTick(t.Context(), e.deps, e.sub) }()
+		go func() { done <- BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]) }()
 	}
 	for range 8 {
 		if err := <-done; err != nil {
@@ -190,7 +241,7 @@ func TestRemotePingViaSocks(t *testing.T) {
 			}
 			return socks.Response{StatusCode: 502, LatencyMs: 12}, nil
 		}
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
@@ -227,7 +278,7 @@ func TestRemotePingViaSocks(t *testing.T) {
 	})
 	t.Run("viaSocks=false", func(t *testing.T) {
 		sub := realShapeSub(t)
-		sub.Target.BalancerMonitor.RemotePing.ViaSocks = false
+		sub.Target.Balancers[0].Monitor.RemotePing.ViaSocks = false
 		e := newEnv(t, sub)
 		var probes atomic.Int32
 		e.deps.Probe = func(ctx context.Context, r socks.Request) (socks.Response, error) {
@@ -236,7 +287,7 @@ func TestRemotePingViaSocks(t *testing.T) {
 		}
 		var pushes []directCall
 		e.deps.Direct = recordDirect(&pushes, 200)
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
@@ -272,7 +323,7 @@ func TestRemotePingLogsOnlyHost(t *testing.T) {
 		e.deps.Direct = func(_ context.Context, u string, _ time.Duration) (int, error) {
 			return 0, &url.Error{Op: "Get", URL: u, Err: errors.New("dial tcp: connection refused")}
 		}
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
@@ -295,7 +346,7 @@ func TestRemotePingLogsOnlyHost(t *testing.T) {
 			}
 			return socks.Response{}, errors.New("invalid URL: " + r.URL)
 		}
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
@@ -306,7 +357,7 @@ func TestRemotePingLogsOnlyHost(t *testing.T) {
 		e.deps.Probe = ok(200, 33)
 		var pushes []directCall
 		e.deps.Direct = recordDirect(&pushes, 204)
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
@@ -318,7 +369,7 @@ func TestRemotePingLogsOnlyHost(t *testing.T) {
 	t.Run("invalid URL", func(t *testing.T) {
 		e := newEnv(t, newSub(withBalancer(200, "SECRET-PATH://%zz", false)))
 		e.deps.Probe = ok(200, 33)
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()

@@ -45,8 +45,8 @@ type logEvent struct {
 	details []slog.Attr
 }
 
-// Tick polls the balancer selection of the target of sub (10 §6.3): it
-// calls GetBalancerInfo and, with balancerSelection.observatory,
+// Tick polls the selection of balancer b of the target of sub (10 §6.3): it
+// calls GetBalancerInfo for b.Tag and, with selection.observatory,
 // GetOutboundStatus in parallel, without the target lock (read-only, like
 // the balancer monitor), and records the result under the state lock. It
 // runs before the first sync too: the state is created (Memory.Ensure),
@@ -59,12 +59,12 @@ type logEvent struct {
 // observatory line is debug when GetBalancerInfo failed too. It is a no-op when
 // the selection is disabled; the error is reserved for a cancelled ctx, in
 // which case nothing is recorded.
-func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
+func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig, b config.BalancerConfig) error {
 	t := sub.Target
-	bs := t.BalancerSelection
-	if !bs.Enabled {
+	if b.Selection == nil || !b.Selection.Enabled {
 		return nil
 	}
+	bs := *b.Selection
 
 	var (
 		info            xrayapi.BalancerInfo
@@ -78,7 +78,7 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 		infoErr, obsChecked = err, false
 	} else {
 		var wg sync.WaitGroup
-		wg.Go(func() { info, infoErr = client.GetBalancerInfo(ctx, bs.BalancerTag) })
+		wg.Go(func() { info, infoErr = client.GetBalancerInfo(ctx, b.Tag) })
 		if bs.Observatory {
 			wg.Go(func() { obs, obsErr = client.GetOutboundStatus(ctx) })
 		}
@@ -97,16 +97,17 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 	down, recovered := state.NoteXray(ctx, d.Memory, d.Log, sub.ID, t.Address, infoErr, now)
 	var events []logEvent
 	d.Memory.Update(key, func(tg *state.Target) {
-		events = record(&tg.BalancerSelection, bs, now, info, infoErr)
+		sel := &tg.EnsureBalancer(b.Tag).Selection
+		events = record(sel, b.Tag, now, info, infoErr)
 		if obsChecked || !bs.Observatory {
-			events = append(events, recordObservatory(&tg.BalancerSelection, bs.Observatory, now, obs, obsErr)...)
+			events = append(events, recordObservatory(sel, bs.Observatory, now, obs, obsErr)...)
 		}
 	})
 
 	base := []slog.Attr{
 		slog.String("subscriptionId", sub.ID),
 		slog.String("targetAddress", t.Address),
-		slog.String("balancerTag", bs.BalancerTag),
+		slog.String("balancerTag", b.Tag),
 	}
 	for _, e := range events {
 		switch {
@@ -123,9 +124,9 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig) error {
 
 // record applies one GetBalancerInfo result to s and returns the log events
 // of its transitions.
-func record(s *state.SelectionState, bs config.BalancerSelectionConfig, now time.Time, info xrayapi.BalancerInfo, infoErr error) []logEvent {
+func record(s *state.SelectionState, tag string, now time.Time, info xrayapi.BalancerInfo, infoErr error) []logEvent {
 	var events []logEvent
-	s.BalancerTag = bs.BalancerTag
+	s.BalancerTag = tag
 	s.LastCheckedAt = &now
 
 	if infoErr != nil {

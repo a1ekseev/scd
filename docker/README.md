@@ -82,7 +82,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 
 | Файл | Назначение |
 | --- | --- |
-| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), выключенными источниками `wireguard` `wg` (порты `20100..20109`) и `masque` `mq` (порты `20110..20119`; файлов кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, `balancerSelection`, статус-сервер `0.0.0.0:8080` |
+| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), выключенными источниками `wireguard` `wg` (порты `20100..20109`) и `masque` `mq` (порты `20110..20119`; файлов кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, балансировщик `x-balancer` с `selection` (`target.balancers[]`), статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `wgp/config.example.yml` | `scd wgp`: общие ключи (`server`, `state`, `deviceNamePrefix`, `api`), провайдер `static` (`/app/static`, все ключи с умолчаниями) и выход `wg` → `/app/out/wg`, который читает источник `wg` из `scd/config.example.yml`; выключенные `proton` (`identification.proton`, `keys.revokeOldAfterMinutes`, выход `proton`), `warp` и `warpmq`. Каталоги `secrets/`, `docker/wgp/state/` и `docker/wgp/static/` в `.gitignore` |
@@ -107,7 +107,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 `format`, `filters`, `fetch*`, `allowInsecure`) и `target.inboundSocks.portRange`
 `validate-config` отклоняет как неизвестные.
 
-`balancerSelection` (карточка «Xray selection» на дашборде) опрашивает Xray
+`balancers[].selection` (карточка «Xray selection» на дашборде) опрашивает Xray
 read-only RPC `RoutingService.GetBalancerInfo` и
 `ObservatoryService.GetOutboundStatus`, поэтому в `xray/config/01_api.json`
 включён `ObservatoryService`, а в `05_observatory.json` есть секция

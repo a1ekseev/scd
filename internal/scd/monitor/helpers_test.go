@@ -97,10 +97,11 @@ func newSub(mut func(c *config.SubscriptionConfig)) config.SubscriptionConfig {
 	return c
 }
 
-// withBalancer enables the balancer monitor via 127.0.0.10:1080.
+// withBalancer sets one balancer x-balancer with a monitor via
+// 127.0.0.10:1080.
 func withBalancer(expected int, remoteURL string, viaSocks bool) func(c *config.SubscriptionConfig) {
 	return func(c *config.SubscriptionConfig) {
-		c.Target.BalancerMonitor = config.TargetBalancerMonitorConfig{
+		c.Target.Balancers = []config.BalancerConfig{{Tag: "x-balancer", Monitor: &config.TargetBalancerMonitorConfig{
 			Enabled:  true,
 			Schedule: "*/2 * * * *",
 			Socks5:   &config.BalancerMonitorSocks5Config{Host: "127.0.0.10", Port: 1080},
@@ -108,9 +109,9 @@ func withBalancer(expected int, remoteURL string, viaSocks bool) func(c *config.
 				URL: "https://example.test/health", Method: "GET", ExpectedStatus: expected, TimeoutMs: 5000,
 			},
 			Retry: config.RetryConfig{Attempts: 1, DelayMs: 250},
-		}
+		}}}
 		if remoteURL != "" {
-			c.Target.BalancerMonitor.RemotePing = config.TargetBalancerRemotePingConfig{
+			c.Target.Balancers[0].Monitor.RemotePing = config.TargetBalancerRemotePingConfig{
 				Enabled: true, URL: remoteURL, TimeoutMs: 5000, ViaSocks: viaSocks,
 			}
 		}
@@ -208,9 +209,14 @@ func (e *env) setTunnel(i int, fn func(tn *state.Tunnel)) {
 	e.mem.Update(e.key, func(tg *state.Target) { fn(tg.Tunnels[i]) })
 }
 
+// balancer returns the monitor state of x-balancer, idle when it has none.
 func (e *env) balancer() state.BalancerMonitor {
-	var b state.BalancerMonitor
-	e.mem.View(e.key, func(tg *state.Target) { b = tg.Balancer })
+	b := state.BalancerMonitor{State: state.BalancerIdle, RemotePingState: state.RemotePingIdle}
+	e.mem.View(e.key, func(tg *state.Target) {
+		if s, ok := tg.BalancerState("x-balancer"); ok {
+			b = s.Monitor
+		}
+	})
 	return b
 }
 

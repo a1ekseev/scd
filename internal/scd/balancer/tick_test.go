@@ -105,9 +105,9 @@ func selSub(observatoryOn bool) config.SubscriptionConfig {
 		ID: "sub-1", Enabled: true,
 		Target: config.SubscriptionTargetConfig{
 			Address: "127.0.0.1:8080", TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: prefix,
-			BalancerSelection: config.BalancerSelectionConfig{
-				Enabled: true, BalancerTag: "x-balancer", Schedule: "*/15 * * * * *", Observatory: observatoryOn,
-			},
+			Balancers: []config.BalancerConfig{{Tag: "x-balancer", Selection: &config.BalancerSelectionConfig{
+				Enabled: true, Schedule: "*/15 * * * * *", Observatory: observatoryOn,
+			}}},
 		},
 	}
 }
@@ -133,7 +133,7 @@ func newEnv(observatoryOn bool) *env {
 
 func (e *env) tick(t *testing.T) {
 	t.Helper()
-	if err := Tick(t.Context(), e.d, e.sub); err != nil {
+	if err := Tick(t.Context(), e.d, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,10 +141,19 @@ func (e *env) tick(t *testing.T) {
 func (e *env) sel(t *testing.T) state.SelectionState {
 	t.Helper()
 	var s state.SelectionState
-	if !e.mem.View(e.key, func(tg *state.Target) { s = tg.BalancerSelection }) {
+	if !e.mem.View(e.key, func(tg *state.Target) { s = selectionOf(tg, "x-balancer") }) {
 		t.Fatal("no target state")
 	}
 	return s
+}
+
+// selectionOf returns the selection state of balancer tag in tg (zero
+// without one).
+func selectionOf(tg *state.Target, tag string) state.SelectionState {
+	if b, ok := tg.BalancerState(tag); ok {
+		return b.Selection
+	}
+	return state.SelectionState{}
 }
 
 func single(tag string) xrayapi.BalancerInfo {
@@ -172,7 +181,7 @@ func TestTickIdleToOK(t *testing.T) {
 			t.Errorf("balancer tags = %v", e.c.tags)
 		}
 		e.mem.View(e.key, func(tg *state.Target) {
-			if len(tg.Sources) != 0 || len(tg.Tunnels) != 0 || tg.Balancer.State != state.BalancerIdle {
+			if len(tg.Sources) != 0 || len(tg.Tunnels) != 0 || tg.Balancers["x-balancer"].Monitor.State != state.BalancerIdle {
 				t.Errorf("tick changed more than the selection: %+v", tg)
 			}
 		})
@@ -421,7 +430,7 @@ func TestTickDialError(t *testing.T) {
 // Disabled selection: no state, no dial.
 func TestTickDisabled(t *testing.T) {
 	e := newEnv(true)
-	e.sub.Target.BalancerSelection.Enabled = false
+	e.sub.Target.Balancers[0].Selection.Enabled = false
 	e.d.Dial = func(string, time.Duration) (xrayapi.Client, error) {
 		t.Error("unexpected dial")
 		return nil, errors.New("no")
@@ -437,12 +446,12 @@ func TestTickCancelled(t *testing.T) {
 	e := newEnv(true)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := Tick(ctx, e.d, e.sub); !errors.Is(err, context.Canceled) {
+	if err := Tick(ctx, e.d, e.sub, e.sub.Target.Balancers[0]); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
 	e.mem.View(e.key, func(tg *state.Target) {
-		if tg.BalancerSelection.State != "" {
-			t.Errorf("state recorded: %+v", tg.BalancerSelection)
+		if s := selectionOf(tg, "x-balancer"); s.State != "" {
+			t.Errorf("state recorded: %+v", s)
 		}
 	})
 }
@@ -466,7 +475,7 @@ func TestTickNotBlockedByTargetLock(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Tick(t.Context(), Deps{Memory: mem, Log: slog.New(slog.DiscardHandler), Dial: srv.Dialer()}, sub)
+		done <- Tick(t.Context(), Deps{Memory: mem, Log: slog.New(slog.DiscardHandler), Dial: srv.Dialer()}, sub, sub.Target.Balancers[0])
 	}()
 	select {
 	case err := <-done:
@@ -477,7 +486,7 @@ func TestTickNotBlockedByTargetLock(t *testing.T) {
 		t.Fatal("tick blocked by the target lock")
 	}
 	mem.View(key, func(tg *state.Target) {
-		s := tg.BalancerSelection
+		s := selectionOf(tg, "x-balancer")
 		if s.State != state.SelectionOK || s.SelectedTag != prefix+"de-1" || len(s.Observatory) != 2 ||
 			*s.Observatory[prefix+"nl-1"].DelayMs != 120 {
 			t.Errorf("state = %+v", s)
@@ -485,6 +494,48 @@ func TestTickNotBlockedByTargetLock(t *testing.T) {
 	})
 	if calls := srv.Calls(); !slices.Contains(calls, "GetBalancerInfo:x-balancer") || !slices.Contains(calls, "GetOutboundStatus") {
 		t.Errorf("calls = %v", calls)
+	}
+}
+
+// Two balancers of one target: each tick asks Xray for its own tag and
+// records into its own state.
+func TestTickTwoBalancers(t *testing.T) {
+	srv, _ := xrayfake.Start(t,
+		xrayfake.WithStaticOutbounds(prefix+"de-1", "up-1", "direct"),
+		xrayfake.WithBalancer("x-balancer", []string{prefix}, "leastPing"),
+		xrayfake.WithBalancer("up-balancer", []string{"up-"}, "leastPing"))
+	srv.SetObservation(
+		&observatory.OutboundStatus{OutboundTag: prefix + "de-1", Alive: true, Delay: 21, LastSeenTime: 1792229310, LastTryTime: 1792229310},
+		&observatory.OutboundStatus{OutboundTag: "up-1", Alive: true, Delay: 30, LastSeenTime: 1792229310, LastTryTime: 1792229310},
+	)
+	mem := state.New()
+	sub := selSub(false)
+	sub.Target.Balancers = append(sub.Target.Balancers, config.BalancerConfig{
+		Tag: "up-balancer", Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *"},
+	})
+	logs := &logSink{}
+	d := Deps{Memory: mem, Log: logs.logger(), Dial: srv.Dialer()}
+	for _, b := range sub.Target.Balancers {
+		if err := Tick(t.Context(), d, sub, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key := state.Key(sub.ID, sub.Target.Address)
+	mem.View(key, func(tg *state.Target) {
+		if a, b := selectionOf(tg, "x-balancer"), selectionOf(tg, "up-balancer"); a.SelectedTag != prefix+"de-1" || a.BalancerTag != "x-balancer" ||
+			b.SelectedTag != "up-1" || b.BalancerTag != "up-balancer" {
+			t.Errorf("selections %+v / %+v", a, b)
+		}
+	})
+	if calls := srv.Calls(); !slices.Contains(calls, "GetBalancerInfo:x-balancer") || !slices.Contains(calls, "GetBalancerInfo:up-balancer") {
+		t.Errorf("calls = %v", calls)
+	}
+	var tags []any
+	for _, ev := range logs.events(t, "balancer_selection_changed") {
+		tags = append(tags, ev["balancerTag"])
+	}
+	if !slices.Equal(tags, []any{"x-balancer", "up-balancer"}) {
+		t.Errorf("balancer_selection_changed tags %v", tags)
 	}
 }
 

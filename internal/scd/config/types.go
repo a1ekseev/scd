@@ -152,16 +152,16 @@ func (f SourceFiltersConfig) MarshalJSON() ([]byte, error) {
 // SubscriptionTargetConfig describes the Xray instance (gRPC API address)
 // and what scd manages and monitors there.
 type SubscriptionTargetConfig struct {
-	Address              string                      `json:"address"`
-	TimeoutMs            int                         `json:"timeoutMs"`
-	FixedOutbounds       []string                    `json:"fixedOutbounds"`
-	FixedInbounds        []string                    `json:"fixedInbounds"`
-	FixedRouting         []string                    `json:"fixedRouting"`
-	VisionUDP443Override bool                        `json:"visionUdp443Override"`
-	InboundSocks         *InboundSocksConfig         `json:"inboundSocks,omitempty"`
-	Monitor              TargetMonitorConfig         `json:"monitor"`
-	BalancerMonitor      TargetBalancerMonitorConfig `json:"balancerMonitor"`
-	BalancerSelection    BalancerSelectionConfig     `json:"balancerSelection"`
+	Address              string              `json:"address"`
+	TimeoutMs            int                 `json:"timeoutMs"`
+	FixedOutbounds       []string            `json:"fixedOutbounds"`
+	FixedInbounds        []string            `json:"fixedInbounds"`
+	FixedRouting         []string            `json:"fixedRouting"`
+	VisionUDP443Override bool                `json:"visionUdp443Override"`
+	InboundSocks         *InboundSocksConfig `json:"inboundSocks,omitempty"`
+	Monitor              TargetMonitorConfig `json:"monitor"`
+	// Balancers are the Xray balancers scd monitors or shows, unique by tag.
+	Balancers []BalancerConfig `json:"balancers"`
 	// ObservatorySubjectSelectorPrefix is prepended to generated outbound
 	// tags; empty when not configured.
 	ObservatorySubjectSelectorPrefix string `json:"observatorySubjectSelectorPrefix,omitempty"`
@@ -202,6 +202,14 @@ type TargetMonitorRequestConfig struct {
 	TimeoutMs      int    `json:"timeoutMs"`
 }
 
+// BalancerConfig is one target.balancers[] entry: an Xray balancer
+// (routing.balancers[].tag) with an optional monitor and selection view.
+type BalancerConfig struct {
+	Tag       string                       `json:"tag"`
+	Monitor   *TargetBalancerMonitorConfig `json:"monitor,omitempty"`
+	Selection *BalancerSelectionConfig     `json:"selection,omitempty"`
+}
+
 // TargetBalancerMonitorConfig configures the balancer monitor (probe via
 // an external SOCKS5 and optional remote push).
 type TargetBalancerMonitorConfig struct {
@@ -231,10 +239,8 @@ type TargetBalancerRemotePingConfig struct {
 // BalancerSelectionConfig configures the read-only balancer selection view
 // of the dashboard (D22, 10 §6.5).
 type BalancerSelectionConfig struct {
-	Enabled bool `json:"enabled"`
-	// BalancerTag is routing.balancers[].tag in Xray (not the rule tag).
-	BalancerTag string `json:"balancerTag,omitempty"`
-	Schedule    string `json:"schedule,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	Schedule string `json:"schedule,omitempty"`
 	// Observatory enables ObservatoryService queries (default true).
 	Observatory bool `json:"observatory"`
 	// Strategy is an optional UI hint: leastPing|leastLoad|random|roundRobin.

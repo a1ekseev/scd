@@ -8,13 +8,21 @@
         "enabled": true,
         "address": "127.0.0.1:8080",
         "observatorySubjectSelectorPrefix": "x-observe-",
-        "balancerSelection": {
-          "enabled": true,
-          "balancerTag": "x-balancer",
-          "schedule": "*/15 * * * * *",
-          "observatory": true,
-          "strategy": "random"
-        }
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            },
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true,
+              "strategy": "random"
+            }
+          }
+        ]
       }
     ],
     "remoteInstances": [],
@@ -28,60 +36,65 @@
     {
       "subscriptionId": "sub-1",
       "targetAddress": "127.0.0.1:8080",
-      "balancerMonitor": {
-        "state": "healthy",
-        "remotePingState": "idle",
-        "consecutiveFailures": 0,
-        "lastCheckedAt": "2026-10-17T09:00:30.000Z",
-        "lastSuccessAt": "2026-10-17T09:00:30.000Z",
-        "lastStatusCode": 204,
-        "lastLatencyMs": 55,
-        "lastSuccessStatusCode": 204,
-        "lastSuccessLatencyMs": 55
-      },
-      "balancerSelection": {
-        "balancerTag": "x-balancer",
-        "state": "ok",
-        "mode": "pool",
-        "selectedOutboundTag": "",
-        "overrideTarget": "",
-        "principleTargets": [
-          "x-observe-at-1",
-          "x-observe-de-1",
-          "x-observe-nl-1"
-        ],
-        "selectedSince": "2026-10-17T08:45:00.000Z",
-        "previousSelectedTag": "",
-        "lastCheckedAt": "2026-10-17T09:00:30.000Z",
-        "lastSuccessAt": "2026-10-17T09:00:30.000Z",
-        "lastError": "",
-        "consecutiveFailures": 0,
-        "observatory": [
-          {
-            "tag": "x-observe-at-1",
-            "alive": false,
-            "lastTryAt": "2026-10-17T09:00:15.000Z",
-            "lastError": "the outbound x-observe-at-1 is dead: GET request failed: context deadline exceeded",
-            "lastSeenAt": "2026-10-17T08:30:00.000Z"
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "idle",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+            "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 55,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 55
           },
-          {
-            "tag": "x-observe-de-1",
-            "alive": true,
-            "lastTryAt": "2026-10-17T09:00:15.000Z",
-            "delayMs": 42,
-            "lastSeenAt": "2026-10-17T09:00:15.000Z"
-          },
-          {
-            "tag": "x-observe-nl-1",
-            "alive": true,
-            "lastTryAt": "2026-10-17T09:00:15.000Z",
-            "delayMs": 95,
-            "lastSeenAt": "2026-10-17T09:00:15.000Z"
+          "selection": {
+            "balancerTag": "x-balancer",
+            "state": "ok",
+            "mode": "pool",
+            "selectedOutboundTag": "",
+            "overrideTarget": "",
+            "principleTargets": [
+              "x-observe-at-1",
+              "x-observe-de-1",
+              "x-observe-nl-1"
+            ],
+            "selectedSince": "2026-10-17T08:45:00.000Z",
+            "previousSelectedTag": "",
+            "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+            "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+            "lastError": "",
+            "consecutiveFailures": 0,
+            "observatory": [
+              {
+                "tag": "x-observe-at-1",
+                "alive": false,
+                "lastTryAt": "2026-10-17T09:00:15.000Z",
+                "lastError": "the outbound x-observe-at-1 is dead: GET request failed: context deadline exceeded",
+                "lastSeenAt": "2026-10-17T08:30:00.000Z"
+              },
+              {
+                "tag": "x-observe-de-1",
+                "alive": true,
+                "lastTryAt": "2026-10-17T09:00:15.000Z",
+                "delayMs": 42,
+                "lastSeenAt": "2026-10-17T09:00:15.000Z"
+              },
+              {
+                "tag": "x-observe-nl-1",
+                "alive": true,
+                "lastTryAt": "2026-10-17T09:00:15.000Z",
+                "delayMs": 95,
+                "lastSeenAt": "2026-10-17T09:00:15.000Z"
+              }
+            ],
+            "observatoryError": "",
+            "observatoryCheckedAt": "2026-10-17T09:00:30.000Z"
           }
-        ],
-        "observatoryError": "",
-        "observatoryCheckedAt": "2026-10-17T09:00:30.000Z"
-      },
+        }
+      ],
       "tunnels": [
         {
           "baseTunnelId": "de-1",

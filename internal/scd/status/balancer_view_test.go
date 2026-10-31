@@ -210,8 +210,7 @@ func TestFeatureOnTargetView(t *testing.T) {
 
 	// Enabled but never polled: idle, nothing else.
 	l := loadFixture(t, "healthy-single")
-	l.cfg.Config.Subscriptions[0].Target.BalancerSelection.Enabled = true
-	l.cfg.Config.Subscriptions[0].Target.BalancerSelection.BalancerTag = "x-balancer"
+	l.cfg.Config.Subscriptions[0].Target.Balancers[0].Selection = &config.BalancerSelectionConfig{Enabled: true}
 	body := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
 	target := index(t, field(t, index(t, field(t, body, "subscriptions"), 0), "targets"), 0)
 	jsonEqual(t, decode(t, field(t, target, "balancerSelection")), map[string]any{"balancerTag": "x-balancer", "state": "idle"})
@@ -354,16 +353,18 @@ func TestDashboardSelectionCard(t *testing.T) {
 	}{
 		{"selection-override", "state-degraded", func(l loaded) {
 			l.mem.Update("sub-1::127.0.0.1:8080", func(tg *state.Target) {
-				tg.BalancerSelection.SelectedTag, tg.BalancerSelection.OverrideTarget = "x-observe-static", "x-observe-static"
+				s := &tg.EnsureBalancer("x-balancer").Selection
+				s.SelectedTag, s.OverrideTarget = "x-observe-static", "x-observe-static"
 			})
 		}},
 		{"selection-pool", "state-degraded", func(l loaded) {
 			l.mem.Update("sub-1::127.0.0.1:8080", func(tg *state.Target) {
-				tg.BalancerSelection.Mode, tg.BalancerSelection.SelectedTag = "single", "x-observe-at-1"
+				s := &tg.EnsureBalancer("x-balancer").Selection
+				s.Mode, s.SelectedTag = "single", "x-observe-at-1"
 			})
 		}},
 		{"selection-single", "state-idle", func(l loaded) {
-			l.mem.Update("sub-1::127.0.0.1:8080", func(tg *state.Target) { tg.BalancerSelection = state.SelectionState{} })
+			l.mem.Update("sub-1::127.0.0.1:8080", func(tg *state.Target) { tg.EnsureBalancer("x-balancer").Selection = state.SelectionState{} })
 		}},
 	} {
 		l := loadFixture(t, c.fixture)
@@ -415,8 +416,9 @@ func TestRuntimeStateBalancerSelection(t *testing.T) {
 	if len(obs) != 4 || obs[0].(map[string]any)["tag"] != "x-observe-at-1" || obs[1].(map[string]any)["delayMs"] != 42.0 {
 		t.Errorf("observatory %v", sel["observatory"])
 	}
-	cfgSel := decode(t, field(t, field(t, field(t, json.RawMessage(raw), "config"), "target"), "balancerSelection"))
-	jsonEqual(t, cfgSel, map[string]any{"enabled": true, "balancerTag": "x-balancer", "schedule": "*/15 * * * * *", "observatory": true})
+	cfgBal := decode(t, index(t, field(t, field(t, field(t, json.RawMessage(raw), "config"), "target"), "balancers"), 0)).(map[string]any)
+	jsonEqual(t, cfgBal["tag"], "x-balancer")
+	jsonEqual(t, cfgBal["selection"], map[string]any{"enabled": true, "schedule": "*/15 * * * * *", "observatory": true})
 
 	// Feature off: no key.
 	l = loadFixture(t, "healthy-single")
@@ -439,13 +441,13 @@ func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
 		Target: config.SubscriptionTargetConfig{
 			Address: "127.0.0.1:8080", TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: "x-observe-",
 			FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
-			BalancerSelection: config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Observatory: true},
+			Balancers: []config.BalancerConfig{{Tag: "x-balancer", Selection: &config.BalancerSelectionConfig{Enabled: true, Observatory: true}}},
 		},
 	}}
 	key := state.Key("sub-1", "127.0.0.1:8080")
 	l.mem.Ensure(key)
 	l.mem.Update(key, func(tg *state.Target) {
-		tg.BalancerSelection = state.SelectionState{State: state.SelectionOK, BalancerTag: "x-balancer", Mode: state.ModeNone, PrincipleTargets: []string{}}
+		tg.EnsureBalancer("x-balancer").Selection = state.SelectionState{State: state.SelectionOK, BalancerTag: "x-balancer", Mode: state.ModeNone, PrincipleTargets: []string{}}
 	})
 
 	fake, _ := xrayfake.Start(t)
@@ -463,4 +465,38 @@ func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
 	inst := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
 	target := index(t, field(t, index(t, field(t, inst, "subscriptions"), 0), "targets"), 0)
 	jsonEqual(t, decode(t, field(t, target, "balancerMonitor")), map[string]any{"state": "idle"})
+}
+
+// Until the status API lists every balancer, the target and tunnel views
+// show target.balancers[0]; runtime-state has its balancerMonitor only when
+// balancers[0] has a monitor.
+func TestStatusShowsFirstBalancer(t *testing.T) {
+	l := loadFixture(t, "healthy-single")
+	tg := &l.cfg.Config.Subscriptions[0].Target
+	tg.Balancers = []config.BalancerConfig{{Tag: "up-balancer"}, tg.Balancers[0]}
+	l.mem.Update("sub-1::127.0.0.1:8080", func(st *state.Target) {
+		st.EnsureBalancer("up-balancer").Monitor.State = state.BalancerDegraded
+	})
+	inst := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
+	target := index(t, field(t, index(t, field(t, inst, "subscriptions"), 0), "targets"), 0)
+	if got := decode(t, field(t, target, "balancerMonitor")).(map[string]any)["state"]; got != state.BalancerDegraded {
+		t.Errorf("target balancerMonitor.state %v, want the first balancer's", got)
+	}
+	tunnel := index(t, field(t, inst, "tunnels"), 0)
+	if got := decode(t, field(t, tunnel, "balancerMonitorState")); got != state.BalancerDegraded {
+		t.Errorf("tunnel balancerMonitorState %v", got)
+	}
+
+	fake, _ := xrayfake.Start(t)
+	d := l.deps()
+	d.Dial = fake.Dialer()
+	l.mem.MarkSynced("sub-1::127.0.0.1:8080")
+	body, _, err := BuildRuntimeState(t.Context(), d, "sub-1", "127.0.0.1:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(field(t, json.RawMessage(raw), "serviceState")), "balancerMonitor") {
+		t.Errorf("runtime-state has a balancerMonitor without balancers[0].monitor: %s", raw)
+	}
 }

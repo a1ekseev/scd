@@ -68,14 +68,28 @@
     {
       "name": "remote-input",
       "input": "https://example.test/tokenized/path?secret=abc",
-      "target": {},
-      "options": {},
-      "balancerMonitor": {
-        "state": "healthy",
-        "remotePingState": "idle",
-        "consecutiveFailures": 0,
-        "lastStatusCode": 204
+      "target": {
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": false
+            }
+          }
+        ]
       },
+      "options": {},
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "idle",
+            "consecutiveFailures": 0,
+            "lastStatusCode": 204
+          }
+        }
+      ],
       "runtime": {
         "outbounds": [],
         "inbounds": [],
@@ -96,26 +110,31 @@
             "timeoutMs": 5000
           }
         },
-        "balancerMonitor": {
-          "enabled": true,
-          "schedule": "*/2 * * * *",
-          "socks5": {
-            "host": "127.0.0.1",
-            "port": 1080
-          },
-          "request": {
-            "url": "https://balancer.example.test/check?token=secret",
-            "method": "GET",
-            "expectedStatus": 204,
-            "timeoutMs": 5000
-          },
-          "remotePing": {
-            "enabled": true,
-            "url": "https://push.example.test/api/push/token?secret=abc",
-            "timeoutMs": 5000,
-            "viaSocks": true
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/2 * * * *",
+              "socks5": {
+                "host": "127.0.0.1",
+                "port": 1080
+              },
+              "request": {
+                "url": "https://balancer.example.test/check?token=secret",
+                "method": "GET",
+                "expectedStatus": 204,
+                "timeoutMs": 5000
+              },
+              "remotePing": {
+                "enabled": true,
+                "url": "https://push.example.test/api/push/token?secret=abc",
+                "timeoutMs": 5000,
+                "viaSocks": true
+              }
+            }
           }
-        }
+        ]
       },
       "options": {},
       "runtime": {
@@ -138,26 +157,31 @@
             "timeoutMs": 5000
           }
         },
-        "balancerMonitor": {
-          "enabled": true,
-          "schedule": "*/2 * * * *",
-          "socks5": {
-            "host": "127.0.0.1",
-            "port": 1080
-          },
-          "request": {
-            "url": "https://balancer.example.test/check?token=secret",
-            "method": "GET",
-            "expectedStatus": 204,
-            "timeoutMs": 5000
-          },
-          "remotePing": {
-            "enabled": true,
-            "url": "https://push.example.test/api/push/token?secret=abc",
-            "timeoutMs": 5000,
-            "viaSocks": true
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/2 * * * *",
+              "socks5": {
+                "host": "127.0.0.1",
+                "port": 1080
+              },
+              "request": {
+                "url": "https://balancer.example.test/check?token=secret",
+                "method": "GET",
+                "expectedStatus": 204,
+                "timeoutMs": 5000
+              },
+              "remotePing": {
+                "enabled": true,
+                "url": "https://push.example.test/api/push/token?secret=abc",
+                "timeoutMs": 5000,
+                "viaSocks": true
+              }
+            }
           }
-        }
+        ]
       },
       "options": {
         "includeSecrets": true

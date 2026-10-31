@@ -47,13 +47,14 @@ created with `-update`).
   "now": "2026-08-15T10:00:00.000Z",
   "config": {
     "instanceId": "local-main",
-    "subscriptions": [ {"id": "sub-1", "enabled": true, "address": "127.0.0.1:8080", "observatorySubjectSelectorPrefix": "x-observe-"} ],
+    "subscriptions": [ {"id": "sub-1", "enabled": true, "address": "127.0.0.1:8080", "observatorySubjectSelectorPrefix": "x-observe-",
+                        "balancers": [ {"tag": "x-balancer", "monitor": {"enabled": true, "schedule": "*/1 * * * *"}} ]} ],
     "remoteInstances": [ {"id": "edge-eu", "apiUrl": "https://edge.example.test/api/instance-status", "schedule": "* * * * *"} ],
     "runtimeState": {"enabled": true, "includeRaw": false, "includeSecrets": false}
   },
   "targets": [ {
     "subscriptionId": "sub-1", "targetAddress": "127.0.0.1:8080",
-    "balancerMonitor": { "state": "healthy", "remotePingState": "ok", "consecutiveFailures": 0 },
+    "balancers": [ {"tag": "x-balancer", "monitor": { "state": "healthy", "remotePingState": "ok", "consecutiveFailures": 0 }} ],
     "tunnels": [ {
       "baseTunnelId": "vless-at-x-tcp-tls-1", "displayName": "🇦🇹 Вена", "countryIso2": "AT",
       "listen": "127.0.0.1", "port": 20000,
@@ -72,14 +73,14 @@ created with `-update`).
 | `now` | request time (`capturedAt`, local `lastSuccessAt`) |
 | `config.instanceId` | `statusServer.instanceId` (required: the hostname never reaches a golden file) |
 | `config.subscriptions[]` | `id`, `enabled`, `address` (= `target.address`), optional `observatorySubjectSelectorPrefix`; everything else takes config defaults (the input is never read). Only enabled subscriptions appear on the dashboard |
-| `config.subscriptions[].balancerSelection` | `target.balancerSelection` (`enabled`, `balancerTag`, `schedule`, `observatory`, `strategy?`) |
+| `config.subscriptions[].balancers` | `target.balancers` in the Go config form (`[{tag, monitor?, selection?}]`); the status views show the first |
 | `config.subscriptions[].sources` | `[{id, type, enabled, maxActive?, wgpDir?}]`; absent = one source `vless`; `wgpDir` makes the source input `<tmp>/<wgpDir>/<id>` |
 | `config.remoteInstances[]` | `statusServer.remoteInstances[]`: `id`, `apiUrl`, `schedule` |
 | `config.runtimeState` | `statusServer.runtimeState` |
 | `wgp` | `{"<dir>": status.json}` written to `<tmp>/<dir>/status.json` with mode 0600; a JSON string is written verbatim (a broken file) |
 | `targets[]` | memory state of one target; must match a configured subscription id + address; absent target = no state (before the first sync) |
-| `targets[].balancerMonitor` | `state.BalancerMonitor`, assigned as is |
-| `targets[].balancerSelection` | `state.SelectionState`: the keys of the JSON view where they overlap, plus `previousSelectedTag`, `consecutiveFailures`, `observatoryCheckedAt` and `observatory` (`[{tag, alive, delayMs?, lastError?, lastSeenAt?, lastTryAt?, healthPing?}]`, `null` = unavailable) |
+| `targets[].balancers[]` | `{tag, monitor?, selection?}`: the state of balancer `tag`; `monitor` is `state.BalancerMonitor`, assigned as is |
+| `targets[].balancers[].selection` | `state.SelectionState`: the keys of the JSON view where they overlap, plus `previousSelectedTag`, `consecutiveFailures`, `observatoryCheckedAt` and `observatory` (`[{tag, alive, delayMs?, lastError?, lastSeenAt?, lastTryAt?, healthPing?}]`, `null` = unavailable) |
 | `targets[].sources` | `[{sourceId, warnings, candidateCount?, noReplacement?}]` |
 | `targets[].tunnels[]` | tunnels in topology order (`sourceId` absent = `vless`); `inboundTag` = `in-<baseTunnelId>`, `routeTag` = `route-<baseTunnelId>`; the three tags give `balanced`; `monitor` is `state.TunnelMonitor` |
 | `remotes[]` | the aggregation state of a configured remote (`id` and `apiUrl` must match): optional `lastAttemptAt`, `lastSuccessAt`, `lastError`, `snapshot` (parsed and passed through, unknown fields included). A remote with only `id`/`apiUrl` has no data |

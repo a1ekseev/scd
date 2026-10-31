@@ -66,10 +66,13 @@ type rsConfig struct {
 	Resources    config.ResourceConfig           `json:"resources"`
 }
 
+// rsServiceState is the state of the first balancer of the target.
 type rsServiceState struct {
+	// BalancerMonitor is set after a sync reached the target when
+	// target.balancers[0] has a monitor.
 	BalancerMonitor *rsBalancerMonitor `json:"balancerMonitor,omitempty"`
-	// BalancerSelection is set when target.balancerSelection is enabled
-	// (D22, 10 §6.6).
+	// BalancerSelection is set when the selection of target.balancers[0] is
+	// enabled (D22, 10 §6.6).
 	BalancerSelection *rsBalancerSelection `json:"balancerSelection,omitempty"`
 }
 
@@ -105,10 +108,11 @@ type rsHealthPing struct {
 	MaxMs       float64 `json:"maxMs"`
 }
 
-// runtimeSelection is the runtime-state form of s.
-func runtimeSelection(t config.SubscriptionTargetConfig, s *state.SelectionState, tunnels []*state.Tunnel) *rsBalancerSelection {
+// runtimeSelection is the runtime-state form of s, the selection state of
+// balancer tag with config cfg.
+func runtimeSelection(cfg config.BalancerSelectionConfig, tag, prefix string, s *state.SelectionState, tunnels []*state.Tunnel) *rsBalancerSelection {
 	out := &rsBalancerSelection{
-		BalancerSelectionView: selectionView(t.BalancerSelection, t.ObservatorySubjectSelectorPrefix, s, tunnels),
+		BalancerSelectionView: selectionView(cfg, tag, prefix, s, tunnels),
 		PreviousSelectedTag:   s.PreviousSelectedTag,
 		ConsecutiveFailures:   s.ConsecutiveFailures,
 		ObservatoryCheckedAt:  formatOptTime(s.ObservatoryCheckedAt),
@@ -270,11 +274,13 @@ func BuildRuntimeState(ctx context.Context, d Deps, subscriptionID, targetAddres
 	}
 	if d.Memory != nil {
 		d.Memory.View(state.Key(subscriptionID, targetAddress), func(t *state.Target) {
-			if t.SyncSeen {
-				snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&t.Balancer), t.Balancer.ConsecutiveFailures}
+			b := firstBalancer(sub)
+			bal := balancerState(t, b)
+			if t.SyncSeen && b.Monitor != nil {
+				snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&bal.Monitor), bal.Monitor.ConsecutiveFailures}
 			}
-			if sub.Target.BalancerSelection.Enabled {
-				snap.ServiceState.BalancerSelection = runtimeSelection(sub.Target, &t.BalancerSelection, t.Tunnels)
+			if bs := enabledSelection(b); bs != nil {
+				snap.ServiceState.BalancerSelection = runtimeSelection(*bs, b.Tag, sub.Target.ObservatorySubjectSelectorPrefix, &bal.Selection, t.Tunnels)
 			}
 		})
 	}

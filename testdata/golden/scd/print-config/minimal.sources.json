@@ -30,22 +30,7 @@
             "delayMs": 250
           }
         },
-        "balancerMonitor": {
-          "enabled": false,
-          "retry": {
-            "attempts": 1,
-            "delayMs": 250
-          },
-          "remotePing": {
-            "enabled": false,
-            "timeoutMs": 5000,
-            "viaSocks": false
-          }
-        },
-        "balancerSelection": {
-          "enabled": false,
-          "observatory": true
-        }
+        "balancers": []
       }
     }
   ],

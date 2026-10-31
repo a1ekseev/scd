@@ -2,22 +2,34 @@ package config
 
 import "github.com/a1ekseev/scd/internal/common/inputsrc"
 
-// RedactSecrets returns a copy of t with the monitor request URL, the
-// balancer monitor request URL and the remote ping URL replaced by
-// inputsrc.RedactURL (D33; print-config and runtime-state).
+// RedactSecrets returns a copy of t with the monitor request URL and the
+// request and remote ping URLs of every balancer monitor replaced by
+// inputsrc.RedactURL (D33; print-config and runtime-state). t is not
+// changed: the balancers are copied.
 func (t SubscriptionTargetConfig) RedactSecrets() SubscriptionTargetConfig {
 	if r := t.Monitor.Request; r != nil {
 		c := *r
 		c.URL = inputsrc.RedactURL(c.URL)
 		t.Monitor.Request = &c
 	}
-	if r := t.BalancerMonitor.Request; r != nil {
-		c := *r
-		c.URL = inputsrc.RedactURL(c.URL)
-		t.BalancerMonitor.Request = &c
+	balancers := make([]BalancerConfig, len(t.Balancers))
+	for i, b := range t.Balancers {
+		if b.Monitor != nil {
+			m := *b.Monitor
+			if r := m.Request; r != nil {
+				c := *r
+				c.URL = inputsrc.RedactURL(c.URL)
+				m.Request = &c
+			}
+			if m.RemotePing.URL != "" {
+				m.RemotePing.URL = inputsrc.RedactURL(m.RemotePing.URL)
+			}
+			b.Monitor = &m
+		}
+		balancers[i] = b
 	}
-	if t.BalancerMonitor.RemotePing.URL != "" {
-		t.BalancerMonitor.RemotePing.URL = inputsrc.RedactURL(t.BalancerMonitor.RemotePing.URL)
+	if t.Balancers != nil {
+		t.Balancers = balancers
 	}
 	return t
 }

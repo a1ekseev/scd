@@ -28,7 +28,7 @@ func testTarget() config.SubscriptionTargetConfig {
 		FixedOutbounds: []string{"direct", "blocked"}, FixedInbounds: []string{}, FixedRouting: []string{},
 		InboundSocks:                     &config.InboundSocksConfig{Listen: "127.0.0.1"},
 		Monitor:                          config.TargetMonitorConfig{MaxParallel: 10, Retry: config.RetryConfig{Attempts: 1, DelayMs: 250}},
-		BalancerMonitor:                  config.TargetBalancerMonitorConfig{Retry: config.RetryConfig{Attempts: 1, DelayMs: 250}, RemotePing: config.TargetBalancerRemotePingConfig{TimeoutMs: 5000}},
+		Balancers:                        []config.BalancerConfig{},
 		ObservatorySubjectSelectorPrefix: "x-observe-",
 	}
 }
@@ -197,15 +197,16 @@ func TestConfiguredGroupsIncludeTargetsWithoutTunnels(t *testing.T) {
 	cfg := config.AppConfig{Subscriptions: []config.SubscriptionConfig{
 		{ID: "sub-c", Enabled: true, Target: config.SubscriptionTargetConfig{Address: "127.0.0.1:8090"}},
 		{ID: "sub-off", Enabled: false, Target: config.SubscriptionTargetConfig{Address: "127.0.0.1:9999"}},
-		{ID: "sub-a", Enabled: true, Target: config.SubscriptionTargetConfig{Address: "127.0.0.1:8080"}},
+		{ID: "sub-a", Enabled: true, Target: config.SubscriptionTargetConfig{Address: "127.0.0.1:8080", Balancers: []config.BalancerConfig{{Tag: "x-balancer"}}}},
 	}}
 	mem := state.New()
 	key := state.Key("sub-a", "127.0.0.1:8080")
 	mem.ReplaceSourceTopology(key, "vless", topology.Topology{}, nil)
 	mem.Update(key, func(st *state.Target) {
-		st.Balancer.State = "healthy"
-		st.Balancer.LastLatencyMs = new(17)
-		st.Balancer.ConsecutiveFailures = 3
+		b := &st.EnsureBalancer("x-balancer").Monitor
+		b.State = "healthy"
+		b.LastLatencyMs = new(17)
+		b.ConsecutiveFailures = 3
 	})
 
 	groups := BuildConfiguredGroups(BuildTunnels(mem, config.AppConfig{}), cfg, mem)

@@ -92,7 +92,7 @@ func TestBalancerDegradedRecovered(t *testing.T) {
 	e.deps.Now = func() time.Time { return now }
 	for _, code := range []int{204, 500, 500, 204, 204} {
 		e.deps.Probe = ok(code, 10)
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		now = now.Add(time.Minute)
@@ -113,13 +113,13 @@ func TestRemotePingFailedEdge(t *testing.T) {
 	var pushes []directCall
 	e.deps.Direct = recordDirect(&pushes, 500)
 	for range 2 {
-		if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+		if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 			t.Fatal(err)
 		}
 		e.bg.Wait()
 	}
 	e.deps.Direct = recordDirect(&pushes, 502)
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	e.bg.Wait()
@@ -366,7 +366,7 @@ func TestBalancerProbeKeepsXrayDown(t *testing.T) {
 	e := newEnv(t, newSub(withBalancer(204, "", false)))
 	e.mem.Update(e.key, func(tg *state.Target) { tg.SetXrayDown("down", time.Now()) })
 	e.deps.Probe = ok(204, 10)
-	if err := BalancerTick(t.Context(), e.deps, e.sub); err != nil {
+	if err := BalancerTick(t.Context(), e.deps, e.sub, e.sub.Target.Balancers[0]); err != nil {
 		t.Fatal(err)
 	}
 	down := false

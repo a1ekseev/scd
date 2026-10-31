@@ -631,7 +631,7 @@ func TestFullSuccessResetsMonitorsAndBumpsGeneration(t *testing.T) {
 	f.run(t)
 	f.s.Memory.Update(key, func(tg *state.Target) {
 		tg.Tunnels[0].Monitor = state.TunnelMonitor{State: state.TunnelDegraded, LastError: "probe failed", ConsecutiveFailures: 2}
-		tg.Balancer.State = state.BalancerHealthy
+		tg.EnsureBalancer("x-balancer").Monitor.State = state.BalancerHealthy
 	})
 
 	f.in.set("/s1", vienna+"\n"+berlin)
@@ -651,8 +651,8 @@ func TestFullSuccessResetsMonitorsAndBumpsGeneration(t *testing.T) {
 				t.Errorf("monitor = %+v, want idle", tn.Monitor)
 			}
 		}
-		if tg.Balancer.State != state.BalancerHealthy {
-			t.Errorf("balancer state = %q, want kept healthy", tg.Balancer.State)
+		if b, ok := tg.BalancerState("x-balancer"); !ok || b.Monitor.State != state.BalancerHealthy {
+			t.Errorf("balancer state = %+v, want kept healthy", b)
 		}
 		if len(tg.Sources["vless"].Hashes) != 3 {
 			t.Errorf("hashes = %v", tg.Sources["vless"].Hashes)

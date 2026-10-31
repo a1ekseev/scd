@@ -41,8 +41,8 @@ type fixture struct {
 			Enabled bool   `json:"enabled"`
 			Address string `json:"address"`
 			Prefix  string `json:"observatorySubjectSelectorPrefix"`
-			// BalancerSelection is the subscription selection config.
-			BalancerSelection config.BalancerSelectionConfig `json:"balancerSelection"`
+			// Balancers is target.balancers (Go config form).
+			Balancers []config.BalancerConfig `json:"balancers"`
 			// Sources are the sources (sources-*); empty = one
 			// source "vless".
 			Sources []struct {
@@ -63,11 +63,14 @@ type fixture struct {
 		RuntimeState config.RuntimeStateConfig `json:"runtimeState"`
 	} `json:"config"`
 	Targets []struct {
-		SubscriptionID  string          `json:"subscriptionId"`
-		TargetAddress   string          `json:"targetAddress"`
-		BalancerMonitor fixtureBalancer `json:"balancerMonitor"`
-		// BalancerSelection is the subscription selection config.
-		BalancerSelection *fixtureSelection `json:"balancerSelection"`
+		SubscriptionID string `json:"subscriptionId"`
+		TargetAddress  string `json:"targetAddress"`
+		// Balancers is the state of each balancer by tag.
+		Balancers []struct {
+			Tag       string            `json:"tag"`
+			Monitor   *fixtureBalancer  `json:"monitor"`
+			Selection *fixtureSelection `json:"selection"`
+		} `json:"balancers"`
 		// Sources are the source warnings (sources-*).
 		Sources []struct {
 			SourceID       string              `json:"sourceId"`
@@ -291,7 +294,7 @@ func loadFixture(t *testing.T, name string) loaded {
 			Target: config.SubscriptionTargetConfig{
 				Address: s.Address, TimeoutMs: 5000, ObservatorySubjectSelectorPrefix: s.Prefix,
 				FixedOutbounds: []string{}, FixedInbounds: []string{}, FixedRouting: []string{},
-				BalancerSelection: s.BalancerSelection,
+				Balancers: append([]config.BalancerConfig{}, s.Balancers...),
 			},
 		})
 	}
@@ -332,9 +335,14 @@ func loadFixture(t *testing.T, name string) loaded {
 			mem.ReplaceSourceTopology(key, id, *topo, nil)
 		}
 		mem.Update(key, func(st *state.Target) {
-			st.Balancer = state.BalancerMonitor(tg.BalancerMonitor)
-			if tg.BalancerSelection != nil {
-				st.BalancerSelection = tg.BalancerSelection.selectionState()
+			for _, b := range tg.Balancers {
+				bs := st.EnsureBalancer(b.Tag)
+				if b.Monitor != nil {
+					bs.Monitor = state.BalancerMonitor(*b.Monitor)
+				}
+				if b.Selection != nil {
+					bs.Selection = b.Selection.selectionState()
+				}
 			}
 			for _, tn := range st.Tunnels {
 				tn.Monitor = monitors[tn.Mapping.OutboundTagInitial]

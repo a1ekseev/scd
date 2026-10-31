@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -107,9 +108,9 @@ func (d *Daemon) dialer() xrayapi.Dialer {
 }
 
 // loops returns the cron loops of the config in start order (03 §3.1): the
-// sync loop; for every subscription, enabled or not, the tunnel
-// monitor, balancer monitor and balancer selection loops that are enabled
-// and have a schedule; a loop per remote instance.
+// sync loop; for every subscription, enabled or not, the tunnel monitor
+// loop, then for every target.balancers[] entry its monitor and selection
+// loops, each when enabled and scheduled; a loop per remote instance.
 func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitGroup) []loop {
 	cfg := d.Config.Config
 	dial := d.dialer()
@@ -134,15 +135,18 @@ func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitG
 				return monitor.TunnelTick(ctx, md, sub)
 			}, monitorEvents, attrs})
 		}
-		if t.BalancerMonitor.Enabled && t.BalancerMonitor.Schedule != "" {
-			out = append(out, loop{t.BalancerMonitor.Schedule, func(ctx context.Context) error {
-				return monitor.BalancerTick(ctx, md, sub)
-			}, balancerMonitorEvents, attrs})
-		}
-		if t.BalancerSelection.Enabled && t.BalancerSelection.Schedule != "" {
-			out = append(out, loop{t.BalancerSelection.Schedule, func(ctx context.Context) error {
-				return balancer.Tick(ctx, bd, sub)
-			}, selectionEvents, attrs})
+		for _, b := range t.Balancers {
+			battrs := append(slices.Clone(attrs), "balancerTag", b.Tag)
+			if m := b.Monitor; m != nil && m.Enabled && m.Schedule != "" {
+				out = append(out, loop{m.Schedule, func(ctx context.Context) error {
+					return monitor.BalancerTick(ctx, md, sub, b)
+				}, balancerMonitorEvents, battrs})
+			}
+			if s := b.Selection; s != nil && s.Enabled && s.Schedule != "" {
+				out = append(out, loop{s.Schedule, func(ctx context.Context) error {
+					return balancer.Tick(ctx, bd, sub, b)
+				}, selectionEvents, battrs})
+			}
 		}
 	}
 	for _, r := range cfg.StatusServer.RemoteInstances {
