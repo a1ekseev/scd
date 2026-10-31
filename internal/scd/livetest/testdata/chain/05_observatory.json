@@ -1,0 +1,10 @@
+{
+  "observatory": {
+    "subjectSelector": [
+      "x-live-"
+    ],
+    "probeURL": "http://192.0.2.1:{{PROBE_PORT}}/generate_204",
+    "probeInterval": "2s",
+    "enableConcurrency": true
+  }
+}

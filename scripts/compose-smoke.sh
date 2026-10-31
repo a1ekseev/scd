@@ -14,7 +14,10 @@ project=scd-smoke
 compose=(docker compose -p "$project" --profile wgp -f docker-compose.yml -f docker/compose.smoke.yml)
 timeout_s=60
 fixed_names=(xray-test scd sfc gtl wgp)
-host_ports=(8080 9090 9091 9092 9093)
+# The Xray API host port (not used by the checks) can be moved off a busy
+# 8080 with SCD_SMOKE_XRAY_PORT (docker/compose.smoke.yml).
+export SCD_SMOKE_XRAY_PORT="${SCD_SMOKE_XRAY_PORT:-8080}"
+host_ports=("$SCD_SMOKE_XRAY_PORT" 9090 9091 9092 9093)
 
 log() { printf 'compose-smoke: %s\n' "$*" >&2; }
 die() {
@@ -144,7 +147,18 @@ scd_runtime_state() {
 scd_runtime_state_wireguard() {
   curl -fsS 'http://127.0.0.1:9090/api/runtime-state?subscriptionId=test-fixture&targetAddress=xray:8080' |
     jq -e '[.runtime.outbounds[] | select(.parsed.protocol == "wireguard" and .classification == "managed-initial")] |
-      length == 2 and all(.parsed.endpoint | startswith("192.0.2."))'
+      length == 2 and all(.parsed.endpoint | startswith("192.0.2.")) and all(.parsed.dialerProxy == "chain-vless")'
+}
+
+# The cascade of the example: one group per balancer, wg waits for vless
+# through x-balancer (unknown: the tunnel monitor, which judges it, is off)
+# and was applied without an error.
+scd_cascade_status() {
+  curl -fsS http://127.0.0.1:9090/api/instance-status |
+    jq -e '.subscriptions[0].targets[0] |
+      ([.balancers[] | {(.balancerTag): .sourceIds}] | add | .["x-balancer"] == ["vless"] and .["x-wg-balancer"] == ["wg"]) and
+      (.sources[] | select(.sourceId == "wg") | .dialerProxy == "chain-vless" and .dependsOn[0].sourceId == "vless" and
+        .dependsOn[0].state == "unknown" and has("error") == false)'
 }
 
 # GetBalancerInfo + GetOutboundStatus answered (ObservatoryService, D22).
@@ -199,7 +213,8 @@ poll "wgp wrote wg ($static_count lines) and status.json, 0600 65532:65532" wgp_
 poll "wgp logged the ignored .conf keys" wgp_logged_ignored_keys
 poll "scd /api/instance-status: wgp block of static" scd_wgp_block
 poll "scd /api/instance-status: 2 wireguard tunnels of source wg" scd_wireguard_tunnels
-poll "scd runtime-state: wireguard outbounds applied to Xray" scd_runtime_state_wireguard
+poll "scd runtime-state: wireguard outbounds applied to Xray through chain-vless" scd_runtime_state_wireguard
+poll "scd /api/instance-status: balancer groups, wg depends on vless" scd_cascade_status
 
 # The image runs as nonroot (65532), and sfc must still be able to write its
 # source cache (a failed write is only a warning, so check that a refresh

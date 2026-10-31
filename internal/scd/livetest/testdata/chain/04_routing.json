@@ -1,0 +1,34 @@
+{
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "ruleTag": "chain-up",
+        "inboundTag": [
+          "chain-up"
+        ],
+        "balancerTag": "x-up"
+      }
+    ],
+    "balancers": [
+      {
+        "tag": "x-up",
+        "selector": [
+          "x-live-up-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      },
+      {
+        "tag": "x-wg",
+        "selector": [
+          "x-live-wg-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ]
+  }
+}

@@ -6,6 +6,11 @@
 # its state key is a fresh random key; the script makes both in a temp dir.
 # Relative paths resolve against the project directory (the repo root).
 services:
+  xray:
+    # The default host port is the one of docker-compose.yml; the script
+    # sets SCD_SMOKE_XRAY_PORT to move it off a busy 8080.
+    ports: !override
+      - "127.0.0.1:${SCD_SMOKE_XRAY_PORT:-8080}:8080"
   scd:
     volumes:
       # A copy of config.example.yml with a 5-second sync, made by the script.

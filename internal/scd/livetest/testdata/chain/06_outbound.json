@@ -1,0 +1,27 @@
+{
+  "outbounds": [
+    {
+      "tag": "chain-fail",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 9
+          }
+        ]
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "chain-up",
+      "protocol": "loopback",
+      "settings": {
+        "inboundTag": "chain-up"
+      }
+    }
+  ]
+}

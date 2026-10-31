@@ -3,14 +3,29 @@
     "domainStrategy": "IPIfNonMatch",
     "rules": [
       {
-        "ruleTag" : "direct",
+        "ruleTag": "chain-vless",
+        "inboundTag": [
+          "chain-vless"
+        ],
+        "balancerTag": "x-balancer"
+      },
+      {
+        "ruleTag": "direct",
+        "inboundTag": [
+          "socks-proxy",
+          "wg-proxy"
+        ],
         "ip": [
           "geoip:ru"
         ],
         "outboundTag": "direct"
       },
       {
-        "ruleTag" : "x-balancer",
+        "ruleTag": "x-balancer",
+        "inboundTag": [
+          "socks-proxy",
+          "wg-proxy"
+        ],
         "ip": [
           "geoip:!ru"
         ],
@@ -21,7 +36,25 @@
       {
         "tag": "x-balancer",
         "selector": [
-          "x-observe-"
+          "x-observe-vless-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      },
+      {
+        "tag": "x-wg-balancer",
+        "selector": [
+          "x-observe-wg-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      },
+      {
+        "tag": "x-mq-balancer",
+        "selector": [
+          "x-observe-mq-"
         ],
         "strategy": {
           "type": "leastPing"

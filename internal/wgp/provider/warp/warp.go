@@ -674,7 +674,7 @@ func publicKey(priv []byte) string {
 	return base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())
 }
 
-// line builds the candidate line of the device of slot slot. Errors name the field, never
+// line builds the candidate line of the device in the given slot. Errors name the field, never
 // the value.
 func (w *WARP) line(p profile, key [32]byte, slot int) (string, error) {
 	c := candidate.WireGuard{Provider: Type, PrivateKey: key, MTU: w.WireGuard.MTU, Label: w.label(slot)}
@@ -746,7 +746,7 @@ func dnsIPs(list []string) ([]netip.Addr, error) {
 }
 
 // masqueLines builds one candidate line of a MASQUE device per transport,
-// with the transport index as priority and the label of slot slot:
+// with the transport index as priority and the label of the given slot:
 // endpoint.v4 with masque.port, the
 // PEM endpoint key and the device addresses of the API. Errors name the
 // field, never the value.

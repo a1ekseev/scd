@@ -233,6 +233,9 @@ statusServer:
 | `.sources[].maxActive`, `.selection` | `wireguard` and `masque` only, required, see [WireGuard sources](#wireguard-sources). | — |
 | `.sources[].wireguard` | `wireguard` only, required. | — |
 | `.sources[].monitor.request.timeoutMs`, `.monitor.retry.{attempts,delayMs}` | Any type: override `target.monitor` for the source's tunnels. See [Monitoring and repair](#monitoring-and-repair). | the target's |
+| `.sources[].balancer` | Tag of the Xray balancer (`routing.balancers[].tag`) whose selector holds the source's outbounds. Changes nothing in Xray: checked before every apply, judged by `health: balancer` of dependent sources, groups the status API and dashboard. Must differ from the `balancer` of every (transitive) dependency. See [Cascade of sources](#cascade-of-sources). | none |
+| `.sources[].dialerProxy` | `wireguard` and `masque` only: a tag of `target.fixedOutbounds` outside the namespace of every enabled source (a loopback to the upper stage), written to `streamSettings.sockopt.dialerProxy` of the source's outbounds. | none |
+| `.sources[].dependsOn[]` | `{source, health, recoverGraceSeconds}`: another enabled source of the subscription (no repeats, no cycle) that must be applied first and whose `balancer` must select an outbound before this source's tunnels are replaced. `health` is required, only `balancer`; `recoverGraceSeconds` ≥ 0. | `[]`; `180` |
 | `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
@@ -241,7 +244,7 @@ statusServer:
 | `.target.observatorySubjectSelectorPrefix` | Prefix added to every applied outbound tag, so that the static `observatory.subjectSelector` / `balancers[].selector` match them. | none |
 | `.target.inboundSocks.listen` | IP address or `localhost` for the generated SOCKS inbounds; the ports come from `sources[].portRange`. Required when inbounds or routing are enabled or the monitor is on. | — |
 | `.target.monitor` | Per-tunnel HTTP check through each generated SOCKS inbound: `enabled`, `schedule`, `maxParallel`, `retry.{attempts,delayMs}`, `request.{url,method GET\|HEAD\|POST,expectedStatus,timeoutMs}`. Requires all three resource kinds. | off; `10`; `1`/`250`; `GET`, `5000` |
-| `.target.balancers[]` | Xray balancers scd watches, each with its own loops. `tag` (required, unique) is `routing.balancers[].tag` in Xray. `monitor` and `selection` are optional. The status API and dashboard show only the first balancer. | `[]` |
+| `.target.balancers[]` | Xray balancers scd watches, each with its own loops. `tag` (required, unique) is `routing.balancers[].tag` in Xray. `monitor` and `selection` are optional. The status API and dashboard group the sources by balancer. | `[]` |
 | `.target.balancers[].monitor` | Observe-only check of the balancer through an external SOCKS5: `enabled`, `schedule`, `socks5.{host,port}`, `request`, `retry`, `remotePing.{enabled,url,timeoutMs,viaSocks}`. | off |
 | `.target.balancers[].selection` | Dashboard view of the outbound the balancer selects: `enabled`, `schedule`, `observatory`, `strategy`, see [Balancer selection](#balancer-selection). | `{enabled: false, observatory: true}` |
 | `runtime.mode` / `runtime.schedule` | `run-once` or `daemon`. A schedule is required for `daemon`. | `run-once` |
@@ -406,6 +409,100 @@ replacement, quarantine and hysteresis, secrets and status
   runtime-state `parsed` object of a MASQUE outbound has no private key and
   there is no `rawBase64`, even with `includeRaw` and `includeSecrets`.
 
+### Cascade of sources
+
+A `wireguard` or `masque` source can leave through another source instead of
+directly: VLESS → WireGuard, or VLESS → WARP MASQUE → Proton WireGuard. Each
+stage is a source with its own balancer; a lower stage dials through a static
+loopback outbound whose routing rule sends it into the upper stage's balancer:
+
+```text
+client → socks-proxy → x-wg-balancer → wg-… (WireGuard, sockopt.dialerProxy: chain-vless)
+                                         → chain-vless (loopback) → rule chain-vless
+                                         → x-balancer → x-observe-vless-… (VLESS) → internet
+```
+
+```yaml
+sources:
+  - id: vless
+    type: vless
+    balancer: x-balancer
+  - id: wg
+    type: wireguard
+    balancer: x-wg-balancer
+    dialerProxy: chain-vless
+    dependsOn:
+      - {source: vless, health: balancer}   # recoverGraceSeconds: 180
+target:
+  fixedOutbounds: [chain-fail, direct, blocked, chain-vless]
+  fixedRouting: [chain-vless, direct, x-balancer]
+  balancers:
+    - tag: x-balancer
+    - tag: x-wg-balancer
+```
+
+The static Xray config must provide (scd only checks it; `docker/xray/config`
+is a working example):
+
+- **`chain-fail` as the first outbound** (Xray's default), a socks outbound
+  to `127.0.0.1:9`: traffic without a rule and an empty balancer fail at once
+  instead of leaking to `direct` (a `blackhole` does not do: WireGuard over
+  UDP hangs on it). Keep it in `fixedOutbounds`; never remove it by hand.
+- **A loopback outbound per upper stage** (`chain-vless`,
+  `settings.inboundTag: chain-vless`): `dialerProxy` cannot name a balancer.
+- **The chain rules first**: `inboundTag: [chain-vless] → balancerTag:
+  x-balancer`, above the geoip rules.
+- **geoip rules with `inboundTag`** (`[socks-proxy, wg-proxy, …]`): without it
+  they also catch the loopback and the generated `in-…` inbounds, whose
+  `route-…` rules the API appends at the end.
+- **One balancer per stage, selector `<observatorySubjectSelectorPrefix><source
+  id>-`** (`x-observe-vless-`, `x-observe-wg-`): a selector `x-observe-` would
+  put a stage into the balancer of its own chain. Balancers cannot be added
+  through the API.
+- **`leastPing` or `leastLoad` with an observatory that covers the selector**
+  for `health: balancer`: `random` and `roundRobin` return every candidate as
+  a principle target, alive or not, so such a dependency is always healthy
+  (validate-config warns when `target.balancers[].selection.strategy` says
+  so).
+- **DNS**: `dns: {}`, or a `dns.tag` with its rule first; a remote DNS
+  query without a tag goes to `chain-fail`.
+- All outbounds in one `-confdir` file (the outbounds of a later file go to
+  the front and change the default), all rules and balancers in one file
+  (the `routing` section is replaced as a whole).
+
+Checks before every apply of a source (no Xray change on a failure; logged
+as `source_check_failed` with `reasonCode`, shown as the source `error`):
+`dependency_not_applied` (a dependency has no state on the target yet: its
+apply failed or was refused), `balancer_not_found` (`GetBalancerInfo` does not
+know `balancer`), `routing_service_disabled` (Xray has no `RoutingService`:
+only a `vless` source with `balancer` and routing off sees it; with routing on
+the error shows as `orphan_remove_failed`), `dialer_proxy_missing`
+(`dialerProxy` is not an outbound of the target). A source with a failed
+check is only repaired by the monitor until a sync passes it.
+
+While a dependency's balancer selects nothing, and for `recoverGraceSeconds`
+after it selects again, the dependent source waits: see **Waiting for a
+dependency** in [Monitoring and repair](#monitoring-and-repair)
+(`source_dependency_unhealthy`, `source_dependency_recovered`). The health is
+judged by the tunnel monitor (`target.monitor`); with it off a dependency
+stays `unknown`. Keep `replaceAfterFailures` × `target.monitor.schedule` ≥ 2
+× `observatory.probeInterval` + the probe timeout, so the upper stage is
+marked dead before the lower stage replaces its tunnels. A balancer whose
+selection is outside the namespaces of its sources logs
+`balancer_foreign_selection` (a wrong selector, see [Balancer
+selection](#balancer-selection)).
+
+Rollout order: first scd with the new config (its fixed lists already
+name `chain-fail`, `chain-vless` and the `chain-vless` rule; until the
+static Xray config has them, the checks fail harmlessly with
+`balancer_not_found` / `dialer_proxy_missing` and nothing changes), then
+the static Xray config and an Xray restart. The other way round, the old
+scd would remove the new static outbounds and rule as orphans, and
+`direct` would become the default outbound. Alternatively stop scd while
+the static config changes. After the first sync with `dialerProxy` restart
+Xray once more: outbounds created before it keep their direct connections
+(see [Known limitations](#known-limitations)).
+
 ### Sync
 
 - Every source owns four tag namespaces on its target:
@@ -423,7 +520,9 @@ replacement, quarantine and hysteresis, secrets and status
   applies nothing to that target on this sync; removed orphans are logged as
   `orphans_removed`. Because of this check, `scd sync` exits with an error
   when Xray is unreachable, even if no manifest changed.
-- Then each enabled source is applied on its own, in id order: outbound →
+- Then each enabled source is applied on its own, in `dependsOn` order (a
+  source after its dependencies), then id order, after the checks of
+  [Cascade of sources](#cascade-of-sources): outbound →
   inbound → routing. In each kind scd removes only that source's resources,
   then adds the new ones. Fixed resources and other sources' resources are
   never touched. If an add fails, the source's outbounds are rolled back
@@ -1272,6 +1371,12 @@ outputs:
   - {id: warp, path: /app/out/warp, provider: warp, candidates: 1}
 ```
 
+- **`{n}` in `label`.** The label is part of the scd tag (its city part),
+  so adding `{n}` to an existing label changes the tags of every published
+  device: the next sync of scd replaces each tunnel once
+  (`candidate_replaced`, `reasonCode: changed`). On a stock Xray (without
+  PR #7112) restart Xray after that wave, see [Known
+  limitations](#known-limitations).
 - **Registration.** A device slot without a device registers once
   (`POST /reg` with a new X25519 key, `tunnel_type: wireguard`). The device
   id, its token and the private key go only into the encrypted state.
@@ -1436,6 +1541,19 @@ Of Xray v26.10.21, documented rather than worked around in code:
   TCP and scd monitoring are unaffected; use `network_mode: host` if you need it.
 - A Lua `routing.script` in the static Xray config overrides all rules,
   including scd's. This setup is not supported.
+- `RemoveOutbound` does not close the removed handler (fixed by Xray PR
+  #7112, not in v26.10.21): the connections and the WireGuard or MASQUE
+  device of a removed outbound live on until Xray restarts. A repair of a
+  WireGuard tunnel with the same key can break it (two devices with one key),
+  and a cascade does not switch over after its upper stage is replaced:
+  the lower stage keeps the old connection. Use an Xray build with #7112 for
+  `dialerProxy`, or restart Xray after a replacement. scd does not check the
+  Xray build.
+- Proton WireGuard behind WARP MASQUE needs `wireguard.mtu: 1200` in the
+  wgp `proton` provider (the MASQUE tunnel takes the rest).
+- MASQUE `h3` lines behind an XTLS vision VLESS stage need
+  `target.visionUdp443Override: true`: vision rejects UDP/443 (`XTLS rejected
+  UDP/443`); validate-config warns.
 
 Of scd:
 
@@ -1496,6 +1614,8 @@ bash scripts/check-no-node.sh          # Go-only repository
 
 # Live tests against a real Xray v26.10.21 binary
 SCD_XRAY_BIN=/path/to/xray go test -tags xraylive -count=1 ./internal/scd/livetest/...
+# Cascade with an Xray whose RemoveOutbound closes the handler (PR #7112; not run in CI)
+SCD_XRAY_BIN=/path/to/xray-with-pr7112 SCD_XRAY_REMOVE_CLOSES=1 go test -tags xraylive -count=1 -run TestLiveCascadeRemoveCloses ./internal/scd/livetest/...
 # Dashboard visual regression (headless Chromium; local only, not run in CI)
 SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/...
 # Live WARP check against the real Cloudflare API (not run in CI)

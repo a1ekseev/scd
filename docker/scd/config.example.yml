@@ -35,6 +35,10 @@ subscriptions:
         portRange:
           start: 20000
           end: 20099
+        # Балансировщик Xray этого источника (routing.balancers[].tag,
+        # 04_routing.json, селектор x-observe-vless-): верх каскада, его
+        # здоровье ждут зависимые источники (dependsOn ниже).
+        balancer: x-balancer
       # Кандидаты WireGuard (по строке wireguard:// на кандидата). input — только
       # абсолютный путь к обычному файлу с правами 0600 (группа и остальные без доступа).
       # В Xray ставятся не больше maxActive кандидатов, выбранных по selection.strategy.
@@ -67,6 +71,18 @@ subscriptions:
           entryCountryAllowlist: [NL, CH]  # страна входа (entry, иначе флаг label)
         wireguard:
           endpointDomainStrategy: UseIPv4
+        # Каскад: WireGuard выходит не напрямую, а через loopback chain-vless
+        # (06_outbound.json) → правило chain-vless → x-balancer (04_routing.json),
+        # т. е. через VLESS-источник. dialerProxy — тег из fixedOutbounds.
+        balancer: x-wg-balancer
+        dialerProxy: chain-vless
+        # Пока x-balancer ничего не выбрал, туннели wg не заменяются (только
+        # чинятся: ожидание зависимости); после восстановления — пауза
+        # recoverGraceSeconds (по умолчанию 180). Здоровье считает монитор
+        # туннелей (target.monitor), в этом примере он выключен.
+        dependsOn:
+          - source: vless
+            health: balancer
       # Кандидаты MASQUE (по строке masque:// на транспорт h3/h2 ключа устройства).
       # Правила input — как у wireguard. На ключ устройства активен один кандидат:
       # новый берётся с наименьшим priority вне карантина «ключ + endpoint + transport».
@@ -91,6 +107,14 @@ subscriptions:
           retry:
             attempts: 2
             delayMs: 2000
+        # Каскад как у wg: через chain-vless, ждёт здоровья vless. Строки h3
+        # через VLESS vision не проходят (XTLS rejected UDP/443) без
+        # target.visionUdp443Override: true — validate-config предупреждает.
+        balancer: x-mq-balancer
+        dialerProxy: chain-vless
+        dependsOn:
+          - source: vless
+            health: balancer
     target:
       # Сервис xray из docker-compose.yml; gRPC API слушает 0.0.0.0:8080
       # (docker/xray/config/01_api.json).
@@ -98,18 +122,22 @@ subscriptions:
       timeoutMs: 5000
       # Статические ресурсы из docker/xray/config/*.json — scd их не удаляет.
       fixedOutbounds:
+        - chain-fail   # 06_outbound.json, первый = default: трафик без правила и
+                       # пустой балансировщик падают сразу, без утечки в direct
         - direct     # 06_outbound.json
         - blocked    # 06_outbound.json
         - api        # тег API (01_api.json)
+        - chain-vless  # 06_outbound.json, loopback: dialerProxy каскада
       fixedInbounds:
         - socks-proxy  # 03_inbound.json
         - wg-proxy     # 03_inbound.json
         - api          # тег API (01_api.json)
       fixedRouting:
+        - chain-vless  # 04_routing.json ruleTag, первым: chain-vless → x-balancer
         - direct       # 04_routing.json ruleTag
         - x-balancer   # 04_routing.json ruleTag
-      # Совпадает с observatory.subjectSelector и balancers[].selector
-      # (04_routing.json / 05_observatory.json).
+      # Совпадает с observatory.subjectSelector (05_observatory.json);
+      # селектор балансировщика источника — x-observe-<id>- (04_routing.json).
       observatorySubjectSelectorPrefix: x-observe-
       # Адрес сгенерированных SOCKS-инбаундов; порты — в sources[].portRange.
       inboundSocks:
@@ -125,8 +153,18 @@ subscriptions:
       # секундами (6 полей) = probeInterval observatory (15s). Требует
       # "ObservatoryService" в api.services (01_api.json) и секцию observatory
       # (05_observatory.json), иначе Xray не стартует.
+      # Селектор каждого — <observatorySubjectSelectorPrefix><source id>-,
+      # чтобы источник каскада не попал в балансировщик своей же цепочки.
       balancers:
         - tag: x-balancer
+          selection:
+            enabled: true
+            schedule: "*/15 * * * * *"
+        - tag: x-wg-balancer
+          selection:
+            enabled: true
+            schedule: "*/15 * * * * *"
+        - tag: x-mq-balancer
           selection:
             enabled: true
             schedule: "*/15 * * * * *"

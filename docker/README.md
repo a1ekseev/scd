@@ -82,7 +82,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 
 | Файл | Назначение |
 | --- | --- |
-| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), выключенными источниками `wireguard` `wg` (порты `20100..20109`) и `masque` `mq` (порты `20110..20119`; файлов кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, балансировщик `x-balancer` с `selection` (`target.balancers[]`), статус-сервер `0.0.0.0:8080` |
+| `scd/config.example.yml` | `scd` в режиме `daemon`, подписка с источником `vless` (`fixtures/subscription.txt`, порты `20000..20099`), выключенными источниками `wireguard` `wg` (порты `20100..20109`) и `masque` `mq` (порты `20110..20119`; файлов кандидатов нет), цель `xray:8080`, outbounds+inbounds+routing, балансировщики `x-balancer` (`vless`), `x-wg-balancer` (`wg`), `x-mq-balancer` (`mq`) с `selection` (`target.balancers[]`), каскад: `wg` и `mq` выходят через loopback `chain-vless` (`dialerProxy`) и ждут здоровья `vless` (`dependsOn`), статус-сервер `0.0.0.0:8080` |
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `wgp/config.example.yml` | `scd wgp`: общие ключи (`server`, `state`, `deviceNamePrefix`, `api`), провайдер `static` (`/app/static`, все ключи с умолчаниями) и выход `wg` → `/app/out/wg`, который читает источник `wg` из `scd/config.example.yml`; выключенные `proton` (`identification.proton`, `keys.revokeOldAfterMinutes`, выход `proton`), `warp` и `warpmq`. Каталоги `secrets/`, `docker/wgp/state/` и `docker/wgp/static/` в `.gitignore` |
@@ -93,16 +93,17 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 | `fixtures/wireguard/candidates.txt` | фейковые WireGuard-кандидаты (ключи из повторяющихся байтов, адреса 192.0.2.0/24) и строки, которые пропускаются: `wireguard_invalid`, `unsupported_scheme`, `duplicate_tag`. Тесты копируют файл с правами 0600 |
 | `fixtures/masque/candidates.txt` | фейковые MASQUE-кандидаты (ключи P-256 сгенерированы один раз, адреса 192.0.2.0/24): строки h3 и h2 двух ключей устройства, строка h3 третьего (`sni` = IP endpoint'а) и строки, которые пропускаются: `masque_invalid`, `unsupported_scheme`. Тесты копируют файл с правами 0600 |
 | `fixtures/static/*.conf` | фейковые `.conf` для провайдера static (ключи из повторяющихся байтов, адреса 192.0.2.0/24, метки 🇳🇱/🇨🇭): все поля, умолчания `defaults`, `# Label`, `# Reserved`, игнорируемые `ListenPort` и `PostUp`. В git права 0644, поэтому тесты и smoke копируют их с правами 0600 |
-| `xray/config/*.json` | конфиг тестового Xray (`-confdir`) |
+| `xray/config/*.json` | конфиг тестового Xray (`-confdir`): первым outbound'ом `chain-fail` (socks на `127.0.0.1:9`, default), loopback `chain-vless` и правило `chain-vless → x-balancer` первым, geoip-правила только для `socks-proxy` и `wg-proxy`, по балансировщику на источник с селектором `x-observe-<id>-` и `leastPing` (README, «Cascade of sources») |
 
 В `scd/config.example.yml` `fixedOutbounds` / `fixedInbounds` / `fixedRouting`
-перечисляют статические теги из `xray/config/*.json` (`direct`, `blocked`,
-`socks-proxy`, `wg-proxy`, `api`, ruleTag `direct` и `x-balancer`), чтобы sync
+перечисляют статические теги из `xray/config/*.json` (`chain-fail`, `direct`,
+`blocked`, `chain-vless`, `socks-proxy`, `wg-proxy`, `api`, ruleTag
+`chain-vless`, `direct` и `x-balancer`), чтобы sync
 их не удалял: каждый sync сначала удаляет «сирот» — не fixed-ресурсы вне
 пространств имён включённых источников (`x-observe-vless-…`, `vless-…`,
 `in-vless-…`, `route-vless-…`); правила без `ruleTag` не трогаются.
-`observatorySubjectSelectorPrefix: x-observe-` совпадает с
-селектором балансировщика и observatory. Мониторинг выключен — хосты фейковые.
+`observatorySubjectSelectorPrefix: x-observe-` совпадает с observatory, а
+`x-observe-<id>-` — с селектором балансировщика источника. Мониторинг выключен — хосты фейковые.
 Подписка задаётся только списком `sources`: старые ключи подписки (`input`,
 `format`, `filters`, `fetch*`, `allowInsecure`) и `target.inboundSocks.portRange`
 `validate-config` отклоняет как неизвестные.
@@ -131,8 +132,11 @@ read-only RPC `RoutingService.GetBalancerInfo` и
    `fixtures/static/*.conf`; smoke проверяет `/api/status` wgp, что
    `wg` и `status.json` на томе — файлы 0600 владельца 65532, что scd
    через `:ro` прочитал их (блок `wgp` и туннели `protocol: wireguard` в
-   `/api/instance-status`) и что WireGuard-outbound'ы есть в Xray (туннели не
-   поднимаются: ключи фейковые). На Linux скрипт отдаёт ключ и `.conf`
+   `/api/instance-status`) и что WireGuard-outbound'ы есть в Xray с
+   `dialerProxy: chain-vless` (туннели не поднимаются: ключи фейковые), а в
+   `/api/instance-status` — группы `x-balancer` (`vless`) и `x-wg-balancer`
+   (`wg`), у `wg` зависимость от `vless` в состоянии `unknown` (монитор
+   туннелей выключен) и нет ошибки. На Linux скрипт отдаёт ключ и `.conf`
    владельцу 65532 через `sudo -n chown` (нужен root или sudo без пароля, как
    на раннерах CI; без них скрипт останавливается с ошибкой). В конце перезапускает Xray
    и ждёт, что scd заметит потерю ресурсов (`xray_state_drift` или
@@ -145,7 +149,9 @@ read-only RPC `RoutingService.GetBalancerInfo` и
 
    Проект compose — `scd-smoke`, но `container_name` и порты фиксированы:
    если уже запущен стек из `docker-compose.yml`, скрипт сообщит о конфликте
-   и выйдет — сначала `docker compose down`.
+   и выйдет — сначала `docker compose down`. Порт API Xray на хосте (проверки
+   его не используют) переносится с занятого 8080:
+   `SCD_SMOKE_XRAY_PORT=18080 bash scripts/compose-smoke.sh`.
 
 3. Ручной запуск: compose монтирует игнорируемые git файлы
    `docker/<svc>/config.yml` (свои конфиги; для теста — копия примера,

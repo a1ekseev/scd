@@ -16,7 +16,8 @@
           "portRange": {
             "start": 20000,
             "end": 20099
-          }
+          },
+          "balancer": "x-balancer"
         },
         {
           "id": "wg",
@@ -57,7 +58,16 @@
           },
           "wireguard": {
             "endpointDomainStrategy": "UseIPv4"
-          }
+          },
+          "balancer": "x-wg-balancer",
+          "dialerProxy": "chain-vless",
+          "dependsOn": [
+            {
+              "source": "vless",
+              "health": "balancer",
+              "recoverGraceSeconds": 180
+            }
+          ]
         },
         {
           "id": "mq",
@@ -85,16 +95,27 @@
               "attempts": 2,
               "delayMs": 2000
             }
-          }
+          },
+          "balancer": "x-mq-balancer",
+          "dialerProxy": "chain-vless",
+          "dependsOn": [
+            {
+              "source": "vless",
+              "health": "balancer",
+              "recoverGraceSeconds": 180
+            }
+          ]
         }
       ],
       "target": {
         "address": "xray:8080",
         "timeoutMs": 5000,
         "fixedOutbounds": [
+          "chain-fail",
           "direct",
           "blocked",
-          "api"
+          "api",
+          "chain-vless"
         ],
         "fixedInbounds": [
           "socks-proxy",
@@ -102,6 +123,7 @@
           "api"
         ],
         "fixedRouting": [
+          "chain-vless",
           "direct",
           "x-balancer"
         ],
@@ -120,6 +142,22 @@
         "balancers": [
           {
             "tag": "x-balancer",
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true
+            }
+          },
+          {
+            "tag": "x-wg-balancer",
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true
+            }
+          },
+          {
+            "tag": "x-mq-balancer",
             "selection": {
               "enabled": true,
               "schedule": "*/15 * * * * *",
