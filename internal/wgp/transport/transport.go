@@ -34,8 +34,10 @@ import (
 	"github.com/klauspost/compress/zstd"
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http/httpguts"
+	"golang.org/x/net/proxy"
 
 	"github.com/a1ekseev/scd/internal/common/neterr"
+	"github.com/a1ekseev/scd/internal/common/schema"
 	"github.com/a1ekseev/scd/internal/wgp/provider"
 )
 
@@ -144,6 +146,29 @@ type Client struct {
 	basePath   string
 	http       *http.Client
 	sleep      func(context.Context, time.Duration) error
+}
+
+// ParseProxy reads the optional provider key proxy, socks5://host:port, and
+// returns it with a Config.Dial that opens every API connection through that
+// SOCKS5 proxy (no auth). The API host name goes to the proxy unresolved, so
+// DNS is the proxy's too; TLS stays end to end. Absent or empty: "", nil.
+func ParseProxy(n *schema.Node) (string, func(ctx context.Context, network, addr string) (net.Conn, error)) {
+	s, _ := n.String("proxy", schema.StrOpt{Trim: true})
+	if s == "" {
+		return "", nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "socks5" || u.User != nil || u.Hostname() == "" || u.Port() == "" ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		n.Addf("proxy", "must be socks5://host:port")
+		return "", nil
+	}
+	d, err := proxy.SOCKS5("tcp", u.Host, nil, new(net.Dialer))
+	if err != nil {
+		n.Addf("proxy", "%v", err)
+		return "", nil
+	}
+	return s, d.(proxy.ContextDialer).DialContext
 }
 
 // New checks cfg and returns its Client.

@@ -930,6 +930,11 @@ outputs:
   official Proton VPN Linux client (TLS 1.3 with X25519MLKEM768, HTTP/1.1 with
   one connection per request, JSON in insertion order with `", "` and `": "`
   separators and `\uXXXX` escapes).
+- `proxy: socks5://host:port` (optional, `warp` and `proton`) sends the
+  provider's API connections through a SOCKS5 proxy without auth, for example
+  a SOCKS inbound of Xray. The API host name goes to the proxy unresolved, so
+  DNS goes through it too; TLS and the ClientHello stay end to end. Without
+  the key the API is reached directly.
 - **State.** `state.dir` holds one encrypted record per provider,
   `<provider id>.state` (AES-256-GCM, bound to the provider id: a record
   renamed to another id does not open). `state.keyFile` holds the key: the

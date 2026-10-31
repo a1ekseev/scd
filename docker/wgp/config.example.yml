@@ -87,6 +87,7 @@ providers:
     type: proton
     enabled: false
     tier: free                   # free | plus; plus без free-серверов; выше тарифа аккаунта — ошибка
+    # proxy: socks5://xray:1082  # API через SOCKS5 (например inbound Xray); без ключа — напрямую
     schedule: "*/15 * * * *"     # GET /vpn/v2, GET /vpn/v1/logicals, продление, публикация
     keys:
       rotateOnStart: true        # новое поколение ключей и сертификатов при старте
@@ -123,6 +124,7 @@ providers:
     type: warp
     enabled: false
     tunnel: wireguard            # masque — отдельный провайдер со своим устройством
+    # proxy: socks5://xray:1082  # API через SOCKS5 (например inbound Xray); без ключа — напрямую
     schedule: "0 */6 * * *"      # GET /reg/{id}
     keys:
       rotateOnStart: true        # новый ключ при старте: PATCH /reg/{id}, reserved из ответа

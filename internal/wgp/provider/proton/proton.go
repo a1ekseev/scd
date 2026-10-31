@@ -41,7 +41,9 @@ const defaultLabel = "{flag} {city}, Proton {name}"
 // settings are the config keys of a Proton provider.
 type settings struct {
 	Tier string `json:"tier"`
-	Keys struct {
+	// Proxy is the SOCKS5 proxy of the API, "" for direct.
+	Proxy string `json:"proxy,omitempty"`
+	Keys  struct {
 		RotateOnStart bool `json:"rotateOnStart"`
 	} `json:"keys"`
 	Certificate struct {
@@ -92,9 +94,10 @@ func parseIdentification(n *schema.Node) any {
 }
 
 func newFromConfig(n *schema.Node, env provider.Env) provider.Provider {
-	n.Strict(slices.Concat(provider.CommonKeys, []string{"tier", "keys", "certificate", "servers", "wireguard", "label"})...)
+	n.Strict(slices.Concat(provider.CommonKeys, []string{"tier", "proxy", "keys", "certificate", "servers", "wireguard", "label"})...)
 	ident, _ := env.Identification.(Identification)
-	p, err := newProton(env.ID, ident, transport.Config{API: env.API})
+	proxyURL, dial := transport.ParseProxy(n)
+	p, err := newProton(env.ID, ident, transport.Config{API: env.API, Dial: dial})
 	if err != nil {
 		n.Addf("", "%v", err)
 		return nil
@@ -105,6 +108,7 @@ func newFromConfig(n *schema.Node, env provider.Env) provider.Provider {
 		n.Addf("", "keys.revokeOldAfterMinutes (top level) is required with an enabled proton provider")
 	}
 	s := &p.settings
+	s.Proxy = proxyURL
 	s.Tier = n.Enum("tier", []string{"free", "plus"}, "")
 	if keys := n.Object("keys", true); keys != nil {
 		keys.Strict("rotateOnStart")

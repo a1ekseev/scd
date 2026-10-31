@@ -93,7 +93,9 @@ type WARP struct {
 	regErr map[int]string
 
 	Tunnel string `json:"tunnel"`
-	Keys   struct {
+	// Proxy is the SOCKS5 proxy of the API, "" for direct.
+	Proxy string `json:"proxy,omitempty"`
+	Keys  struct {
 		RotateOnStart bool `json:"rotateOnStart"`
 	} `json:"keys"`
 	DeviceLostAfterChecks        int    `json:"deviceLostAfterChecks"`
@@ -128,11 +130,12 @@ func parseIdentification(n *schema.Node) any {
 
 func newWARP(n *schema.Node, env provider.Env) provider.Provider {
 	n.Strict(slices.Concat(provider.CommonKeys, []string{
-		"tunnel", "keys", "deviceLostAfterChecks", "reRegisterMinIntervalMinutes", "label", "wireguard", "masque",
+		"tunnel", "proxy", "keys", "deviceLostAfterChecks", "reRegisterMinIntervalMinutes", "label", "wireguard", "masque",
 	})...)
 	w := &WARP{id: env.ID, out: env.Output, cfg: transport.Config{API: env.API}, now: time.Now}
 	w.ident, _ = env.Identification.(Identification)
 	w.Tunnel = n.Enum("tunnel", []string{tunnelWireGuard, tunnelMasque}, "")
+	w.Proxy, w.cfg.Dial = transport.ParseProxy(n)
 	if keys := n.Object("keys", true); keys != nil {
 		keys.Strict("rotateOnStart")
 		if !keys.Has("rotateOnStart") {
