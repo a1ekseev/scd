@@ -25,7 +25,7 @@ import (
 //
 // A failure in 3 or 4 ends the report with one failed item whose id is the
 // first tunnel's route tag (or "routing"); there is no rollback. The
-// report's Skipped is empty, as in TS.
+// report's Skipped is empty.
 func Routing(ctx context.Context, c xrayapi.RoutingAPI, fixed []string, owns Owner, tunnels []topology.Tunnel, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindRouting, m, startedAt, nil)

@@ -3,10 +3,8 @@ package status
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -17,12 +15,6 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
-
-var update = flag.Bool("update", false, "regenerate the Go golden files (selection dashboards, visual PNGs)")
-
-// goldenDir holds the Go golden dashboards of the selection fixtures (no TS
-// reference exists, D22).
-const goldenDir = "../../../testdata/golden/scd/status/"
 
 // objectKeys returns the keys of the JSON object raw in document order.
 func objectKeys(t *testing.T, raw json.RawMessage) []string {
@@ -252,7 +244,7 @@ func TestParseRemoteAcceptsNewFields(t *testing.T) {
 	}
 	assertContains(t, bodyOf(t, page.String()), "Xray selection · x-balancer", "pool (3) · random")
 
-	old, err := os.ReadFile(refStatusDir + "healthy-single/api-instance-status.json")
+	old, err := os.ReadFile(goldenDir + "old-remote-snapshot.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +374,7 @@ func TestDashboardSelectionCard(t *testing.T) {
 	}
 }
 
-// D3: without balancerSelection (feature off or an old remote) no markup
+// Without balancerSelection (feature off or an old remote) no markup
 // and no CSS of the selection view is rendered.
 func TestDashboardFeatureOffNoMarkup(t *testing.T) {
 	for _, name := range fixtureNames(t) {
@@ -393,33 +385,6 @@ func TestDashboardFeatureOffNoMarkup(t *testing.T) {
 	}
 	// The selection CSS is only inlined when a target has a selection.
 	assertContains(t, dashboard(t, "selection-single", "/"), ".is-selected", ".node-badge", ".metric-observatory-alive")
-}
-
-// 10 §6.7: Go golden dashboards of the selection fixtures (-update
-// regenerates them).
-func TestDashboardSelectionGolden(t *testing.T) {
-	for _, name := range selectionFixtureNames(t) {
-		t.Run(name, func(t *testing.T) {
-			got := []byte(dashboard(t, name, "/"))
-			path := filepath.Join(goldenDir, name+".html")
-			if *update {
-				if err := os.MkdirAll(goldenDir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, got, 0o600); err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			want, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("%v (run with -update)", err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf("%s differs from the golden file (run with -update to regenerate)", path)
-			}
-		})
-	}
 }
 
 // 10 §6.6: runtime-state carries the complete selection state.
@@ -465,8 +430,8 @@ func TestRuntimeStateBalancerSelection(t *testing.T) {
 }
 
 // Review 6.6: a target created only by the selection tick (no sync yet)
-// has no balancerMonitor in runtime-state and the TS idle balancer monitor
-// in /api/instance-status.
+// has no balancerMonitor in runtime-state and the idle balancer monitor in
+// /api/instance-status.
 func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
 	l := loadFixture(t, "empty")
 	l.cfg.Config.Subscriptions = []config.SubscriptionConfig{{

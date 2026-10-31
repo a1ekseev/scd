@@ -48,7 +48,7 @@ type errorBody struct {
 	Error string `json:"error"`
 }
 
-// runtimeStateSnapshot is /api/runtime-state (TS CurrentRuntimeStateSnapshot).
+// runtimeStateSnapshot is /api/runtime-state.
 type runtimeStateSnapshot struct {
 	SubscriptionID string         `json:"subscriptionId"`
 	TargetAddress  string         `json:"targetAddress"`
@@ -141,7 +141,7 @@ type rsBalancerMonitor struct {
 
 // rsExpected is the union of the expected resources of the enabled
 // sources. Source and Error describe the only source; with several sources
-// they are empty and Sources lists each one (additive, D3).
+// they are empty and Sources lists each one (additive).
 type rsExpected struct {
 	Source       string             `json:"source"`
 	Outbounds    []expectedOutbound `json:"outbounds"`
@@ -355,7 +355,7 @@ func buildExpected(ctx context.Context, mem *state.Memory, sub config.Subscripti
 			}
 		}
 	}
-	// One VLESS source keeps the single-source shape of the TS API.
+	// One VLESS source keeps the single-source shape of the API.
 	if len(exp.Sources) == 1 && sources[0].Type == config.SourceVLESS {
 		exp.Source, exp.Error = exp.Sources[0].Source, exp.Sources[0].Error
 		exp.Sources = nil

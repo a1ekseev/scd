@@ -2,7 +2,7 @@ package status
 
 import (
 	"bytes"
-	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -166,53 +166,21 @@ func TestDashboardEscapesHostileStrings(t *testing.T) {
 	}
 }
 
-// visibleText is the text of <body> outside <script>/<style>, whitespace
-// collapsed.
-func visibleText(t *testing.T, page []byte) string {
-	t.Helper()
-	doc, err := html.Parse(bytes.NewReader(page))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parts []string
-	var walk func(n *html.Node, inBody bool)
-	walk = func(n *html.Node, inBody bool) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "script", "style":
-				return
-			case "body":
-				inBody = true
-			}
-		}
-		if n.Type == html.TextNode && inBody {
-			parts = append(parts, n.Data)
-		}
-		for c := range n.ChildNodes() {
-			walk(c, inBody)
-		}
-	}
-	walk(doc, false)
-	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
-}
-
-// D3: the visible text of every fixture equals the TS dashboard.
-func TestDashboardTextMatchesTS(t *testing.T) {
-	for _, name := range fixtureNames(t) {
+// The dashboard of every fixture equals its Go golden file byte for byte.
+func TestDashboardGolden(t *testing.T) {
+	for _, name := range allFixtureNames(t) {
 		t.Run(name, func(t *testing.T) {
-			want, err := os.ReadFile(refStatusDir + name + "/index.html")
-			if err != nil {
-				t.Fatal(err)
+			l := loadFixture(t, name)
+			rec := get(t, NewHandler(l.deps()), "/")
+			if rec.Code != 200 || rec.Header().Get("Content-Type") != contentTypeHTML {
+				t.Fatalf("%d %q", rec.Code, rec.Header().Get("Content-Type"))
 			}
-			got := dashboard(t, name, "/")
-			if g, w := visibleText(t, []byte(got)), visibleText(t, want); g != w {
-				t.Errorf("text differs\n--- got\n%s\n--- want\n%s", g, w)
-			}
+			golden(t, filepath.Join(goldenDir, name, "dashboard.html"), rec.Body.Bytes())
 		})
 	}
 }
 
-// Without any instance (no local snapshot stored) the page shows the TS
+// Without any instance (no local snapshot stored) the page shows the
 // placeholder and no tab list.
 func TestDashboardWithoutInstances(t *testing.T) {
 	var buf bytes.Buffer
@@ -224,8 +192,8 @@ func TestDashboardWithoutInstances(t *testing.T) {
 	assertNotContains(t, body, "instance-tabs", "instance-panel")
 }
 
-// A remote snapshot without balancer monitor or country renders like TS
-// with the fallbacks idle and "-".
+// A remote snapshot without balancer monitor or country renders with
+// the fallbacks idle and "-".
 func TestDashboardRemoteFallbacks(t *testing.T) {
 	snap := &InstanceSnapshot{Subscriptions: []GroupedSubscription{{
 		SubscriptionID: "sub-r",

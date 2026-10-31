@@ -152,7 +152,7 @@ func loadedSrc(s config.SourceConfig, content string) LoadedSource {
 }
 
 func TestFromSourceTrimsContent(t *testing.T) {
-	// Like TS sync: the whole content is trimmed, so leading blank lines do
+	// The whole content is trimmed, so leading blank lines do
 	// not count and the first line's surrounding white space is cut.
 	m, err := FromSource(loadedSrc(src("vless", "in"), "\n\n  "+link(1, "a")+"  \n\n"), testNow)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,9 +17,9 @@ import (
 
 const jsonType = "application/json; charset=utf-8"
 
-// D3: the JSON API of every 0.4 fixture equals the TS reference.
-func TestJSONMatchesTSReference(t *testing.T) {
-	for _, name := range fixtureNames(t) {
+// The JSON API of every fixture equals its Go golden file byte for byte.
+func TestAPIGolden(t *testing.T) {
+	for _, name := range allFixtureNames(t) {
 		t.Run(name, func(t *testing.T) {
 			l := loadFixture(t, name)
 			h := NewHandler(l.deps())
@@ -30,9 +31,7 @@ func TestJSONMatchesTSReference(t *testing.T) {
 				if bytes.HasSuffix(rec.Body.Bytes(), []byte("\n")) {
 					t.Errorf("%s: trailing newline", ep)
 				}
-				if !jsonEqual(t, decode(t, rec.Body.Bytes()), readRef(t, name+"/api-"+ep+".json")) {
-					t.Errorf("%s/api-%s.json differs", name, ep)
-				}
+				golden(t, filepath.Join(goldenDir, name, "api-"+ep+".json"), rec.Body.Bytes())
 			}
 		})
 	}
@@ -250,7 +249,7 @@ func TestPanicReturns500(t *testing.T) {
 	}
 }
 
-// Without an aggregator the handler creates one (TS default state).
+// Without an aggregator the handler creates one (default state).
 func TestHandlerWithoutAggregator(t *testing.T) {
 	l := loadFixture(t, "remote-instances")
 	d := l.deps()

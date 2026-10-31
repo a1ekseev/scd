@@ -84,8 +84,8 @@ func capRefused(m *state.Memory, key string, tn topology.Tunnel, err error) {
 // (tunnel_repair_skipped); checkTunnel has already recorded the failure. The
 // check is made under the target lock, so a sync that replaced the topology
 // meanwhile (prefixed again) gets a real repair. The only returned error is
-// a failure to create the client (TS createMutationClient outside the try);
-// the tunnel then stays "repairing" until its next check, as in TS.
+// a failure to create the client; the tunnel then stays "repairing" until
+// its next check.
 func Repair(ctx context.Context, d Deps, sub config.SubscriptionConfig, tunnelID string) error {
 	t := sub.Target
 	key := state.Key(sub.ID, t.Address)

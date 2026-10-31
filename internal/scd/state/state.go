@@ -107,7 +107,7 @@ type SelectionState struct {
 	ObservatoryCheckedAt *time.Time
 }
 
-// TunnelMonitor is the monitor state of one tunnel (TS TunnelMonitorState).
+// TunnelMonitor is the monitor state of one tunnel.
 // Nil pointers are values that were never set or were cleared.
 type TunnelMonitor struct {
 	// State is idle, healthy, degraded or repairing.
@@ -151,8 +151,7 @@ type FlapState struct {
 	LastFailAt time.Time
 }
 
-// BalancerMonitor is the balancer monitor state of a target (TS
-// TargetBalancerMonitorState).
+// BalancerMonitor is the balancer monitor state of a target.
 type BalancerMonitor struct {
 	// State is idle, healthy or degraded; RemotePingState is idle, pending,
 	// ok or failed.
@@ -235,7 +234,7 @@ func (s *Source) AllWarnings() []normalize.Warning {
 
 // Target is the state of one subscription target.
 type Target struct {
-	// SyncSeen reports that a sync reached this target (03 §1: in TS the
+	// SyncSeen reports that a sync reached this target (03 §1: the
 	// target state exists only from then on), even if its apply failed. The
 	// balancer monitor waits for it; the balancer selection tick may create
 	// the target earlier (10 §6.3) without setting it.

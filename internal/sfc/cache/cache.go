@@ -12,7 +12,7 @@ import (
 )
 
 // dirName is the cache directory next to the config file. The name is kept
-// from the TS version: the docker volume survives the migration.
+// for existing docker volumes.
 const dirName = ".sfc-cache"
 
 // EscapeID escapes an id like JavaScript encodeURIComponent (Go additionally

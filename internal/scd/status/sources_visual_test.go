@@ -15,9 +15,9 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// visualGoldenDir holds the local reference screenshots of the dashboard
-// blocks that have no TS reference. They are gitignored and never committed:
-// -update creates them, and a test without its screenshot is skipped.
+// visualGoldenDir holds the local golden screenshots of the dashboard. They
+// are gitignored and never committed: -update creates them, and a test
+// without its screenshot is skipped.
 const visualGoldenDir = "testdata/visual/"
 
 // warningVisible reports whether the first source warning of the local
@@ -96,9 +96,15 @@ func TestDashboardWireGuardSourceVisual(t *testing.T) {
 
 // matchGolden compares the screenshot got with the PNG at path (written
 // instead with -update): same size and at most maxDiffRatio differing
-// pixels. A missing golden skips the test; on a mismatch the images are
-// kept in a temporary directory.
+// pixels. The comparison is a subtest named after the file, so a missing
+// golden skips only it, not the other checks of t; on a mismatch the images
+// are kept in a temporary directory.
 func matchGolden(t *testing.T, path string, got []byte) {
+	t.Helper()
+	t.Run(filepath.Base(path), func(t *testing.T) { matchGoldenFile(t, path, got) })
+}
+
+func matchGoldenFile(t *testing.T, path string, got []byte) {
 	t.Helper()
 	if *update {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

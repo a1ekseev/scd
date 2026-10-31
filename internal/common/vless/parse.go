@@ -116,7 +116,7 @@ func Parse(l subscription.Line) (Link, *Skip) {
 	}
 	// The label is cosmetic: invalid UTF-8 (e.g. "%FF") is replaced, not skipped.
 	label = strings.ToValidUTF8(label, "\uFFFD")
-	// Like TS: only the userinfo user name is the id (a password is dropped)
+	// Only the userinfo user name is the id (a password is dropped)
 	// and a URL path ("/p") is ignored.
 	id := u.User.Username()
 	if id == "" {

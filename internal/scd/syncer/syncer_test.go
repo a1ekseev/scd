@@ -935,7 +935,7 @@ func TestReportJSONShape(t *testing.T) {
 }
 
 // Review 6.6: a sync that reaches a target marks it SyncSeen even when the
-// apply fails (TS creates the target state at that point).
+// apply fails (the target state exists from then on).
 func TestSyncMarksTargetSeenEvenOnFailedApply(t *testing.T) {
 	f := newFixture(t, cfg(outboundOnly, sub("source-1", "/s1", target(addrA))), map[string]string{"/s1": vienna}, addrA)
 	f.x.servers[addrA].FailNext("AddOutbound", status.Error(codes.Unknown, "rejected"))

@@ -38,7 +38,7 @@ func applyTransport(l vless.Link, n *Normalized) *vless.Skip {
 	switch n.Network {
 	case "tcp":
 		if ht, ok := l.Get("headertype"); ok {
-			n.HeaderType = &ht // "" and "none" are kept, as in TS
+			n.HeaderType = &ht // "" and "none" are kept
 			if ht == "http" {
 				// Comma lists are split by the outbound builder (4.6).
 				n.Host = get("host")

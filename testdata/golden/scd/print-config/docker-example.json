@@ -1,0 +1,172 @@
+{
+  "subscriptions": [
+    {
+      "id": "test-fixture",
+      "enabled": true,
+      "sources": [
+        {
+          "id": "vless",
+          "type": "vless",
+          "input": "docker/fixtures/subscription.txt",
+          "enabled": true,
+          "format": "auto",
+          "fetchTimeoutMs": 5000,
+          "allowInsecure": "deny",
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20000,
+            "end": 20099
+          }
+        },
+        {
+          "id": "wg",
+          "type": "wireguard",
+          "input": "/app/wgp/wg",
+          "enabled": false,
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20100,
+            "end": 20109
+          },
+          "filters": {
+            "countryAllowlist": [
+              "NL",
+              "CH"
+            ],
+            "entryCountryAllowlist": [
+              "NL",
+              "CH"
+            ]
+          },
+          "maxActive": 2,
+          "selection": {
+            "strategy": "score",
+            "switchMarginPercent": 20,
+            "switchConfirmChecks": 2,
+            "deadPairCooldownMinutes": 10,
+            "replaceAfterFailures": 2
+          },
+          "monitor": {
+            "request": {
+              "timeoutMs": 10000
+            },
+            "retry": {
+              "attempts": 2,
+              "delayMs": 2000
+            }
+          },
+          "wireguard": {
+            "endpointDomainStrategy": "UseIPv4"
+          }
+        },
+        {
+          "id": "mq",
+          "type": "masque",
+          "input": "/app/wgp/warpmq",
+          "enabled": false,
+          "maxInputBytes": 67108864,
+          "portRange": {
+            "start": 20110,
+            "end": 20119
+          },
+          "maxActive": 1,
+          "selection": {
+            "strategy": "label",
+            "switchMarginPercent": 20,
+            "switchConfirmChecks": 2,
+            "deadPairCooldownMinutes": 10,
+            "replaceAfterFailures": 2
+          },
+          "monitor": {
+            "request": {
+              "timeoutMs": 10000
+            },
+            "retry": {
+              "attempts": 2,
+              "delayMs": 2000
+            }
+          }
+        }
+      ],
+      "target": {
+        "address": "xray:8080",
+        "timeoutMs": 5000,
+        "fixedOutbounds": [
+          "direct",
+          "blocked",
+          "api"
+        ],
+        "fixedInbounds": [
+          "socks-proxy",
+          "wg-proxy",
+          "api"
+        ],
+        "fixedRouting": [
+          "direct",
+          "x-balancer"
+        ],
+        "visionUdp443Override": false,
+        "inboundSocks": {
+          "listen": "0.0.0.0"
+        },
+        "monitor": {
+          "enabled": false,
+          "maxParallel": 10,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          }
+        },
+        "balancerMonitor": {
+          "enabled": false,
+          "retry": {
+            "attempts": 1,
+            "delayMs": 250
+          },
+          "remotePing": {
+            "enabled": false,
+            "timeoutMs": 5000,
+            "viaSocks": false
+          }
+        },
+        "balancerSelection": {
+          "enabled": true,
+          "balancerTag": "x-balancer",
+          "schedule": "*/15 * * * * *",
+          "observatory": true
+        },
+        "observatorySubjectSelectorPrefix": "x-observe-"
+      }
+    }
+  ],
+  "runtime": {
+    "mode": "daemon",
+    "schedule": "*/5 * * * *"
+  },
+  "logging": {
+    "level": "info",
+    "format": "pretty"
+  },
+  "resources": {
+    "outbounds": {
+      "enabled": true
+    },
+    "inbounds": {
+      "enabled": true
+    },
+    "routing": {
+      "enabled": true
+    }
+  },
+  "statusServer": {
+    "enabled": true,
+    "listen": "0.0.0.0:8080",
+    "instanceId": "scd-test",
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  }
+}

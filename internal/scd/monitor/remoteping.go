@@ -202,7 +202,7 @@ func pingErrorText(err error, urls ...string) string {
 // directClient sends direct pushes; it follows redirects like fetch.
 var directClient = &http.Client{}
 
-// PushDirect sends a remote push without SOCKS (TS pushRemotePingDirect):
+// PushDirect sends a remote push without SOCKS:
 // GET rawURL within timeout, the status code is returned once the headers
 // arrive and the body is closed without being read. A timeout fails with
 // "Remote ping timed out after <ms>ms."; other errors carry no URL.

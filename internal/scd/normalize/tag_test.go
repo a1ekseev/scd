@@ -111,19 +111,19 @@ func parseLine(t *testing.T, raw string, n int) vless.Link {
 	return link
 }
 
-func TestBuildTagMatchesTSCorpus(t *testing.T) {
-	data, err := os.ReadFile("../../../testdata/reference/scd/corpus/ts-parse.json")
+func TestBuildTagMatchesCorpus(t *testing.T) {
+	data, err := os.ReadFile("../../../testdata/golden/scd/corpus/parse.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cases []struct {
 		Line int    `json:"line"`
 		Raw  string `json:"raw"`
-		TS   struct {
+		Want struct {
 			OK      bool   `json:"ok"`
 			Profile string `json:"profile"`
 			Tag     string `json:"tag"`
-		} `json:"ts"`
+		} `json:"want"`
 	}
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 	}
 	okLines, checked := 0, 0
 	for _, c := range cases {
-		if !c.TS.OK {
+		if !c.Want.OK {
 			continue
 		}
 		okLines++
@@ -145,24 +145,24 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 		case skip != nil && isExcluded:
 			continue
 		case skip != nil:
-			t.Errorf("line %d: parser skipped a TS-ok line: %+v", c.Line, skip)
+			t.Errorf("line %d: parser skipped an accepted corpus line: %+v", c.Line, skip)
 			continue
 		case c.Line == 55:
-			// TS stripped the tab (WHATWG URL); keep the tag logic covered.
+			// The recorded tag has the tab stripped (WHATWG URL); keep the tag logic covered.
 			stripped := strings.ReplaceAll(link.Label, "\t", "")
-			if got := BuildTag("vless", stripped, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
-				t.Errorf("line 55 (tab stripped): got %s, want %s", got, c.TS.Tag)
+			if got := BuildTag("vless", stripped, link.Address, c.Want.Profile, link.Raw); got != c.Want.Tag {
+				t.Errorf("line 55 (tab stripped): got %s, want %s", got, c.Want.Tag)
 			}
-			if got := BuildTag("vless", link.Label, link.Address, c.TS.Profile, link.Raw); got == c.TS.Tag {
-				t.Errorf("line 55: stale exclusion (%s), Go tag equals TS tag", reason)
+			if got := BuildTag("vless", link.Label, link.Address, c.Want.Profile, link.Raw); got == c.Want.Tag {
+				t.Errorf("line 55: stale exclusion (%s), Go tag equals the recorded tag", reason)
 			}
 			continue
 		case isExcluded:
 			t.Errorf("line %d: stale exclusion (%s), parser accepts it", c.Line, reason)
 			continue
 		}
-		if got := BuildTag("vless", link.Label, link.Address, c.TS.Profile, link.Raw); got != c.TS.Tag {
-			t.Errorf("line %d: got %s, want %s", c.Line, got, c.TS.Tag)
+		if got := BuildTag("vless", link.Label, link.Address, c.Want.Profile, link.Raw); got != c.Want.Tag {
+			t.Errorf("line %d: got %s, want %s", c.Line, got, c.Want.Tag)
 		}
 		checked++
 	}
@@ -171,8 +171,8 @@ func TestBuildTagMatchesTSCorpus(t *testing.T) {
 	}
 }
 
-func TestBuildTagMatchesTSProvider2(t *testing.T) {
-	data, err := os.ReadFile("../../../testdata/reference/scd/generate/real-shapes-provider2.manifest.json")
+func TestBuildTagMatchesProvider2(t *testing.T) {
+	data, err := os.ReadFile("../../../testdata/golden/scd/generate/real-shapes-provider2.manifest.json")
 	if err != nil {
 		t.Fatal(err)
 	}

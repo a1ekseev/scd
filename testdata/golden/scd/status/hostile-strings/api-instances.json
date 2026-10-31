@@ -1,0 +1,182 @@
+{
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "instances": [
+    {
+      "id": "local-main",
+      "source": "local",
+      "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "local-main",
+        "capturedAt": "2026-08-15T10:00:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-1",
+            "targets": [
+              {
+                "subscriptionId": "sub-1",
+                "targetAddress": "127.0.0.1:8080",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-1",
+                    "targetAddress": "127.0.0.1:8080",
+                    "displayName": "<script>alert(\"x\")</script> & 'q'",
+                    "countryIso2": "AT",
+                    "endpoint": "127.0.0.1:20000",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 42,
+                    "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 42,
+                    "balanced": true,
+                    "balancerMonitorState": "degraded",
+                    "balancerMonitorLastError": "<script>alert(\"x\")</script> & 'q'",
+                    "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+                    "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+                    "balancerMonitorRemotePingState": "idle"
+                  },
+                  {
+                    "subscriptionId": "sub-1",
+                    "targetAddress": "127.0.0.1:8080",
+                    "displayName": "Zulu",
+                    "countryIso2": "NL",
+                    "endpoint": "127.0.0.1:20001",
+                    "state": "degraded",
+                    "lastError": "<img src=x onerror=alert(1)> \"quoted\" & 'single'",
+                    "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                    "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                    "balanced": true,
+                    "balancerMonitorState": "degraded",
+                    "balancerMonitorLastError": "<script>alert(\"x\")</script> & 'q'",
+                    "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+                    "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+                    "balancerMonitorRemotePingState": "idle"
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "degraded",
+                  "lastError": "<script>alert(\"x\")</script> & 'q'",
+                  "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                  "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                  "remotePingState": "idle"
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": [
+          {
+            "subscriptionId": "sub-1",
+            "targetAddress": "127.0.0.1:8080",
+            "displayName": "<script>alert(\"x\")</script> & 'q'",
+            "countryIso2": "AT",
+            "endpoint": "127.0.0.1:20000",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 42,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 42,
+            "balanced": true,
+            "balancerMonitorState": "degraded",
+            "balancerMonitorLastError": "<script>alert(\"x\")</script> & 'q'",
+            "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+            "balancerMonitorRemotePingState": "idle"
+          },
+          {
+            "subscriptionId": "sub-1",
+            "targetAddress": "127.0.0.1:8080",
+            "displayName": "Zulu",
+            "countryIso2": "NL",
+            "endpoint": "127.0.0.1:20001",
+            "state": "degraded",
+            "lastError": "<img src=x onerror=alert(1)> \"quoted\" & 'single'",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "balanced": true,
+            "balancerMonitorState": "degraded",
+            "balancerMonitorLastError": "<script>alert(\"x\")</script> & 'q'",
+            "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+            "balancerMonitorRemotePingState": "idle"
+          }
+        ]
+      }
+    },
+    {
+      "id": "edge-eu",
+      "source": "remote",
+      "apiUrl": "https://edge.example.test/api/instance-status",
+      "lastAttemptAt": "2026-08-15T09:59:00.000Z",
+      "snapshot": {
+        "version": 1,
+        "instanceId": "edge-eu",
+        "capturedAt": "2026-08-15T09:58:00.000Z",
+        "subscriptions": [
+          {
+            "subscriptionId": "sub-eu",
+            "targets": [
+              {
+                "subscriptionId": "sub-eu",
+                "targetAddress": "10.0.0.2:8080",
+                "tunnels": [
+                  {
+                    "subscriptionId": "sub-eu",
+                    "targetAddress": "10.0.0.2:8080",
+                    "displayName": "<script>alert(\"x\")</script> & 'q'",
+                    "countryIso2": "DE",
+                    "endpoint": "10.0.0.2:20000",
+                    "state": "healthy",
+                    "lastHttpStatus": 204,
+                    "lastLatencyMs": 64,
+                    "lastCheckedAt": "2026-08-15T09:58:00.000Z",
+                    "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+                    "lastSuccessHttpStatus": 204,
+                    "lastSuccessLatencyMs": 64,
+                    "balanced": true,
+                    "balancerMonitorState": "healthy",
+                    "balancerMonitorRemotePingState": "idle",
+                    "futureTunnelField": "kept"
+                  }
+                ],
+                "balancerMonitor": {
+                  "state": "healthy",
+                  "remotePingState": "idle"
+                }
+              }
+            ]
+          }
+        ],
+        "tunnels": [
+          {
+            "subscriptionId": "sub-eu",
+            "targetAddress": "10.0.0.2:8080",
+            "displayName": "<script>alert(\"x\")</script> & 'q'",
+            "countryIso2": "DE",
+            "endpoint": "10.0.0.2:20000",
+            "state": "healthy",
+            "lastHttpStatus": 204,
+            "lastLatencyMs": 64,
+            "lastCheckedAt": "2026-08-15T09:58:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+            "lastSuccessHttpStatus": 204,
+            "lastSuccessLatencyMs": 64,
+            "balanced": true,
+            "balancerMonitorState": "healthy",
+            "balancerMonitorRemotePingState": "idle",
+            "futureTunnelField": "kept"
+          }
+        ],
+        "futureField": {
+          "kept": true
+        }
+      },
+      "lastSuccessAt": "2026-08-15T09:58:00.000Z",
+      "lastError": "<script>alert(\"x\")</script> & 'q'"
+    }
+  ]
+}

@@ -3,11 +3,11 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,7 +21,7 @@ import (
 const (
 	exampleConfig = "../../../docker/sfc/config.example.yml"
 	realShapeGo   = "../../../docker/sfc/config.real-shape.go.yml"
-	referenceJSON = "../../../testdata/reference/sfc/print-config-docker-example.json"
+	goldenJSON    = "../../../testdata/golden/sfc/print-config-docker-example.json"
 )
 
 func run(args ...string) (code int, stdout, stderr string) {
@@ -30,41 +30,35 @@ func run(args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errb.String()
 }
 
+var update = flag.Bool("update", false, "regenerate the golden print-config file")
+
+// The print-config output of the example, with the repository root removed
+// from the input path, equals the golden file (written with -update).
 func TestPrintConfigDockerExample(t *testing.T) {
 	code, out, errs := run("print-config", "--config", exampleConfig)
 	if code != 0 || errs != "" {
 		t.Fatalf("code %d: %s", code, errs)
 	}
+	if !strings.HasPrefix(out, "{\n  \"subscriptions\": [") || !strings.HasSuffix(out, "}\n") {
+		t.Fatalf("unexpected layout: %q", out)
+	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatal(err)
+	got := strings.ReplaceAll(out, repo+string(filepath.Separator), "")
+	if *update {
+		if err := os.WriteFile(goldenJSON, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
 	}
-	sub := got["subscriptions"].([]any)[0].(map[string]any)
-	sub["input"] = strings.TrimPrefix(sub["input"].(string), repo+string(filepath.Separator))
-
-	raw, err := os.ReadFile(referenceJSON)
+	want, err := os.ReadFile(goldenJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var want map[string]any
-	if err := json.Unmarshal(raw, &want); err != nil {
-		t.Fatal(err)
-	}
-	// D29/D31: TS printed labelIncludeRegex as a string, Go prints a list.
-	for _, o := range want["subscriptions"].([]any)[0].(map[string]any)["outputs"].([]any) {
-		m := o.(map[string]any)
-		m["labelIncludeRegex"] = []any{m["labelIncludeRegex"]}
-		m["id"] = "<redacted>" // output ids are secrets; --include-secrets prints them
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %s\nwant %s", out, raw)
-	}
-	if !strings.HasPrefix(out, "{\n  \"subscriptions\": [") || !strings.HasSuffix(out, "}\n") {
-		t.Fatalf("unexpected layout: %q", out)
+	if got != string(want) {
+		t.Fatalf("print-config differs from %s (run with -update to regenerate):\n%s", goldenJSON, got)
 	}
 }
 

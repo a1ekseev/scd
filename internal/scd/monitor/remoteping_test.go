@@ -263,7 +263,7 @@ func TestRemotePingViaSocks(t *testing.T) {
 }
 
 // The push URL usually carries a token: logs and state carry only its host
-// (TS getRemoteHost; review-2 F15).
+// (review-2 F15).
 func TestRemotePingLogsOnlyHost(t *testing.T) {
 	const pushURL = "https://push.example.test/api/push/SECRET-PATH?token=SECRET-QUERY"
 	t.Run("direct error with URL", func(t *testing.T) {

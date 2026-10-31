@@ -2,8 +2,8 @@
 // tunnel and balancer monitor state, their grouping by subscription and
 // target, the aggregation with remote scd instances, the runtime-state
 // diagnostic and the HTTP handler of the JSON API and dashboard. The JSON
-// API is a contract (D3): field names and schema follow the TS version, new
-// fields are additive only; key order follows the Go structs (D23).
+// API is a contract: field names and schema are kept, new fields are
+// additive only (version 1); key order follows the Go structs (D23).
 package status
 
 import (
@@ -22,7 +22,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/topology"
 )
 
-// SnapshotVersion is the version of InstanceSnapshot (D3: stays 1).
+// SnapshotVersion is the version of InstanceSnapshot (stays 1).
 const SnapshotVersion = 1
 
 // formatTime formats t as a JSON timestamp in UTC.
@@ -36,8 +36,7 @@ func formatOptTime(t *time.Time) string {
 	return formatTime(*t)
 }
 
-// StatusTunnel is one tunnel of /api/status (TS StatusSnapshotTunnel,
-// 03 §6.4). Optional fields are omitted when unset.
+// StatusTunnel is one tunnel of /api/status (03 §6.4). Optional fields are omitted when unset.
 //
 //nolint:revive // the name is the plan interface (task 6.4), used by 6.5/6.6
 type StatusTunnel struct {
@@ -80,8 +79,8 @@ type StatusTunnel struct {
 	BalancerMonitorRemotePingLastReportedPingMs *int   `json:"balancerMonitorRemotePingLastReportedPingMs,omitempty"`
 
 	// The balancer selection fields (D22, 10 §6.6) are set only when the
-	// target's balancer selection has been polled; otherwise the tunnel is
-	// the TS StatusSnapshotTunnel unchanged.
+	// target's balancer selection has been polled; otherwise the tunnel has
+	// the original form.
 	OutboundTag       string `json:"outboundTag,omitempty"`
 	BalancerSelected  *bool  `json:"balancerSelected,omitempty"`
 	BalancerCandidate *bool  `json:"balancerCandidate,omitempty"`
@@ -151,8 +150,8 @@ type BalancerSelectionView struct {
 	ObservatoryError string   `json:"observatoryError,omitempty"`
 }
 
-// BalancerMonitorView is the balancer monitor of a grouped target (TS
-// GroupedStatusTarget.balancerMonitor, without consecutiveFailures).
+// BalancerMonitorView is the balancer monitor of a grouped target
+// (without consecutiveFailures).
 type BalancerMonitorView struct {
 	// State is idle, healthy or degraded.
 	State                        string `json:"state"`
@@ -182,10 +181,10 @@ type GroupedStatusTarget struct {
 	TargetAddress   string              `json:"targetAddress"`
 	Tunnels         []StatusTunnel      `json:"tunnels"`
 	BalancerMonitor BalancerMonitorView `json:"balancerMonitor"`
-	// BalancerSelection is nil when the feature is off (D3: no key).
+	// BalancerSelection is nil when the feature is off (no key).
 	BalancerSelection *BalancerSelectionView `json:"balancerSelection,omitempty"`
-	// Sources is nil (no key, D3) for a subscription with one source and no
-	// source warning: the form of the TS snapshots.
+	// Sources is nil (no key) for a subscription with one source and no
+	// source warning: the form of older snapshots.
 	Sources []SourceView `json:"sources,omitempty"`
 }
 
@@ -195,7 +194,7 @@ type GroupedSubscription struct {
 	Targets        []GroupedStatusTarget `json:"targets"`
 }
 
-// InstanceSnapshot is /api/instance-status (TS InstanceStatusSnapshot):
+// InstanceSnapshot is /api/instance-status:
 // the grouped view plus the flat tunnel list.
 type InstanceSnapshot struct {
 	Version       int                   `json:"version"`
@@ -203,7 +202,7 @@ type InstanceSnapshot struct {
 	CapturedAt    string                `json:"capturedAt"`
 	Subscriptions []GroupedSubscription `json:"subscriptions"`
 	Tunnels       []StatusTunnel        `json:"tunnels"`
-	// WGP holds the wgp status.json blocks; nil (no key, D3) without any.
+	// WGP holds the wgp status.json blocks; nil (no key) without any.
 	WGP []WGPBlock `json:"wgp,omitzero"`
 }
 
@@ -288,8 +287,8 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 
 // sourceViews is the sources[] of target t (nil before any state) of sub:
 // every source of sub in id order with its warnings and, for wireguard and masque, its
-// counts; nil when sub has one VLESS source without warnings (D3: the TS
-// snapshot form).
+// counts; nil when sub has one VLESS source without warnings (the form of
+// older snapshots).
 func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 	views := make([]SourceView, 0, len(sub.Sources))
 	shown := len(sub.Sources) > 1
@@ -463,8 +462,8 @@ func compareLatencyThenName(a, b StatusTunnel) int {
 	return cmp.Or(cmp.Compare(latencyKey(a), latencyKey(b)), strings.Compare(a.DisplayName, b.DisplayName))
 }
 
-// GroupTunnels groups a flat tunnel list by subscription and target (TS
-// groupStatusSnapshot): subscriptions and targets sorted by
+// GroupTunnels groups a flat tunnel list by subscription and target:
+// subscriptions and targets sorted by
 // strings.Compare, tunnels by latency then name; the balancer monitor of a
 // target comes from its first tunnel in input order.
 func GroupTunnels(tunnels []StatusTunnel) []GroupedSubscription {
@@ -506,7 +505,7 @@ func sortGroups(subs []GroupedSubscription) {
 
 // BuildConfiguredGroups groups tunnels and makes sure that every enabled
 // subscription of cfg and its target are present, even without tunnels or
-// memory state (TS buildConfiguredStatusGroups). A configured target's
+// memory state. A configured target's
 // balancer monitor is its memory state, else the group's, else idle; with
 // balancerSelection enabled it also gets the selection view (idle until
 // polled), and its sources when sourceViews has them.

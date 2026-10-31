@@ -394,7 +394,7 @@ func TestDaemonStopsImmediatelyBetweenTicks(t *testing.T) {
 	})
 }
 
-// TestDaemonStartsLoopsForDisabledSubscriptionMonitors: like TS, the
+// TestDaemonStartsLoopsForDisabledSubscriptionMonitors: the
 // monitor, balancer monitor and balancer selection loops start for every
 // configured subscription, including disabled ones (03 §3.1).
 func TestDaemonStartsLoopsForDisabledSubscriptionMonitors(t *testing.T) {

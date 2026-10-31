@@ -69,7 +69,7 @@ func (l *lockedBuffer) events(t *testing.T, event string) []map[string]any {
 	return out
 }
 
-// newSub is the TS createTarget: one target with a monitor request and the
+// newSub is one target with a monitor request and the
 // balancer monitor disabled.
 func newSub(mut func(c *config.SubscriptionConfig)) config.SubscriptionConfig {
 	c := config.SubscriptionConfig{
@@ -97,7 +97,7 @@ func newSub(mut func(c *config.SubscriptionConfig)) config.SubscriptionConfig {
 	return c
 }
 
-// withBalancer enables the balancer monitor via 127.0.0.10:1080 (TS tests).
+// withBalancer enables the balancer monitor via 127.0.0.10:1080.
 func withBalancer(expected int, remoteURL string, viaSocks bool) func(c *config.SubscriptionConfig) {
 	return func(c *config.SubscriptionConfig) {
 		c.Target.BalancerMonitor = config.TargetBalancerMonitorConfig{

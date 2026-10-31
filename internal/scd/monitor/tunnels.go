@@ -75,7 +75,7 @@ func (d Deps) sleep(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-// textError is an error whose text is part of the TS contract (capitalised,
+// textError is an error whose text is part of the status contract (capitalised,
 // trailing period): it reaches lastError, the status API and the remote push.
 type textError string
 
@@ -96,8 +96,8 @@ func (e *TaskError) Unwrap() []error { return e.Errs }
 
 // ResolveProxyHost returns the host to reach a tunnel's SOCKS inbound: the
 // inbound listen address, or the host of the target's API address when the
-// inbound listens on all interfaces (0.0.0.0 or ::). Unlike the TS
-// split(':')[0] it handles IPv6 target addresses ([fd00::5]:8080).
+// inbound listens on all interfaces (0.0.0.0 or ::); IPv6 target addresses
+// ([fd00::5]:8080) are handled.
 func ResolveProxyHost(listen, targetAddress string) string {
 	if listen != "0.0.0.0" && listen != "::" {
 		return listen

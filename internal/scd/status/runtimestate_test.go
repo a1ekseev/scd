@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -139,7 +139,7 @@ func (e *rsEnv) build(t *testing.T) (map[string]any, string) {
 
 func loadCases(t *testing.T) []rsCase {
 	t.Helper()
-	data, err := os.ReadFile(refStatusDir + "runtime-state/cases.json")
+	data, err := os.ReadFile(goldenDir + "runtime-state/cases.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,64 +174,8 @@ func applyTargetOverrides(t *testing.T, tgt *config.SubscriptionTargetConfig, ra
 	}
 }
 
-// ignoredParsedKeys are not compared with the TS references: the TS
-// decoder read wrong ws/fingerprint fields (D2/D6), path/host are redacted
-// now (D33) and ListRule carries no inbound tags (02 §1.5).
-var ignoredParsedKeys = []string{"fingerprint", "path", "host", "inboundTags"}
-
-// comparableRuntime drops informational parts of runtime items: ignored
-// parsed keys and the rawBase64 value (only its presence is compared).
-func comparableRuntime(v any) any {
-	m := v.(map[string]any)
-	out := map[string]any{}
-	for kind, items := range m {
-		var list []any
-		for _, it := range items.([]any) {
-			item := map[string]any{}
-			for k, val := range it.(map[string]any) {
-				switch k {
-				case "parsed":
-					p := map[string]any{}
-					maps.Copy(p, val.(map[string]any))
-					for _, ik := range ignoredParsedKeys {
-						delete(p, ik)
-					}
-					item[k] = p
-				case "rawBase64":
-					item[k] = val != ""
-				default:
-					item[k] = val
-				}
-			}
-			list = append(list, item)
-		}
-		out[kind] = list
-	}
-	return out
-}
-
-// assertKeysSubset fails when a key of want (recursively, objects only) is
-// missing from got: the Go schema may only add keys (D3, D31).
-func assertKeysSubset(t *testing.T, path string, got, want any) {
-	t.Helper()
-	wm, ok := want.(map[string]any)
-	if !ok {
-		return
-	}
-	gm, ok := got.(map[string]any)
-	if !ok {
-		t.Errorf("%s: not an object in Go: %v", path, got)
-		return
-	}
-	for k, wv := range wm {
-		gv, ok := gm[k]
-		if !ok {
-			t.Errorf("%s.%s missing", path, k)
-			continue
-		}
-		assertKeysSubset(t, path+"."+k, gv, wv)
-	}
-}
+// rawBase64Value is a non-empty rawBase64 value of a runtime-state body.
+var rawBase64Value = regexp.MustCompile(`"rawBase64": "[^"]+"`)
 
 func dig(v any, keys ...string) any {
 	for _, k := range keys {
@@ -244,9 +188,10 @@ func dig(v any, keys ...string) any {
 	return v
 }
 
-// 03 §10.5 items 1–6 against the TS references (keys, classification,
-// diff, redaction).
-func TestRuntimeStateMatchesTSReference(t *testing.T) {
+// 03 §10.5 items 1–6: every runtime-state case equals its Go golden file
+// (keys, classification, diff, redaction). The input path is written as
+// <input> and a rawBase64 value as <present>: only its presence is kept.
+func TestRuntimeStateGolden(t *testing.T) {
 	for _, c := range loadCases(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			sub := newRSSub(c.Input)
@@ -283,40 +228,14 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 			}
 
 			got, body := env.build(t)
-			refData, err := os.ReadFile(refStatusDir + "runtime-state/" + c.Name + ".json")
-			if err != nil {
-				t.Fatal(err)
+			out := body
+			if env.input != "" {
+				out = strings.ReplaceAll(out, env.input, "<input>")
 			}
-			want := decode(t, []byte(strings.ReplaceAll(string(refData), "<input>", env.input))).(map[string]any)
-			sourcesForm(t, want)
+			out = rawBase64Value.ReplaceAllString(out, `"rawBase64": "<present>"`)
+			golden(t, goldenDir+"runtime-state/"+c.Name+".json", []byte(out))
 
-			for _, k := range []string{"subscriptionId", "targetAddress", "capturedAt", "serviceState", "expected", "diff"} {
-				if !jsonEqual(t, got[k], want[k]) {
-					t.Errorf("%s differs", k)
-				}
-			}
-			jsonEqual(t, comparableRuntime(got["runtime"]), comparableRuntime(want["runtime"]))
-			assertKeysSubset(t, "config", got["config"], want["config"])
-			jsonEqual(t, dig(got, "config", "resources"), dig(want, "config", "resources"))
-			for _, p := range [][]string{
-				{"config", "target", "monitor", "request", "url"},
-				{"config", "target", "balancerMonitor", "request", "url"},
-				{"config", "target", "balancerMonitor", "remotePing", "url"},
-				{"config", "target", "balancerMonitor", "remotePing", "viaSocks"},
-				{"config", "target", "balancerMonitor", "socks5"},
-			} {
-				if !reflect.DeepEqual(dig(got, p...), dig(want, p...)) {
-					t.Errorf("%v: got %v want %v", p, dig(got, p...), dig(want, p...))
-				}
-			}
-			srcInput := func(v map[string]any) any {
-				return dig(v, "config", "subscription").(map[string]any)["sources"].([]any)[0].(map[string]any)["input"]
-			}
-			if srcInput(got) != srcInput(want) {
-				t.Errorf("input: got %v want %v", srcInput(got), srcInput(want))
-			}
-			// Go also redacts the copy of the target inside the subscription
-			// (TS printed it unredacted).
+			// The copy of the target inside the subscription is redacted too.
 			if !reflect.DeepEqual(dig(got, "config", "subscription", "target"), dig(got, "config", "target")) {
 				t.Errorf("subscription.target differs from target")
 			}
@@ -329,34 +248,6 @@ func TestRuntimeStateMatchesTSReference(t *testing.T) {
 			}
 		})
 	}
-}
-
-// sourceKeys are the TS subscription keys that moved to the source.
-var sourceKeys = []string{"input", "format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "filters"}
-
-// sourcesForm converts the config section of a TS runtime-state reference
-// to the sources form: the subscription's source keys and
-// target.inboundSocks.portRange (in the subscription's and in the
-// top-level target) move to one source {id: vless, type: vless} with the
-// Go defaults (allowInsecure deny, maxInputBytes 64 MiB).
-func sourcesForm(t *testing.T, want map[string]any) {
-	t.Helper()
-	cfg := want["config"].(map[string]any)
-	sub := cfg["subscription"].(map[string]any)
-	src := map[string]any{"id": "vless", "type": "vless", "enabled": true, "allowInsecure": "deny", "maxInputBytes": float64(64 << 20)}
-	for _, k := range sourceKeys {
-		if v, ok := sub[k]; ok {
-			src[k] = v
-			delete(sub, k)
-		}
-	}
-	for _, tg := range []any{sub["target"], cfg["target"]} {
-		if socks, ok := tg.(map[string]any)["inboundSocks"].(map[string]any); ok {
-			src["portRange"] = socks["portRange"]
-			delete(socks, "portRange")
-		}
-	}
-	sub["sources"] = []any{src}
 }
 
 // D33: fetchHeaders values are secrets.

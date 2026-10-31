@@ -3,9 +3,9 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	exampleConfig = "../../../docker/scd/config.example.yml"
-	realShapeGo   = "../../../docker/scd/config.real-shape.go.yml"
-	refDir        = "../../../testdata/reference/scd/print-config/"
+	exampleConfig  = "../../../docker/scd/config.example.yml"
+	realShapeGo    = "../../../docker/scd/config.real-shape.go.yml"
+	printConfigDir = "../../../testdata/golden/scd/print-config/"
 )
 
 func run(args ...string) (code int, stdout, stderr string) {
@@ -39,93 +39,45 @@ func readJSON(t *testing.T, path string) map[string]any {
 	return m
 }
 
-// addNewKeys adds the Go-only defaults (D15, D22) to every subscription of
-// a TS reference and converts it to the sources form with one source
-// "vless" (sourcesForm).
-func addNewKeys(want map[string]any) {
-	for _, s := range want["subscriptions"].([]any) {
-		sub := s.(map[string]any)
-		sub["allowInsecure"] = "deny"
-		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{"enabled": false, "observatory": true}
-		sourcesForm(sub)
-	}
-}
+var update = flag.Bool("update", false, "regenerate the golden print-config files")
 
-// sourceKeys are the TS subscription keys that moved to the source.
-var sourceKeys = []string{"input", "format", "fetchTimeoutMs", "allowInsecure", "fetchUserAgent", "fetchHeaders", "filters"}
-
-// sourcesForm converts a printed TS subscription to the sources form: its
-// source keys and target.inboundSocks.portRange move to one enabled source
-// {id: vless, type: vless} with the default maxInputBytes.
-func sourcesForm(sub map[string]any) {
-	src := map[string]any{"id": "vless", "type": "vless", "enabled": true, "maxInputBytes": float64(64 << 20)}
-	for _, k := range sourceKeys {
-		if v, ok := sub[k]; ok {
-			src[k] = v
-			delete(sub, k)
-		}
-	}
-	if socks, ok := sub["target"].(map[string]any)["inboundSocks"].(map[string]any); ok {
-		src["portRange"] = socks["portRange"]
-		delete(socks, "portRange")
-	}
-	sub["sources"] = []any{src}
-}
-
-// comparePrintConfig runs print-config on config and compares it with the
-// TS reference (plus the new keys, then edit applied to the first
-// subscription); input is compared by suffix.
-func comparePrintConfig(t *testing.T, config, reference string, edit ...func(sub map[string]any)) string {
+// printConfigGolden runs print-config on config and compares the output,
+// with the repository root removed from absolute paths, with the golden
+// file (written instead with -update).
+func printConfigGolden(t *testing.T, config, golden string) string {
 	t.Helper()
 	code, out, errs := run("print-config", "--config", config)
 	if code != 0 || errs != "" {
 		t.Fatalf("code %d: %s", code, errs)
 	}
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatal(err)
-	}
-	want := readJSON(t, reference)
-	addNewKeys(want)
-	gs := got["subscriptions"].([]any)[0].(map[string]any)
-	ws := want["subscriptions"].([]any)[0].(map[string]any)
-	for _, e := range edit {
-		e(ws)
-	}
-	gsrc := gs["sources"].([]any)[0].(map[string]any)
-	wsrc := ws["sources"].([]any)[0].(map[string]any)
-	gotInput, wantInput := gsrc["input"].(string), wsrc["input"].(string)
-	if !filepath.IsAbs(gotInput) || !strings.HasSuffix(gotInput, string(filepath.Separator)+wantInput) {
-		t.Fatalf("input %q, want suffix %q", gotInput, wantInput)
-	}
-	gsrc["input"] = wantInput
-	if !reflect.DeepEqual(got, want) {
-		w, _ := json.MarshalIndent(want, "", "  ")
-		t.Fatalf("got %s\nwant %s", out, w)
-	}
 	if !strings.HasPrefix(out, "{\n  \"subscriptions\": [") || !strings.HasSuffix(out, "}\n") {
 		t.Fatalf("unexpected layout: %q", out)
+	}
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.ReplaceAll(out, root+string(filepath.Separator), "")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("%v (run with -update)", err)
+	}
+	if got != string(want) {
+		t.Fatalf("print-config differs from %s (run with -update to regenerate):\n%s", golden, got)
 	}
 	return out
 }
 
 func TestPrintConfigMinimal(t *testing.T) {
-	out := comparePrintConfig(t, refDir+"minimal.sources.yml", refDir+"minimal.json")
+	out := printConfigGolden(t, printConfigDir+"minimal.sources.yml", printConfigDir+"minimal.sources.json")
 	if strings.Contains(out, "fetchUserAgent") || strings.Contains(out, "fetchHeaders") || strings.Contains(out, "portRange") {
 		t.Fatalf("optional keys printed: %s", out)
-	}
-	// The Go-side reference, byte for byte, with the input made repo-relative.
-	abs, err := filepath.Abs(refDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(abs))))
-	want, err := os.ReadFile(refDir + "minimal.sources.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Replace(out, root+string(filepath.Separator), "", 1); got != string(want) {
-		t.Fatalf("got %s\nwant %s", got, want)
 	}
 	// Key order of a subscription, its source and its target (01 §2.6 + new keys).
 	order := []string{
@@ -145,32 +97,11 @@ func TestPrintConfigMinimal(t *testing.T) {
 }
 
 func TestPrintConfigDockerExample(t *testing.T) {
-	// The example enables the balancer selection (task 6.6, D22).
-	// It also has disabled wireguard and masque sources, which the TS
-	// reference lacks.
-	var wg, mq map[string]any
-	if err := json.Unmarshal([]byte(`{"id":"wg","type":"wireguard","input":"/app/wgp/wg","enabled":false,"maxInputBytes":67108864,
-		"portRange":{"start":20100,"end":20109},"filters":{"countryAllowlist":["NL","CH"],"entryCountryAllowlist":["NL","CH"]},"maxActive":2,
-		"selection":{"strategy":"score","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
-		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}},"wireguard":{"endpointDomainStrategy":"UseIPv4"}}`), &wg); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(`{"id":"mq","type":"masque","input":"/app/wgp/warpmq","enabled":false,"maxInputBytes":67108864,
-		"portRange":{"start":20110,"end":20119},"maxActive":1,
-		"selection":{"strategy":"label","switchMarginPercent":20,"switchConfirmChecks":2,"deadPairCooldownMinutes":10,"replaceAfterFailures":2},
-		"monitor":{"request":{"timeoutMs":10000},"retry":{"attempts":2,"delayMs":2000}}}`), &mq); err != nil {
-		t.Fatal(err)
-	}
-	comparePrintConfig(t, exampleConfig, refDir+"docker-example.json", func(sub map[string]any) {
-		sub["target"].(map[string]any)["balancerSelection"] = map[string]any{
-			"enabled": true, "balancerTag": "x-balancer", "schedule": "*/15 * * * * *", "observatory": true,
-		}
-		sub["sources"] = append(sub["sources"].([]any), wg, mq)
-	})
+	printConfigGolden(t, exampleConfig, printConfigDir+"docker-example.json")
 }
 
 func TestValidateConfigJSON(t *testing.T) {
-	for _, p := range []string{exampleConfig, realShapeGo, refDir + "minimal.sources.yml"} {
+	for _, p := range []string{exampleConfig, realShapeGo, printConfigDir + "minimal.sources.yml"} {
 		abs, err := filepath.Abs(p)
 		if err != nil {
 			t.Fatal(err)
@@ -188,12 +119,24 @@ func TestSCDRealShapeGoFormValid(t *testing.T) {
 	if code != 0 || !strings.Contains(out, `"valid": true`) || errs != "" {
 		t.Fatalf("code %d out %q err %q", code, out, errs)
 	}
-	// The TS form (no sources) is rejected: its subscription keys are unknown.
-	for _, p := range []string{"../../../docker/scd/config.real-shape.yml", refDir + "minimal.yml"} {
-		code, _, errs = run("validate-config", "--config", p)
-		if code != 1 || !strings.Contains(errs, `subscriptions.0: unknown key "input"`) {
-			t.Fatalf("%s: code %d err %q", p, code, errs)
-		}
+	// The old form (no sources) is rejected: its subscription keys are unknown.
+	p := filepath.Join(t.TempDir(), "config.yml")
+	old := `subscriptions:
+  - id: s1
+    input: ./sub.txt
+    target:
+      address: 127.0.0.1:8080
+      inboundSocks: {listen: 127.0.0.1, portRange: {start: 20000, end: 20010}}
+runtime: {}
+logging: {}
+resources: {}
+`
+	if err := os.WriteFile(p, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errs = run("validate-config", "--config", p)
+	if code != 1 || !strings.Contains(errs, `subscriptions.0: unknown key "input"`) {
+		t.Fatalf("code %d err %q", code, errs)
 	}
 }
 

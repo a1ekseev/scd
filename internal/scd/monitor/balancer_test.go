@@ -222,8 +222,7 @@ func TestBalancerTickCancelled(t *testing.T) {
 
 // Review 6.6: the balancer selection tick creates the target before the
 // first sync (10 §6.3); the balancer monitor must still wait until a sync
-// reached the target (TS: the target exists only after
-// syncSubscriptionTarget) — no probe, no remote push.
+// reached the target — no probe, no remote push.
 func TestBalancerTickWaitsForSyncAfterSelectionTick(t *testing.T) {
 	sub := newSub(withBalancer(200, "https://push.example.test/api/push/token", false))
 	sub.Target.BalancerSelection = config.BalancerSelectionConfig{Enabled: true, BalancerTag: "x-balancer", Schedule: "*/15 * * * * *"}

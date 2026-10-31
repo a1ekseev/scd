@@ -20,7 +20,7 @@ const (
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
-// testTarget is the TS createTarget of the runtime tests: inboundSocks
+// testTarget is the target of the runtime tests: inboundSocks
 // 127.0.0.1:20000-20010, prefix x-observe-, fixed outbounds direct/blocked.
 func testTarget() config.SubscriptionTargetConfig {
 	return config.SubscriptionTargetConfig{

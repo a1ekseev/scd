@@ -48,8 +48,8 @@ func resolveScope(l vless.Link, mlkem bool) (scope, bool) {
 	return sc, true
 }
 
-// comboDetails lists type, security and flow as written in the link (TS
-// parity: a missing type reads "tcp", missing security and flow read "").
+// comboDetails lists type, security and flow as written in the link (a
+// missing type reads "tcp", missing security and flow read "").
 func comboDetails(l vless.Link) []string {
 	typ, ok := l.Get("type")
 	if !ok {

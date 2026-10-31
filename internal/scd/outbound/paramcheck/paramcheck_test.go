@@ -18,7 +18,7 @@ import (
 // corpusLink parses d26-links.txt line n.
 func corpusLink(t *testing.T, n int) vless.Link {
 	t.Helper()
-	data, err := os.ReadFile("../../../../testdata/reference/scd/corpus/d26-links.txt")
+	data, err := os.ReadFile("../../../../testdata/golden/scd/corpus/d26-links.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

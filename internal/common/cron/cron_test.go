@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	nextPath     = "../../../testdata/reference/common/cron-next.json"
-	rejectedPath = "../../../testdata/reference/common/cron-rejected.json"
+	nextPath     = "../../../testdata/golden/common/cron-next.json"
+	rejectedPath = "../../../testdata/golden/common/cron-rejected.json"
 )
 
 func TestMain(m *testing.M) {

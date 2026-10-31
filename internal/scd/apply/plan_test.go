@@ -274,8 +274,8 @@ func TestApplyAllKindsAgainstFake(t *testing.T) {
 		if !slices.Equal(r.AppliedIDs, p.ManagedIDs) {
 			t.Errorf("%s appliedIds = %v, managedIds = %v", kind, r.AppliedIDs, p.ManagedIDs)
 		}
-		// TS: only the outbound report carries manifest.skipped
-		// (apply-outbounds.ts buildBaseReport); inbound/routing carry [].
+		// Only the outbound report carries manifest.skipped; inbound and
+		// routing carry [].
 		wantSkipped := 0
 		if kind == apply.KindOutbound {
 			wantSkipped = 1

@@ -218,7 +218,7 @@ func (r *Refresher) refreshSubscription(ctx context.Context, sub config.Subscrip
 }
 
 // parse returns the VLESS links of content. Lines that are not usable links
-// are dropped silently (as in TS); links with unknown parameters are kept
+// are dropped silently; links with unknown parameters are kept
 // (D28) and logged at debug level.
 func (r *Refresher) parse(subscriptionID, content string) []vless.Link {
 	var links []vless.Link

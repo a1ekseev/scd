@@ -201,7 +201,7 @@ func TestRemoteSnapshotPassthroughKeepsUnknownFields(t *testing.T) {
 }
 
 // A value of an unexpected type in an unchecked field is passed through
-// and does not reject the snapshot (TS checks only the listed fields).
+// and does not reject the snapshot (only the listed fields are checked).
 func TestRemoteSnapshotToleratesUncheckedFieldTypes(t *testing.T) {
 	body := strings.Replace(remoteSnapshotJSON, `"lastLatencyMs": 64`, `"lastLatencyMs": "fast"`, 1)
 	snap, err := parseRemoteSnapshot([]byte(body))

@@ -40,7 +40,7 @@ type remoteState struct {
 }
 
 // Aggregator holds the last local snapshot and the state of every remote
-// instance (TS StatusAggregationState). It is safe for concurrent use.
+// instance. It is safe for concurrent use.
 type Aggregator struct {
 	mu      sync.Mutex
 	local   *InstanceSnapshot
@@ -115,7 +115,7 @@ type remoteInstance struct {
 	LastError     string          `json:"lastError,omitempty"`
 }
 
-// aggregatedSnapshot is /api/instances (TS AggregatedStatusSnapshot).
+// aggregatedSnapshot is /api/instances.
 type aggregatedSnapshot struct {
 	CapturedAt string `json:"capturedAt"`
 	Instances  []any  `json:"instances"`
@@ -249,8 +249,8 @@ func fetchRemoteRaw(ctx context.Context, r config.RemoteStatusInstanceConfig, cl
 // validTunnelStates are the tunnel states a remote snapshot may report.
 var validTunnelStates = map[string]bool{"healthy": true, "degraded": true, "repairing": true, "idle": true}
 
-// parseRemoteSnapshot validates a remote InstanceSnapshot shallowly, as TS
-// does (03 §7): version 1, string instanceId/capturedAt, the subscription →
+// parseRemoteSnapshot validates a remote InstanceSnapshot shallowly
+// (03 §7): version 1, string instanceId/capturedAt, the subscription →
 // target → tunnel structure and the identifying fields and state of every
 // tunnel. Other fields are not checked: values of an unexpected type are
 // left out of the typed snapshot (the raw JSON keeps them).

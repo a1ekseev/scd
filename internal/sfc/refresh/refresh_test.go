@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"log/slog"
 	"maps"
@@ -15,7 +16,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
+	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/sfc/cache"
 	"github.com/a1ekseev/scd/internal/sfc/config"
 )
@@ -386,7 +387,7 @@ func TestRefreshMalformedLabelSkipsLineOnly(t *testing.T) {
 	}
 }
 
-// TestRefreshUsesSharedParamWhitelist: links with parameters TS-sfc dropped
+// TestRefreshUsesSharedParamWhitelist: links with parameters the old sfc dropped
 // (3x-ui REALITY spx/pqv/support-x25519mlkem768, xhttp extra/fm), unknown
 // parameters (D28) and a non-UUID id (D18) reach the output unchanged.
 func TestRefreshUsesSharedParamWhitelist(t *testing.T) {
@@ -595,45 +596,36 @@ func fileSource(path *string) func(context.Context, string, inputsrc.Options) (i
 	}
 }
 
-// reportJSON round-trips v through JSON for a semantic comparison.
-func reportJSON(t *testing.T, v any) any {
+var update = flag.Bool("update", false, "regenerate the golden refresh reports")
+
+// reportGolden compares the indented JSON of rep with the golden file rel
+// (relative to the repository root), or writes it with -update.
+func reportGolden(t *testing.T, rep Report, rel string) {
 	t.Helper()
-	b, err := json.Marshal(v)
+	var buf bytes.Buffer
+	if err := jsonout.Write(&buf, rep); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.Bytes()
+	path := filepath.Join(repoRoot, rel)
+	if *update {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out any
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("report differs from %s (run with -update to regenerate):\n%s", rel, got)
 	}
-	return out
 }
 
-// redactReportIDs applies the one Go-only difference to a TS reference
-// report: output ids are printed as "<redacted>" (they are secrets).
-func redactReportIDs(doc any) any {
-	for _, o := range doc.(map[string]any)["outputs"].([]any) {
-		o.(map[string]any)["id"] = config.RedactedID
-	}
-	return doc
-}
-
-func readJSON(t *testing.T, rel string) any {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repoRoot, rel))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out any
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-// TestRefreshDockerExampleMatchesReference compares a refresh of
-// docker/sfc/config.example.yml with the TS reference (task 0.3).
-func TestRefreshDockerExampleMatchesReference(t *testing.T) {
+// TestRefreshDockerExample compares a refresh of
+// docker/sfc/config.example.yml with its golden report and outputs.
+func TestRefreshDockerExample(t *testing.T) {
 	fixture := absFixture(t, "docker/fixtures/subscription.b64")
 	cfg := copyConfig(t, "docker/sfc/config.example.yml",
 		"input: ../fixtures/subscription.b64", "input: "+fixture)
@@ -642,20 +634,17 @@ func TestRefreshDockerExampleMatchesReference(t *testing.T) {
 
 	rep := r.Run(t.Context())
 
-	want := redactReportIDs(readJSON(t, "testdata/reference/sfc/refresh-docker-example.json"))
-	if got := reportJSON(t, rep); !reflect.DeepEqual(got, want) {
-		t.Fatalf("report:\n got %v\nwant %v", got, want)
-	}
+	reportGolden(t, rep, "testdata/golden/sfc/refresh-docker-example.json")
 	for _, id := range []string{"test-all", "test-de", "test-nl"} {
 		st := lookup(t, r.State, "/s/"+id)
-		b64, err := os.ReadFile(filepath.Join(repoRoot, "testdata/reference/sfc/outputs", id+".b64"))
+		b64, err := os.ReadFile(filepath.Join(repoRoot, "testdata/golden/sfc/outputs", id+".b64"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if st.LastGoodBase64 != string(b64) {
 			t.Errorf("%s base64 = %q, want %q", id, st.LastGoodBase64, b64)
 		}
-		plain, err := os.ReadFile(filepath.Join(repoRoot, "testdata/reference/sfc/outputs", id+".plain.txt"))
+		plain, err := os.ReadFile(filepath.Join(repoRoot, "testdata/golden/sfc/outputs", id+".plain.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -665,80 +654,23 @@ func TestRefreshDockerExampleMatchesReference(t *testing.T) {
 	}
 }
 
-// allowedDiff is an intended difference from a TS reference value at a
-// JSON path ("outputs.0.ok"); a nil goWant means the key is absent.
-type allowedDiff struct {
-	path       string
-	ts, goWant any
-	reason     string
-}
-
-func applyDiffs(t *testing.T, doc any, diffs []allowedDiff) {
-	t.Helper()
-	for _, d := range diffs {
-		keys := strings.Split(d.path, ".")
-		node := doc
-		for _, k := range keys[:len(keys)-1] {
-			switch n := node.(type) {
-			case map[string]any:
-				node = n[k]
-			case []any:
-				idx, err := strconv.Atoi(k)
-				if err != nil || idx < 0 || idx >= len(n) {
-					t.Fatalf("bad index %q in %s", k, d.path)
-				}
-				node = n[idx]
-			}
-		}
-		m, ok := node.(map[string]any)
-		if !ok {
-			t.Fatalf("%s: parent is not an object", d.path)
-		}
-		last := keys[len(keys)-1]
-		if !reflect.DeepEqual(m[last], d.ts) {
-			t.Fatalf("%s: TS reference has %v, allowedDiffs expects %v", d.path, m[last], d.ts)
-		}
-		if d.goWant == nil {
-			delete(m, last)
-		} else {
-			m[last] = d.goWant
-		}
-	}
-}
-
 // TestRefreshRealShapes is 12 §9 item 11: the Go form of the owner's sfc
-// config over the anonymized real subscriptions, compared with the TS
-// reference (testdata/reference/sfc/real-shapes.json).
+// config over the anonymized real subscriptions, against the golden reports
+// (testdata/golden/sfc/real-shapes-<name>.json).
 func TestRefreshRealShapes(t *testing.T) {
 	cfg := copyConfig(t, "docker/sfc/config.real-shape.go.yml")
 	var fixture string
 	r, _ := newRefresher(t, cfg, nil)
 	r.Input = fileSource(&fixture)
-	ref := readJSON(t, "testdata/reference/sfc/real-shapes.json").(map[string]any)
 
-	const reason = "D27 O7 / D28: shared parameter whitelist, xhttp/mode/extra lines are no longer dropped"
-	tests := []struct {
-		name, fixture string
-		diffs         []allowedDiff
-	}{
-		{"provider2", "docker/fixtures/real-shapes/provider2.b64", nil},
-		{"remnawave", "docker/fixtures/real-shapes/remnawave.txt", []allowedDiff{
-			{"successful", 0.0, 1.0, reason},
-			{"failed", 3.0, 2.0, reason},
-			{"outputs.0.matchedLines", 0.0, 4.0, reason},
-			{"outputs.0.ok", false, true, reason},
-			{"outputs.0.error", "Filtered output is empty.", nil, reason},
-		}},
+	tests := []struct{ name, fixture string }{
+		{"provider2", "docker/fixtures/real-shapes/provider2.b64"},
+		{"remnawave", "docker/fixtures/real-shapes/remnawave.txt"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fixture = absFixture(t, tt.fixture)
-			rep := r.Run(t.Context())
-			want := redactReportIDs(ref[tt.name])
-			applyDiffs(t, want, tt.diffs)
-			if got := reportJSON(t, rep); !reflect.DeepEqual(got, want) {
-				t.Fatalf("report:\n got %v\nwant %v", got, want)
-			}
+			reportGolden(t, r.Run(t.Context()), "testdata/golden/sfc/real-shapes-"+tt.name+".json")
 		})
 	}
 	if _, err := os.Stat(cache.Path(cfg.Path, "main")); err != nil {

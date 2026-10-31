@@ -8,8 +8,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/apply"
 )
 
-// TargetReport is the sync result of one subscription target (TS
-// TargetSyncReport, 03 §2.4). Field order is the JSON key order.
+// TargetReport is the sync result of one subscription target (03 §2.4). Field order is the JSON key order.
 type TargetReport struct {
 	SubscriptionID string `json:"subscriptionId"`
 	TargetAddress  string `json:"targetAddress"`
@@ -23,7 +22,7 @@ type TargetReport struct {
 	Skipped []vless.Skip `json:"skipped"`
 }
 
-// Report is the result of one sync run (TS SyncReport, 03 §2.4), printed by
+// Report is the result of one sync run (03 §2.4), printed by
 // `scd sync`. Field order is the JSON key order.
 type Report struct {
 	// AppliedAt is taken when the report is aggregated (the end of the run).

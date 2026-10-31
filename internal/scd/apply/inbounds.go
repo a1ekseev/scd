@@ -23,7 +23,7 @@ import (
 //
 // A failure in 3 or 4 ends the report with one failed item whose id is the
 // first tunnel's inbound tag (or "inbound"); there is no rollback. The
-// report's Skipped is empty, as in TS.
+// report's Skipped is empty.
 func Inbounds(ctx context.Context, c xrayapi.InboundAPI, fixed []string, owns Owner, tunnels []topology.Tunnel, m Meta) (Report, error) {
 	startedAt := m.now()
 	r := newReport(KindInbound, m, startedAt, nil)

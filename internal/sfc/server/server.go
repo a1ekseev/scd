@@ -38,7 +38,7 @@ func New(st *refresh.State) http.Handler {
 
 // setProfileHeaders adds the profile headers when ua starts with one of the
 // configured User-Agent prefixes of out (case-sensitive). Header names are
-// lower case, as in the TS service.
+// lower case.
 func setProfileHeaders(h http.Header, out *refresh.OutputState, ua string) {
 	if ua == "" {
 		return

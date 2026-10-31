@@ -86,7 +86,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 | `sfc/config.example.yml` | `scd sfc`, источник `fixtures/subscription.b64`, выходы `/s/test-de`, `/s/test-nl`, `/s/test-all` |
 | `gtl/config.example.yml` | `scd gtl`, `/load/<sizeKb>`, лимит 10240 KiB |
 | `wgp/config.example.yml` | `scd wgp`: общие ключи (`server`, `state`, `deviceNamePrefix`, `api`), провайдер `static` (`/app/static`, все ключи с умолчаниями) и выход `wg` → `/app/out/wg`, который читает источник `wg` из `scd/config.example.yml`; выключенные `proton` (`identification.proton`, `keys.revokeOldAfterMinutes`, выход `proton`), `warp` и `warpmq`. Каталоги `secrets/`, `docker/wgp/state/` и `docker/wgp/static/` в `.gitignore` |
-| `*/config.real-shape.yml`, `*/config.real-shape.go.yml` | форма боевых конфигов (TS → Go) |
+| `*/config.real-shape.go.yml` | форма боевых конфигов владельца без секретов |
 | `compose.smoke.yml` | override для `scripts/compose-smoke.sh`: монтирует `config.example.yml` вместо `config.yml` (для scd — временную копию с sync раз в 5 секунд и включённым источником `wg` из `SCD_SMOKE_SCD_CONFIG`); у wgp — state в именованном томе, копия `fixtures/static/*.conf` с правами 0600 (`SCD_SMOKE_WGP_STATIC`) и новый ключ state (`SCD_SMOKE_WGP_KEY`), оба во временном каталоге скрипта |
 | `fixtures/subscription.txt` | 8 фейковых VLESS-ссылок: `tcp+tls`, `ws+tls`, `tcp+reality+vision` (DE/NL/FI/US) |
 | `fixtures/subscription.b64` | та же подписка в base64 |
@@ -105,8 +105,7 @@ xray-core в `go.mod` (проверка: `bash scripts/check-xray-version.sh`).
 селектором балансировщика и observatory. Мониторинг выключен — хосты фейковые.
 Подписка задаётся только списком `sources`: старые ключи подписки (`input`,
 `format`, `filters`, `fetch*`, `allowInsecure`) и `target.inboundSocks.portRange`
-`validate-config` отклоняет как неизвестные; `config.real-shape.yml` —
-старая форма, `config.real-shape.go.yml` — текущая.
+`validate-config` отклоняет как неизвестные.
 
 `balancerSelection` (карточка «Xray selection» на дашборде) опрашивает Xray
 read-only RPC `RoutingService.GetBalancerInfo` и

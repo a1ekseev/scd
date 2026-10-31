@@ -117,7 +117,7 @@ func TestRemotePingURL(t *testing.T) {
 			}
 		})
 	}
-	// url.QueryEscape matches the form encoding of the TS examples.
+	// url.QueryEscape gives the form encoding.
 	got, err := RemotePingURL("https://push.example.test/api/push/token", "down", "Expected HTTP 204, got 200.", nil)
 	if err != nil || got != "https://push.example.test/api/push/token?status=down&msg=Expected+HTTP+204%2C+got+200." {
 		t.Errorf("RemotePingURL = %q, %v", got, err)

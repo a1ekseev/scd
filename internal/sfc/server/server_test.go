@@ -206,7 +206,7 @@ type serverCase struct {
 }
 
 func TestServerCasesReference(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(repoRoot, "testdata/reference/sfc/server-cases.json"))
+	b, err := os.ReadFile(filepath.Join(repoRoot, "testdata/golden/sfc/server-cases.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

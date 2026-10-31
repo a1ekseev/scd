@@ -55,7 +55,7 @@ func TestGenerateSourceIDPrefixesTags(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
-	ref := readJSON(t, "../../../testdata/reference/scd/generate/docker-fixture.manifest.json")
+	ref := readJSON(t, "../../../testdata/golden/scd/generate/docker-fixture.manifest.json")
 	got := readJSON(t, out)
 	for i, e := range got["entries"].([]any) {
 		tag := e.(map[string]any)["tag"].(string)
@@ -74,7 +74,7 @@ func TestGenerateDockerFixture(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d stderr %q", code, stderr)
 	}
-	want := readJSON(t, "../../../testdata/reference/scd/generate/docker-fixture.summary.json")
+	want := readJSON(t, "../../../testdata/golden/scd/generate/docker-fixture.summary.json")
 	var got map[string]any
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("summary %s (%v), want %v", stdout, err, want)
@@ -91,8 +91,8 @@ func TestGenerateDockerFixture(t *testing.T) {
 	if l["generatedAt"] != m["generatedAt"] || !reflect.DeepEqual(l["summary"], want) || !reflect.DeepEqual(l["summary"], m["summary"]) {
 		t.Fatalf("parse log %v", l)
 	}
-	if ref := readJSON(t, "../../../testdata/reference/scd/generate/docker-fixture.manifest.json"); !sameTags(m, ref) {
-		t.Fatal("tags differ from the TS reference")
+	if ref := readJSON(t, "../../../testdata/golden/scd/generate/docker-fixture.manifest.json"); !sameTags(m, ref) {
+		t.Fatal("tags differ from the golden manifest")
 	}
 }
 

@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	corpusDir     = "../../../testdata/reference/scd/corpus/"
+	corpusDir     = "../../../testdata/golden/scd/corpus/"
 	realShapesDir = "../../../docker/fixtures/real-shapes/"
 )
 

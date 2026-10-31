@@ -21,7 +21,7 @@ const (
 	pathStatus         = "/api/status"
 	pathInstanceStatus = "/api/instance-status"
 	pathInstances      = "/api/instances"
-	// pathRuntimeState is matched as a prefix, as in TS.
+	// pathRuntimeState is matched as a prefix.
 	pathRuntimeState = "/api/runtime-state"
 )
 

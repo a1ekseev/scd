@@ -77,7 +77,7 @@ func address(a *xnet.IPOrDomain) string {
 
 // DescribeOutbound returns the runtime-state "parsed" object of a VLESS
 // outbound (SenderConfig + vless outbound Config), a WireGuard outbound
-// (describeWireGuard) or a MASQUE outbound (describeMasque), false for any other outbound. Keys are those of the TS runtime-state (protocol, address, port,
+// (describeWireGuard) or a MASQUE outbound (describeMasque), false for any other outbound. Keys are those of the runtime-state contract (protocol, address, port,
 // uuid, flow, encryption, network, security, sni, alpn, fingerprint, host,
 // path, publicKey, shortId) plus xhttpMode; empty values are omitted, alpn is
 // always present ([] when unset) unless security is none. Without

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	corpusDir     = "../../../testdata/reference/scd/corpus/"
+	corpusDir     = "../../../testdata/golden/scd/corpus/"
 	realShapesDir = "../../../docker/fixtures/real-shapes/"
 	uuid          = "00000000-0000-4000-8000-000000000001"
 )
@@ -279,9 +279,9 @@ func goOutcome(l subscription.Line) outcome {
 	return outcome{ok: true, label: &link.Label}
 }
 
-// tsStage tells where a TS skip was produced: "parse" (the URI itself) or
+// skipStage tells where a recorded skip was produced: "parse" (the URI itself) or
 // "normalize" (after Parse). An unknown reason returns "".
-func tsStage(code, reason string) string {
+func skipStage(code, reason string) string {
 	switch code {
 	case CodeUnsupportedScheme, CodeInvalidURI:
 		return "parse"
@@ -300,27 +300,28 @@ func tsStage(code, reason string) string {
 	return ""
 }
 
-func TestParseCorpusAgainstTS(t *testing.T) {
-	data, err := os.ReadFile(corpusDir + "ts-parse.json")
+// The corpus records the expected outcome of every line (parse.json).
+func TestParseCorpus(t *testing.T) {
+	data, err := os.ReadFile(corpusDir + "parse.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var corpus []struct {
 		Line int    `json:"line"`
 		Raw  string `json:"raw"`
-		TS   struct {
+		Want struct {
 			OK         *bool    `json:"ok"`
 			ReasonCode string   `json:"reasonCode"`
 			Reason     string   `json:"reason"`
 			Label      *string  `json:"label"`
 			Details    []string `json:"details"`
 			Error      string   `json:"error"`
-		} `json:"ts"`
+		} `json:"want"`
 	}
 	if err := json.Unmarshal(data, &corpus); err != nil {
 		t.Fatal(err)
 	}
-	// Go results that differ from TS on purpose.
+	// Go results that differ from the recorded outcome on purpose.
 	allowedDiffs := map[int]struct {
 		got    string
 		reason string
@@ -328,8 +329,8 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 		22: {`skip missing_required_field label="x"`, "D9: net/url accepts any digit port; the 1..65535 range check gives the address-and-port reason"},
 		23: {`skip missing_required_field label="x"`, "D9: net/url accepts an empty host; Parse reports the missing address"},
 		30: {`ok label="x"`, "D18: the id is any non-empty string, the nil UUID included"},
-		44: {"skip invalid_uri", "O11: bare % in the label is a skip, not a TS exception"},
-		45: {"ok label=\"a\uFFFDb\"", "label is cosmetic: invalid UTF-8 from %FF is replaced with U+FFFD, the link is kept (TS threw URI malformed)"},
+		44: {"skip invalid_uri", "O11: bare % in the label is a skip, not an exception"},
+		45: {"ok label=\"a\uFFFDb\"", "label is cosmetic: invalid UTF-8 from %FF is replaced with U+FFFD, the link is kept (the recorded outcome is an exception)"},
 		46: {`ok label="nel"`, "D9 / 01 §17.4: strings.TrimSpace strips U+0085"},
 		52: {`ok label="x"`, "D18 + D9: net/url splits userinfo at the last @, id \"a@b\" is non-empty"},
 		55: {`ok label="a\tb"`, "D9: the fragment is cut before url.Parse, no WHATWG tab stripping"},
@@ -339,20 +340,20 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 	for _, c := range corpus {
 		var want outcome
 		switch {
-		case c.TS.OK == nil:
-			want = outcome{code: "TS error: " + c.TS.Error}
-		case *c.TS.OK:
-			want = outcome{ok: true, label: c.TS.Label}
+		case c.Want.OK == nil:
+			want = outcome{code: "error: " + c.Want.Error}
+		case *c.Want.OK:
+			want = outcome{ok: true, label: c.Want.Label}
 		default:
-			switch tsStage(c.TS.ReasonCode, c.TS.Reason) {
+			switch skipStage(c.Want.ReasonCode, c.Want.Reason) {
 			case "parse":
-				want = outcome{code: c.TS.ReasonCode, label: c.TS.Label}
+				want = outcome{code: c.Want.ReasonCode, label: c.Want.Label}
 			case "normalize":
 				// Normalisation-stage skip (unknown params included, D28):
 				// Parse must accept the URI.
-				want = outcome{ok: true, label: c.TS.Label}
+				want = outcome{ok: true, label: c.Want.Label}
 			default:
-				t.Errorf("line %d: unclassified TS skip %s %q", c.Line, c.TS.ReasonCode, c.TS.Reason)
+				t.Errorf("line %d: unclassified recorded skip %s %q", c.Line, c.Want.ReasonCode, c.Want.Reason)
 				continue
 			}
 		}
@@ -360,10 +361,10 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 		if len(lines) != 1 {
 			t.Fatalf("line %d: ScanLines gave %d lines", c.Line, len(lines))
 		}
-		if c.TS.ReasonCode == "unsupported_param" {
-			// D28: TS's unknown keys minus AllowedParams are Go's Ignored keys.
+		if c.Want.ReasonCode == "unsupported_param" {
+			// D28: the recorded unknown keys minus AllowedParams are Go's Ignored keys.
 			var wantIgnored []string
-			for _, k := range c.TS.Details {
+			for _, k := range c.Want.Details {
 				if !slices.Contains(AllowedParams, k) {
 					wantIgnored = append(wantIgnored, k)
 				}
@@ -378,10 +379,10 @@ func TestParseCorpusAgainstTS(t *testing.T) {
 		delete(allowedDiffs, c.Line)
 		switch {
 		case want.matches(got) && allowed:
-			t.Errorf("line %d: in allowedDiffs (%s) but Go matches TS: %v", c.Line, d.reason, got)
+			t.Errorf("line %d: in allowedDiffs (%s) but Go matches the corpus: %v", c.Line, d.reason, got)
 		case want.matches(got):
 		case !allowed:
-			t.Errorf("line %d %q: Go %v, TS %v", c.Line, c.Raw, got, want)
+			t.Errorf("line %d %q: Go %v, corpus %v", c.Line, c.Raw, got, want)
 		case got.String() != d.got:
 			t.Errorf("line %d: Go %v, allowedDiffs expects %s", c.Line, got, d.got)
 		}

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	corpusDir = "../../../testdata/reference/scd/corpus/"
+	corpusDir = "../../../testdata/golden/scd/corpus/"
 	testID    = "7c0e4b8a-2f3d-4e6a-9b1c-5d8f0a2e4c61"
 	testPbk   = "kp_D9wlmhWWw8QVA9OCZwedG12QDFk68zaolbEh6c1M"
 )
@@ -608,49 +608,51 @@ func TestD26Corpus(t *testing.T) {
 	}
 }
 
-func TestNormalizeMatchesTSEntries(t *testing.T) {
-	data, err := os.ReadFile(corpusDir + "ts-parse.json")
+// Every accepted line of the corpus normalizes to its recorded profile,
+// tag, transport and id (parse.json).
+func TestNormalizeMatchesCorpus(t *testing.T) {
+	data, err := os.ReadFile(corpusDir + "parse.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cases []struct {
 		Line int    `json:"line"`
 		Raw  string `json:"raw"`
-		TS   struct {
+		Want struct {
 			OK         bool `json:"ok"`
 			Normalized struct {
 				Profile, Tag, Network, Security, Flow, Encryption, UUID string
 			} `json:"normalized"`
-		} `json:"ts"`
+		} `json:"want"`
 	}
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
 	}
 	checked := 0
 	for _, c := range cases {
-		if !c.TS.OK {
+		if !c.Want.OK {
 			continue
 		}
 		l, pskip := vless.Parse(subscription.Line{Number: c.Line, Raw: c.Raw, Trimmed: strings.TrimSpace(c.Raw)})
 		if pskip != nil || strings.Contains(l.Label, "\t") {
-			continue // parser divergences, covered by TestBuildTagMatchesTSCorpus
+			continue // parser divergences, covered by TestBuildTagMatchesCorpus
 		}
 		n, _, skip := Normalize(l, Policy{AllowInsecure: true, TagPrefix: "vless"})
 		if skip != nil {
-			t.Errorf("line %d: TS entry skipped: %+v", c.Line, *skip)
+			t.Errorf("line %d: corpus entry skipped: %+v", c.Line, *skip)
 			continue
 		}
-		ts := c.TS.Normalized
+		ts := c.Want.Normalized
 		if n.Profile != ts.Profile || n.Tag != ts.Tag || n.Network != ts.Network || n.Security != ts.Security ||
 			n.Flow != ts.Flow || n.Encryption != ts.Encryption || !strings.EqualFold(n.UUID, ts.UUID) {
-			t.Errorf("line %d: got %s %s %s/%s %q %s, TS %s %s %s/%s %q %s", c.Line,
+			t.Errorf("line %d: got %s %s %s/%s %q %s, corpus %s %s %s/%s %q %s", c.Line,
 				n.Profile, n.Tag, n.Network, n.Security, n.Flow, n.UUID,
 				ts.Profile, ts.Tag, ts.Network, ts.Security, ts.Flow, ts.UUID)
 		}
 		checked++
 	}
 	if checked == 0 {
-		t.Fatal("no TS entries compared")
+		t.Fatal("no corpus entries compared")
 	}
-	t.Logf("compared %d TS entries", checked)
+	t.Logf("compared %d corpus entries", checked)
 }

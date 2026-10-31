@@ -39,7 +39,7 @@ func do(h http.Handler, method, target string) *httptest.ResponseRecorder {
 }
 
 func TestRoutesReference(t *testing.T) {
-	data, err := os.ReadFile("../../../testdata/reference/gtl/routes.json")
+	data, err := os.ReadFile("../../../testdata/golden/gtl/routes.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestRoutesReference(t *testing.T) {
 				t.Fatalf("status %d want %d", rec.Code, rt.Status)
 			}
 			for k, v := range rt.Headers {
-				// The x-gtl-* headers of the TS reference were dropped on purpose.
+				// The x-gtl-* headers of the recorded routes were dropped on purpose.
 				if strings.HasPrefix(k, "x-gtl-") {
 					continue
 				}

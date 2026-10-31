@@ -36,7 +36,7 @@ type Server struct {
 	Users   []User `json:"users"`
 }
 
-// User is a VLESS user; Email is the outbound tag (as in TS).
+// User is a VLESS user; Email is the outbound tag.
 type User struct {
 	ID string `json:"id"`
 	// Encryption is "none" or the ML-KEM client string as in the link; conf

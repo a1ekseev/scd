@@ -12,8 +12,8 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/state"
 )
 
-// web holds the dashboard template and its CSS and JS, copied verbatim from
-// the TS dashboard (03 §6.6, D3).
+// web holds the dashboard template and its CSS and JS (03 §6.6); the look
+// is kept by the golden files in testdata/golden/scd/status.
 //
 //go:embed web/*
 var web embed.FS
@@ -36,13 +36,13 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"sourceColor":            sourceColor,
 }).ParseFS(web, "web/dashboard.html.tmpl"))
 
-// dashboardCSS and dashboardJS are inlined into the page, as in TS: the
+// dashboardCSS and dashboardJS are inlined into the page: the
 // handler serves the dashboard on every non-API path, so the page cannot
 // load assets by relative URL.
 var dashboardCSS, dashboardJS = mustRead("web/dashboard.css"), mustRead("web/dashboard.js")
 
 // selectionCSS styles the balancer selection view (D22); it is inlined only
-// when a target has a selection, so pages without one stay as in TS (D3).
+// when a target has a selection, so pages without one stay unchanged.
 var selectionCSS = mustRead("web/selection.css")
 
 func mustRead(name string) string {

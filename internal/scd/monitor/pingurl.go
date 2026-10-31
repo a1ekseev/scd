@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// RemotePingURL returns the push URL for raw (03 §4.6, TS buildRemotePingUrl):
+// RemotePingURL returns the push URL for raw (03 §4.6):
 // status and msg are set, ping is removed and, when pingMs is not nil,
 // appended last. Setting a key replaces its first occurrence in place and
 // drops later ones; a missing key is appended; other parameters are kept in
@@ -33,8 +33,7 @@ func RemotePingURL(raw, status, msg string, pingMs *int) (string, error) {
 	return u.String(), nil
 }
 
-// remoteHost is the host[:port] of a push URL for logs, or "<invalid>"
-// (TS getRemoteHost).
+// remoteHost is the host[:port] of a push URL for logs, or "<invalid>".
 func remoteHost(raw string) string {
 	u, err := parseAbsolute(raw)
 	if err != nil {

@@ -49,8 +49,8 @@ type Response struct {
 
 var statusLineRe = regexp.MustCompile(`^HTTP/1\.[01]\s+(\d{3})`)
 
-// verbatim exists so TS-contract texts (capitalised, trailing period) bypass error-string lint.
-// It builds an error whose text is part of the TS-compatible contract
+// verbatim exists so contract texts (capitalised, trailing period) bypass error-string lint.
+// It builds an error whose text is part of the status contract
 // (capitalised, with a trailing period; it reaches lastError and Remote Push).
 func verbatim(format string, args ...any) error {
 	return fmt.Errorf(format, args...)

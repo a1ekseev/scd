@@ -34,8 +34,8 @@ import (
 )
 
 const (
-	refDir     = "../../../testdata/reference/scd/status/runtime-state/"
-	corpusDir  = "../../../testdata/reference/scd/corpus/"
+	refDir     = "../../../testdata/golden/scd/status/runtime-state/"
+	corpusDir  = "../../../testdata/golden/scd/corpus/"
 	realShapes = "../../../docker/fixtures/real-shapes/"
 	uuid       = "7d1b6590-1069-4372-92be-8d0a0ae6eaf5"
 	pbk        = "OHWtGCfZc0FXULj2ZYeW_vlKIlurak79i6AXun9oJQg"
@@ -227,8 +227,8 @@ func TestDescribeOutboundMatchesReference(t *testing.T) {
 }
 
 func TestDescribeOutboundKeysMatchReference(t *testing.T) {
-	// The TS ParsedRuntimeOutbound keys (runtime-state contract, D3) plus
-	// the additive xhttpMode.
+	// The parsed keys of the runtime-state contract plus the additive
+	// xhttpMode.
 	want := []string{
 		"address", "alpn", "encryption", "fingerprint", "flow", "host", "network", "path",
 		"port", "protocol", "publicKey", "security", "shortId", "sni", "uuid", "xhttpMode",

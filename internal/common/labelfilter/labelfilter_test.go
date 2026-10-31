@@ -10,7 +10,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/schema"
 )
 
-const corpusPath = "../../../testdata/reference/common/label-filter.json"
+const corpusPath = "../../../testdata/golden/common/label-filter.json"
 
 func parse(t *testing.T, v map[string]any) (Filter, schema.Issues) {
 	t.Helper()
@@ -29,8 +29,8 @@ func mustParse(t *testing.T, v map[string]any) Filter {
 }
 
 // TestLabelFilterRealShapeEquivalence checks that the Go include/exclude forms
-// of the owner's production filters (D29) decide like the TS lookahead regexes
-// recorded in testdata (task 0.6) on every label of the corpus.
+// of the owner's production filters (D29) decide like the lookahead regexes
+// they replace, as recorded in the corpus, on every label of it.
 func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 	data, err := os.ReadFile(corpusPath)
 	if err != nil {
@@ -54,7 +54,7 @@ func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 	extra := mustParse(t, map[string]any{"labelIncludeRegex": "/Extra/i", "labelExcludeRegex": "/WhiteList/i"})
 	extraWhitelist := mustParse(t, map[string]any{"labelIncludeRegex": []any{"/Extra/i", "/WhiteList/i"}})
 
-	// JS `.` does not match "\n", so the TS `.*` in lookaheads and `.*$` stops at
+	// JS `.` does not match "\n", so the recorded `.*` in lookaheads and `.*$` stops at
 	// a line break; RE2 include/exclude look at the whole label. Go behaviour is
 	// kept (12 §6.3); every label with a real "\n" must be listed here.
 	const why = "JS `.` не матчит `\\n`"
@@ -63,10 +63,10 @@ func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 		reason string
 	}
 	allowedDiffs := map[string]diff{
-		"Extra\nWhiteList": {[3]bool{false, false, true}, why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true (12 §6.3)"},
-		"WhiteList\nExtra": {[3]bool{false, false, true}, why + ": TS extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true"},
-		"Extra\nfoo":       {[3]bool{false, true, false}, why + ": TS extra=false (`.*$` не доходит до конца), Go include /Extra/i exclude /WhiteList/i = true"},
-		"foo\nbar":         {[3]bool{true, false, false}, why + ": TS en=false (`.*$` не доходит до конца), Go exclude /Extra|WhiteList/i = true"},
+		"Extra\nWhiteList": {[3]bool{false, false, true}, why + ": lookahead extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true (12 §6.3)"},
+		"WhiteList\nExtra": {[3]bool{false, false, true}, why + ": lookahead extraWhitelist=false, Go include [/Extra/i,/WhiteList/i] = true"},
+		"Extra\nfoo":       {[3]bool{false, true, false}, why + ": lookahead extra=false (`.*$` не доходит до конца), Go include /Extra/i exclude /WhiteList/i = true"},
+		"foo\nbar":         {[3]bool{true, false, false}, why + ": lookahead en=false (`.*$` не доходит до конца), Go exclude /Extra|WhiteList/i = true"},
 	}
 	for label := range allowedDiffs {
 		if !strings.Contains(label, "\n") {
@@ -87,11 +87,11 @@ func TestLabelFilterRealShapeEquivalence(t *testing.T) {
 		d, allowed := allowedDiffs[c.Label]
 		switch {
 		case allowed && got == want:
-			t.Errorf("label %q is in allowedDiffs (%s) but Go now matches TS %v", c.Label, d.reason, want)
+			t.Errorf("label %q is in allowedDiffs (%s) but Go now matches the corpus %v", c.Label, d.reason, want)
 		case allowed && got != d.goWant:
 			t.Errorf("label %q (%s): Go = %v, want %v", c.Label, d.reason, got, d.goWant)
 		case !allowed && got != want:
-			t.Errorf("label %q (%s): Go [en extra extraWhitelist] = %v, TS = %v", c.Label, c.Source, got, want)
+			t.Errorf("label %q (%s): Go [en extra extraWhitelist] = %v, corpus = %v", c.Label, c.Source, got, want)
 		}
 		delete(allowedDiffs, c.Label)
 	}

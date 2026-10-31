@@ -107,7 +107,7 @@ func (d *Daemon) dialer() xrayapi.Dialer {
 }
 
 // loops returns the cron loops of the config in start order (03 §3.1): the
-// sync loop; for every subscription, enabled or not (as in TS), the tunnel
+// sync loop; for every subscription, enabled or not, the tunnel
 // monitor, balancer monitor and balancer selection loops that are enabled
 // and have a schedule; a loop per remote instance.
 func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitGroup) []loop {

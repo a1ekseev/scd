@@ -12,8 +12,7 @@ import (
 	"github.com/a1ekseev/scd/internal/common/neterr"
 )
 
-// Error is the single error type returned by every Client RPC, the Go
-// counterpart of the TS ApiRequestError. Its text ends up in sync reports,
+// Error is the single error type returned by every Client RPC. Its text ends up in sync reports,
 // logs and the status API, so it is kept verbatim (02 §2.7, D2).
 type Error struct {
 	// Message is the user-visible error text.

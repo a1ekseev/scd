@@ -1423,10 +1423,14 @@ SCD_CHROME=/path/to/chrome go test -tags visual -count=1 ./internal/scd/status/.
 SCD_WARP_LIVE=1 go test -tags warplive -count=1 ./internal/wgp/provider/warp/...
 ```
 
-Dashboard blocks without a reference of the previous implementation are
-compared with local screenshots in `internal/scd/status/testdata/visual/`
-(gitignored, never committed); add `-update` to the visual test command to
-create them. A test without its screenshot is skipped.
+The status JSON API, the dashboard HTML and runtime-state are compared byte
+for byte with the Go golden files in `testdata/golden/scd/status/`; after an
+intended change, regenerate them with
+`go test ./internal/scd/status/ -run Golden -update` and review the diff.
+The visual test compares screenshots of every status fixture with local
+PNGs in `internal/scd/status/testdata/visual/` (gitignored, never committed);
+add `-update` to the visual test command to create them. A test without its
+screenshot is skipped.
 
 The live tests need no network: besides the Xray API checks, a second test
 Xray on `127.0.0.1` (a WireGuard peer, an RFC 9484 MASQUE server with a
@@ -1437,5 +1441,5 @@ The live WARP check registers a new temporary device, switches it to MASQUE,
 checks it with `GET /reg/{id}` and deletes it at the end; keys and tokens stay
 in memory.
 
-Without the environment variable, the tagged tests skip. Reference outputs of
-the previous implementation are in [`testdata/reference/`](testdata/reference/README.md).
+Without the environment variable, the tagged tests skip. Golden files and
+test corpora are in [`testdata/golden/`](testdata/golden/README.md).

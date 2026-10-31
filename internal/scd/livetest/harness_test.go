@@ -28,7 +28,7 @@ import (
 
 const (
 	root          = "../../../"
-	corpusDir     = root + "testdata/reference/scd/corpus/"
+	corpusDir     = root + "testdata/golden/scd/corpus/"
 	templatesDir  = "testdata/xray/"
 	readyTimeout  = 10 * time.Second
 	rpcTimeout    = 5 * time.Second

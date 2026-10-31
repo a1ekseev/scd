@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "instanceId": "local-main",
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "subscriptions": [
+    {
+      "subscriptionId": "sub-a",
+      "targets": [
+        {
+          "subscriptionId": "sub-a",
+          "targetAddress": "127.0.0.1:8080",
+          "tunnels": [
+            {
+              "subscriptionId": "sub-a",
+              "targetAddress": "127.0.0.1:8080",
+              "displayName": "Fast",
+              "countryIso2": "AT",
+              "endpoint": "127.0.0.1:20000",
+              "state": "healthy",
+              "lastHttpStatus": 204,
+              "lastLatencyMs": 30,
+              "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessHttpStatus": 204,
+              "lastSuccessLatencyMs": 30,
+              "balanced": true,
+              "balancerMonitorState": "idle",
+              "balancerMonitorRemotePingState": "idle"
+            },
+            {
+              "subscriptionId": "sub-a",
+              "targetAddress": "127.0.0.1:8080",
+              "displayName": "Slow",
+              "countryIso2": "NL",
+              "endpoint": "127.0.0.1:20002",
+              "state": "healthy",
+              "lastHttpStatus": 204,
+              "lastLatencyMs": 300,
+              "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessHttpStatus": 204,
+              "lastSuccessLatencyMs": 300,
+              "balanced": true,
+              "balancerMonitorState": "idle",
+              "balancerMonitorRemotePingState": "idle"
+            },
+            {
+              "subscriptionId": "sub-a",
+              "targetAddress": "127.0.0.1:8080",
+              "displayName": "Idle",
+              "countryIso2": "DE",
+              "endpoint": "127.0.0.1:20003",
+              "state": "idle",
+              "balanced": true,
+              "balancerMonitorState": "idle",
+              "balancerMonitorRemotePingState": "idle"
+            },
+            {
+              "subscriptionId": "sub-a",
+              "targetAddress": "127.0.0.1:8080",
+              "displayName": "Unknown",
+              "endpoint": "127.0.0.1:20001",
+              "state": "healthy",
+              "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+              "balanced": true,
+              "balancerMonitorState": "idle",
+              "balancerMonitorRemotePingState": "idle"
+            }
+          ],
+          "balancerMonitor": {
+            "state": "idle",
+            "remotePingState": "idle"
+          }
+        }
+      ]
+    }
+  ],
+  "tunnels": [
+    {
+      "subscriptionId": "sub-a",
+      "targetAddress": "127.0.0.1:8080",
+      "displayName": "Fast",
+      "countryIso2": "AT",
+      "endpoint": "127.0.0.1:20000",
+      "state": "healthy",
+      "lastHttpStatus": 204,
+      "lastLatencyMs": 30,
+      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessHttpStatus": 204,
+      "lastSuccessLatencyMs": 30,
+      "balanced": true,
+      "balancerMonitorState": "idle",
+      "balancerMonitorRemotePingState": "idle"
+    },
+    {
+      "subscriptionId": "sub-a",
+      "targetAddress": "127.0.0.1:8080",
+      "displayName": "Idle",
+      "countryIso2": "DE",
+      "endpoint": "127.0.0.1:20003",
+      "state": "idle",
+      "balanced": true,
+      "balancerMonitorState": "idle",
+      "balancerMonitorRemotePingState": "idle"
+    },
+    {
+      "subscriptionId": "sub-a",
+      "targetAddress": "127.0.0.1:8080",
+      "displayName": "Slow",
+      "countryIso2": "NL",
+      "endpoint": "127.0.0.1:20002",
+      "state": "healthy",
+      "lastHttpStatus": 204,
+      "lastLatencyMs": 300,
+      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessHttpStatus": 204,
+      "lastSuccessLatencyMs": 300,
+      "balanced": true,
+      "balancerMonitorState": "idle",
+      "balancerMonitorRemotePingState": "idle"
+    },
+    {
+      "subscriptionId": "sub-a",
+      "targetAddress": "127.0.0.1:8080",
+      "displayName": "Unknown",
+      "endpoint": "127.0.0.1:20001",
+      "state": "healthy",
+      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+      "balanced": true,
+      "balancerMonitorState": "idle",
+      "balancerMonitorRemotePingState": "idle"
+    }
+  ]
+}

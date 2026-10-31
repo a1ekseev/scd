@@ -21,9 +21,9 @@ import (
 
 const (
 	root          = "../../../"
-	corpusDir     = root + "testdata/reference/scd/corpus/"
-	generateDir   = root + "testdata/reference/scd/generate/"
-	vpnSample     = root + "testdata/reference/scd/fixtures/vpn-sample.txt"
+	corpusDir     = root + "testdata/golden/scd/corpus/"
+	generateDir   = root + "testdata/golden/scd/generate/"
+	vpnSample     = root + "testdata/golden/scd/fixtures/vpn-sample.txt"
 	realShapesDir = root + "docker/fixtures/real-shapes/"
 	realShapeGo   = root + "docker/scd/config.real-shape.go.yml"
 )
@@ -321,7 +321,7 @@ func loadRealShape(t *testing.T, name string) string {
 	return l.Content
 }
 
-func TestBuildRealShapeProvider2MatchesTS(t *testing.T) { // 12 §9 п.8
+func TestBuildRealShapeProvider2(t *testing.T) { // 12 §9 п.8
 	var ref struct {
 		Entries []struct {
 			Tag string `json:"tag"`
@@ -337,7 +337,7 @@ func TestBuildRealShapeProvider2MatchesTS(t *testing.T) { // 12 §9 п.8
 	}
 	m := Build(loadRealShape(t, "provider2.b64"), "<input>", deny, testNow)
 	if got := tags(m); len(want) != 50 || !slices.Equal(got, want) {
-		t.Fatalf("tags differ from TS:\n got %v\nwant %v", got, want)
+		t.Fatalf("tags differ from the golden manifest:\n got %v\nwant %v", got, want)
 	}
 	if m.Summary != ref.Summary {
 		t.Fatalf("summary %+v, want %+v", m.Summary, ref.Summary)
@@ -355,8 +355,7 @@ func TestBuildRealShapeProvider2MatchesTS(t *testing.T) { // 12 §9 п.8
 }
 
 func TestBuildRealShapeRemnawave(t *testing.T) {
-	// TS parses 0 of these lines (real-shapes-remnawave.error.txt); Go
-	// accepts all 4 on purpose (D26, D28).
+	// All 4 xhttp lines are accepted (D26, D28).
 	m := Build(loadRealShape(t, "remnawave.txt"), "<input>", deny, testNow)
 	if len(m.Entries) != 4 || len(m.Skipped) != 0 {
 		t.Fatalf("entries %d skipped %+v", len(m.Entries), m.Skipped)
@@ -373,7 +372,7 @@ func TestBuildRealShapeRemnawave(t *testing.T) {
 
 func TestBuildLabelWithServerDescription(t *testing.T) { // 12 §10 п.3
 	// Remnawave appends ?serverDescription= to the label for extended
-	// clients; like TS, it ends up in the city and the tag (not fixed).
+	// clients; it ends up in the city and the tag (not fixed).
 	m := Build(link(1, "🇩🇪 Berlin?serverDescription=QUJD"), "s", deny, testNow)
 	if len(m.Entries) != 1 {
 		t.Fatalf("skipped %+v", m.Skipped)
@@ -406,7 +405,7 @@ func TestBuildCountsSummary(t *testing.T) {
 	}
 }
 
-func TestBuildMatchesTSForLegacyProfiles(t *testing.T) {
+func TestBuildLegacyProfiles(t *testing.T) {
 	var ref struct {
 		Entries []struct {
 			Tag  string `json:"tag"`
@@ -422,7 +421,7 @@ func TestBuildMatchesTSForLegacyProfiles(t *testing.T) {
 		want = append(want, e.Tag)
 	}
 	text := readFile(t, vpnSample)
-	// With allowInsecure: allow every TS entry is an entry with the same tag.
+	// With allowInsecure: allow every golden entry is an entry with the same tag.
 	m := Build(text, "s", allow, testNow)
 	if !slices.Equal(tags(m), want) || len(m.Skipped) != len(ref.Skipped) {
 		t.Fatalf("tags %v\nwant %v\nskipped %+v", tags(m), want, m.Skipped)

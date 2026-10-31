@@ -433,8 +433,7 @@ func TestResolveProxyHost(t *testing.T) {
 	}
 }
 
-// The TS split(':')[0] broke on IPv6 target addresses; net.SplitHostPort
-// does not.
+// IPv6 target addresses: net.SplitHostPort, not a split at the first ':'.
 func TestResolveProxyHostIPv6Target(t *testing.T) {
 	for _, listen := range []string{"0.0.0.0", "::"} {
 		if got := ResolveProxyHost(listen, "[fd00::5]:8080"); got != "fd00::5" {

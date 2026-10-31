@@ -48,7 +48,7 @@ func TestSourcesJSON(t *testing.T) {
 	}
 }
 
-// One source: no sources[] and no sourceId (the TS form, D3), unless the
+// One source: no sources[] and no sourceId (the older form), unless the
 // source has a warning.
 func TestSourcesOnlyWithSeveralOrWarnings(t *testing.T) {
 	l := loadFixture(t, "healthy-single")
@@ -75,10 +75,10 @@ func TestSourcesOnlyWithSeveralOrWarnings(t *testing.T) {
 		{"sourceId": "main", "type": "vless", "enabled": true}, {"sourceId": "spare", "type": "vless", "enabled": true}]`)))
 }
 
-// An old TS snapshot (no sources, no sourceId) goes through Collect and
+// An old snapshot (no sources, no sourceId) goes through Collect and
 // /api/instances without losses; a new one keeps its sources when parsed.
 func TestRemoteSnapshotsWithAndWithoutSources(t *testing.T) {
-	old, err := os.ReadFile(refStatusDir + "healthy-single/api-instance-status.json")
+	old, err := os.ReadFile(goldenDir + "old-remote-snapshot.json")
 	if err != nil {
 		t.Fatal(err)
 	}

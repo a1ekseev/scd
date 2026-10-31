@@ -19,8 +19,7 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// Plan is what one kind of one source applies to its target (the TS
-// ResourcePlan after preparePlanForTarget, 02 §2.1): the sync loop compares
+// Plan is what one kind of one source applies to its target (02 §2.1): the sync loop compares
 // ManifestHash with the hash it saved for the source and, on a change,
 // applies the plan.
 type Plan struct {
@@ -175,7 +174,7 @@ func jsonHash(v any) string {
 // and always returns a report: an error the algorithm returns (a List RPC)
 // becomes a FailedReport carrying p.Skipped (02 §2.1 p.5). The report's
 // sourceId is p.SourceID and its targetAddress t.Address; m supplies the
-// subscription id and the clock. As in TS, only the outbound report carries
+// subscription id and the clock. Only the outbound report carries
 // p.Skipped; the inbound and routing reports carry [].
 func Apply(ctx context.Context, c xrayapi.Client, p Plan, t config.SubscriptionTargetConfig, m Meta) Report {
 	m.SourceID = p.SourceID

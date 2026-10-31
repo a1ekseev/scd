@@ -1,9 +1,11 @@
 package status
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"errors"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,10 +23,12 @@ import (
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
 )
 
-// refStatusDir holds the task 0.4 references (fixtures and TS outputs).
-const refStatusDir = "../../../testdata/reference/scd/status/"
+var update = flag.Bool("update", false, "regenerate the Go golden files (API, dashboards, runtime-state, visual PNGs)")
 
-// fixture is the task 0.4 fixture contract (testdata/reference/README.md).
+// goldenDir holds the status fixtures and their Go golden outputs.
+const goldenDir = "../../../testdata/golden/scd/status/"
+
+// fixture is the status fixture contract (testdata/golden/README.md).
 type fixture struct {
 	Now time.Time `json:"now"`
 	// WGP extends the contract (wgp-*): status.json per wgpDir, written
@@ -37,9 +41,9 @@ type fixture struct {
 			Enabled bool   `json:"enabled"`
 			Address string `json:"address"`
 			Prefix  string `json:"observatorySubjectSelectorPrefix"`
-			// BalancerSelection extends the 0.4 contract (task 6.6).
+			// BalancerSelection is the subscription selection config.
 			BalancerSelection config.BalancerSelectionConfig `json:"balancerSelection"`
-			// Sources extends the 0.4 contract (sources-*); empty = one
+			// Sources are the sources (sources-*); empty = one
 			// source "vless".
 			Sources []struct {
 				ID        string `json:"id"`
@@ -62,9 +66,9 @@ type fixture struct {
 		SubscriptionID  string          `json:"subscriptionId"`
 		TargetAddress   string          `json:"targetAddress"`
 		BalancerMonitor fixtureBalancer `json:"balancerMonitor"`
-		// BalancerSelection extends the 0.4 contract (task 6.6).
+		// BalancerSelection is the subscription selection config.
 		BalancerSelection *fixtureSelection `json:"balancerSelection"`
-		// Sources extends the 0.4 contract (sources-*): the source warnings.
+		// Sources are the source warnings (sources-*).
 		Sources []struct {
 			SourceID       string              `json:"sourceId"`
 			Warnings       []normalize.Warning `json:"warnings"`
@@ -73,7 +77,7 @@ type fixture struct {
 			NoReplacement []string `json:"noReplacement"`
 		} `json:"sources"`
 		Tunnels []struct {
-			// SourceID extends the 0.4 contract (sources-*); "" = "vless".
+			// SourceID is the source (sources-*); "" = "vless".
 			SourceID                 string         `json:"sourceId"`
 			BaseTunnelID             string         `json:"baseTunnelId"`
 			DisplayName              string         `json:"displayName"`
@@ -127,8 +131,8 @@ type fixtureBalancer struct {
 	FailingSince                                                          *time.Time `json:"-"`
 }
 
-// fixtureSelection is targets[].balancerSelection (task 6.6): the keys of
-// the JSON view (10 §6.6) where they overlap, plus the state-only ones
+// fixtureSelection is targets[].balancerSelection: the keys of the JSON
+// view where they overlap, plus the state-only ones
 // (previousSelectedTag, consecutiveFailures, observatoryCheckedAt and the
 // observatory list; null observatory = unavailable).
 type fixtureSelection struct {
@@ -195,18 +199,17 @@ type loaded struct {
 	agg *Aggregator
 }
 
-// selectionPrefix names the balancer selection fixtures (task 6.6). They
-// have no TS reference: the feature does not exist in TS (D22).
+// selectionPrefix names the balancer selection fixtures.
 const selectionPrefix = "selection-"
 
-// sourcesPrefix names the fixtures of several sources per subscription; they
-// have no TS reference either.
+// sourcesPrefix names the fixtures of several sources per subscription.
 const sourcesPrefix = "sources-"
 
-// wgpPrefix names the fixtures with wgp status files; no TS reference.
+// wgpPrefix names the fixtures with wgp status files.
 const wgpPrefix = "wgp-"
 
-// fixtureNames lists the 0.4 fixtures (with a TS reference).
+// fixtureNames lists the base fixtures: no balancer selection, no several
+// sources and no wgp block.
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
 	return globFixtures(t, func(name string) bool {
@@ -214,15 +217,15 @@ func fixtureNames(t *testing.T) []string {
 	})
 }
 
-// selectionFixtureNames lists the balancer selection fixtures.
-func selectionFixtureNames(t *testing.T) []string {
+// allFixtureNames lists every fixture.
+func allFixtureNames(t *testing.T) []string {
 	t.Helper()
-	return globFixtures(t, func(name string) bool { return strings.HasPrefix(name, selectionPrefix) })
+	return globFixtures(t, func(string) bool { return true })
 }
 
 func globFixtures(t *testing.T, keep func(name string) bool) []string {
 	t.Helper()
-	files, err := filepath.Glob(refStatusDir + "fixtures/*.json")
+	files, err := filepath.Glob(goldenDir + "fixtures/*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,12 +241,12 @@ func globFixtures(t *testing.T, keep func(name string) bool) []string {
 	return names
 }
 
-// loadFixture builds config, memory state and aggregation state of a 0.4
+// loadFixture builds config, memory state and aggregation state of a
 // fixture. Subscriptions take the config defaults (input ./sub.txt, never
 // read).
 func loadFixture(t *testing.T, name string) loaded {
 	t.Helper()
-	data, err := os.ReadFile(refStatusDir + "fixtures/" + name + ".json")
+	data, err := os.ReadFile(goldenDir + "fixtures/" + name + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,14 +405,26 @@ func decode(t *testing.T, data []byte) any {
 	return v
 }
 
-// readRef returns a parsed reference file.
-func readRef(t *testing.T, rel string) any {
+// golden compares got with the golden file at path, or writes it with
+// -update. got must hold no temporary path.
+func golden(t *testing.T, path string, got []byte) {
 	t.Helper()
-	data, err := os.ReadFile(refStatusDir + rel)
-	if err != nil {
-		t.Fatal(err)
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
 	}
-	return decode(t, data)
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (run with -update)", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s differs from the golden file (run with -update to regenerate)", path)
+	}
 }
 
 // jsonEqual reports semantic equality of two decoded JSON values and a

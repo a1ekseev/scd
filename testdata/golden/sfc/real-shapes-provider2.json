@@ -1,0 +1,35 @@
+{
+  "refreshedAt": "2026-08-15T10:00:00.000Z",
+  "sourceCount": 1,
+  "outputCount": 3,
+  "successful": 1,
+  "failed": 2,
+  "outputs": [
+    {
+      "id": "<redacted>",
+      "subscriptionId": "main",
+      "name": "en-server",
+      "matchedLines": 50,
+      "ok": true,
+      "usedCachedValue": false
+    },
+    {
+      "id": "<redacted>",
+      "subscriptionId": "main",
+      "name": "extra-server",
+      "matchedLines": 0,
+      "ok": false,
+      "usedCachedValue": false,
+      "error": "Filtered output is empty."
+    },
+    {
+      "id": "<redacted>",
+      "subscriptionId": "main",
+      "name": "extra-whitelist",
+      "matchedLines": 0,
+      "ok": false,
+      "usedCachedValue": false,
+      "error": "Filtered output is empty."
+    }
+  ]
+}

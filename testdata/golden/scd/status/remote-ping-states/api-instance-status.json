@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "instanceId": "local-main",
+  "capturedAt": "2026-08-15T10:00:00.000Z",
+  "subscriptions": [
+    {
+      "subscriptionId": "ping-delivered-down",
+      "targets": [
+        {
+          "subscriptionId": "ping-delivered-down",
+          "targetAddress": "127.0.0.1:8084",
+          "tunnels": [],
+          "balancerMonitor": {
+            "state": "degraded",
+            "lastStatusCode": 503,
+            "lastLatencyMs": 120,
+            "lastError": "Unexpected HTTP status 503.",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:55:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 19,
+            "remotePingState": "ok",
+            "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+            "remotePingLastSuccessAt": "2026-08-15T10:00:00.000Z",
+            "remotePingLastStatusCode": 200,
+            "remotePingLastReportedStatus": "down",
+            "remotePingLastReportedMsg": "Unexpected HTTP status 503.",
+            "remotePingLastReportedPingMs": 120
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "ping-delivered-up",
+      "targets": [
+        {
+          "subscriptionId": "ping-delivered-up",
+          "targetAddress": "127.0.0.1:8083",
+          "tunnels": [],
+          "balancerMonitor": {
+            "state": "healthy",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 17,
+            "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 17,
+            "remotePingState": "ok",
+            "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+            "remotePingLastStatusCode": 200,
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastReportedMsg": "OK",
+            "remotePingLastReportedPingMs": 17
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "ping-failed",
+      "targets": [
+        {
+          "subscriptionId": "ping-failed",
+          "targetAddress": "127.0.0.1:8082",
+          "tunnels": [
+            {
+              "subscriptionId": "ping-failed",
+              "targetAddress": "127.0.0.1:8082",
+              "displayName": "Alpha",
+              "countryIso2": "AT",
+              "endpoint": "127.0.0.1:22000",
+              "state": "healthy",
+              "lastHttpStatus": 204,
+              "lastLatencyMs": 42,
+              "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+              "lastSuccessHttpStatus": 204,
+              "lastSuccessLatencyMs": 42,
+              "balanced": true,
+              "balancerMonitorState": "degraded",
+              "balancerMonitorLastError": "SOCKS5 connect timed out",
+              "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+              "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+              "balancerMonitorRemotePingState": "failed",
+              "balancerMonitorRemotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+              "balancerMonitorRemotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+              "balancerMonitorRemotePingLastStatusCode": 500,
+              "balancerMonitorRemotePingLastError": "push failed",
+              "balancerMonitorRemotePingLastReportedStatus": "down",
+              "balancerMonitorRemotePingLastReportedMsg": "SOCKS5 connect timed out"
+            }
+          ],
+          "balancerMonitor": {
+            "state": "degraded",
+            "lastError": "SOCKS5 connect timed out",
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastFailureAt": "2026-08-15T10:00:00.000Z",
+            "remotePingState": "failed",
+            "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+            "remotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+            "remotePingLastStatusCode": 500,
+            "remotePingLastError": "push failed",
+            "remotePingLastReportedStatus": "down",
+            "remotePingLastReportedMsg": "SOCKS5 connect timed out"
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "ping-idle",
+      "targets": [
+        {
+          "subscriptionId": "ping-idle",
+          "targetAddress": "127.0.0.1:8080",
+          "tunnels": [],
+          "balancerMonitor": {
+            "state": "idle",
+            "remotePingState": "idle"
+          }
+        }
+      ]
+    },
+    {
+      "subscriptionId": "ping-pending",
+      "targets": [
+        {
+          "subscriptionId": "ping-pending",
+          "targetAddress": "127.0.0.1:8081",
+          "tunnels": [],
+          "balancerMonitor": {
+            "state": "healthy",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 21,
+            "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+            "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 21,
+            "remotePingState": "pending",
+            "remotePingLastRunAt": "2026-08-15T10:00:00.000Z"
+          }
+        }
+      ]
+    }
+  ],
+  "tunnels": [
+    {
+      "subscriptionId": "ping-failed",
+      "targetAddress": "127.0.0.1:8082",
+      "displayName": "Alpha",
+      "countryIso2": "AT",
+      "endpoint": "127.0.0.1:22000",
+      "state": "healthy",
+      "lastHttpStatus": 204,
+      "lastLatencyMs": 42,
+      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+      "lastSuccessHttpStatus": 204,
+      "lastSuccessLatencyMs": 42,
+      "balanced": true,
+      "balancerMonitorState": "degraded",
+      "balancerMonitorLastError": "SOCKS5 connect timed out",
+      "balancerMonitorLastCheckedAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorLastFailureAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingState": "failed",
+      "balancerMonitorRemotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+      "balancerMonitorRemotePingLastStatusCode": 500,
+      "balancerMonitorRemotePingLastError": "push failed",
+      "balancerMonitorRemotePingLastReportedStatus": "down",
+      "balancerMonitorRemotePingLastReportedMsg": "SOCKS5 connect timed out"
+    }
+  ]
+}

@@ -17,38 +17,39 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// maxDiffRatio is the largest share of differing pixels allowed between the
-// TS and Go dashboards (D3).
+// maxDiffRatio is the largest share of differing pixels allowed between a
+// screenshot and its golden PNG.
 const maxDiffRatio = 0.001
 
-// visualWidths are the viewport widths of the task 0.4 screenshots.
+// visualWidths are the viewport widths of the screenshots.
 var visualWidths = []int64{1280, 390}
 
-// D3: the Go dashboard looks like the TS dashboard. For every 0.4 fixture
-// the TS reference HTML and the Go HTML are rendered by the same headless
-// Chrome (SCD_CHROME) at each width and compared pixel by pixel.
-func TestDashboardVisualMatchesTS(t *testing.T) {
+// ownVisualTest names the fixtures whose screenshots are checked by their
+// own test, next to the behaviour they check.
+var ownVisualTest = map[string]bool{"sources-two": true, "sources-wireguard": true, "wgp-ok": true, "wgp-needs-login": true}
+
+// Every fixture's dashboard, rendered by headless Chrome (SCD_CHROME) at
+// each width, against its local Go golden PNG (visualGoldenDir, -update).
+// remote-instances is also shot after clicking the remote tab.
+func TestDashboardVisual(t *testing.T) {
 	bctx := startChrome(t)
-	names := fixtureNames(t)
-	pages := make(map[string][2]string, len(names))
-	for _, name := range names {
-		tsPage, goPage := writePages(t, name)
-		pages[name] = [2]string{tsPage, goPage}
-	}
-
-	for _, name := range names {
+	for _, name := range allFixtureNames(t) {
+		if ownVisualTest[name] {
+			continue
+		}
+		page := filepath.Join(t.TempDir(), "go.html")
+		writeFile(t, page, []byte(dashboard(t, name, "/")))
 		t.Run(name, func(t *testing.T) {
-			tsPage, goPage := pages[name][0], pages[name][1]
-
 			for _, w := range visualWidths {
 				label := strconv.FormatInt(w, 10)
-				first := compareShots(bctx, t, name+"/"+label, w, tsPage, goPage, nil)
+				first := screenshot(bctx, t, w, page, nil)
+				matchGolden(t, filepath.Join(visualGoldenDir, name+"-"+label+".png"), first)
 				if name == "remote-instances" {
-					second := compareShots(bctx, t, name+"/"+label+"/tab-1", w, tsPage, goPage,
-						[]chromedp.Action[chromedp.Void]{chromedp.Click("#instance-tab-1")})
+					second := screenshot(bctx, t, w, page, []chromedp.Action[chromedp.Void]{chromedp.Click("#instance-tab-1")})
 					if bytes.Equal(first, second) {
 						t.Errorf("%s: clicking #instance-tab-1 did not change the page", label)
 					}
+					matchGolden(t, filepath.Join(visualGoldenDir, name+"-"+label+"-tab-1.png"), second)
 				}
 			}
 		})
@@ -74,57 +75,11 @@ func startChrome(t *testing.T) context.Context {
 	return bctx
 }
 
-// writePages writes the TS reference HTML and the Go HTML of fixture name
-// (served by the handler, frozen Now) to a temporary directory and returns
-// their paths.
-func writePages(t *testing.T, name string) (tsPage, goPage string) {
-	t.Helper()
-	dir := t.TempDir()
-	tsPage, goPage = filepath.Join(dir, "ts.html"), filepath.Join(dir, "go.html")
-	ref, err := os.ReadFile(refStatusDir + name + "/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, tsPage, ref)
-	writeFile(t, goPage, []byte(dashboard(t, name, "/")))
-	return tsPage, goPage
-}
-
 func writeFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// compareShots screenshots both pages at width w after steps and fails when
-// the sizes differ or more than maxDiffRatio of the pixels differ. It
-// returns the Go screenshot.
-func compareShots(ctx context.Context, t *testing.T, label string, w int64, tsPage, goPage string, steps []chromedp.Action[chromedp.Void]) []byte {
-	t.Helper()
-	tsPNG := screenshot(ctx, t, w, tsPage, steps)
-	goPNG := screenshot(ctx, t, w, goPage, steps)
-	tsImg, goImg := decodePNG(t, tsPNG), decodePNG(t, goPNG)
-
-	ratio, diff := pixelDiff(tsImg, goImg)
-	t.Logf("%s: ts %v, go %v, diff ratio %.6f", label, tsImg.Bounds().Size(), goImg.Bounds().Size(), ratio)
-	if tsImg.Bounds().Size() == goImg.Bounds().Size() && ratio <= maxDiffRatio {
-		return goPNG
-	}
-	out, err := os.MkdirTemp("", "scd-visual-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(out, "ts.png"), tsPNG)
-	writeFile(t, filepath.Join(out, "go.png"), goPNG)
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, diff); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(out, "diff.png"), buf.Bytes())
-	t.Errorf("%s: dashboards differ (ts %v, go %v, ratio %.6f > %v); images in %s",
-		label, tsImg.Bounds().Size(), goImg.Bounds().Size(), ratio, maxDiffRatio, out)
-	return goPNG
 }
 
 // screenshot loads page at width w, runs steps and returns a full-page PNG.
