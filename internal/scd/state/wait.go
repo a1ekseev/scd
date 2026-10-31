@@ -40,6 +40,28 @@ type DepHealth struct {
 	RecoveredAt, GraceUntil *time.Time
 }
 
+// SourceError is the current failure of a source in sync, for the status
+// API: Code is the reason (fetch_failed or <type>_input_refused,
+// manifest_invalid, apply_failed, orphan_remove_failed, or a check code),
+// Message its redacted text and At the start of the failure episode.
+type SourceError struct {
+	Code, Message string
+	At            time.Time
+}
+
+// SetSourceError records the failure of source id; an episode in progress
+// keeps its start. Call it only inside Update.
+func (t *Target) SetSourceError(id, code, msg string, now time.Time) {
+	if t.SourceErrors == nil {
+		t.SourceErrors = map[string]SourceError{}
+	}
+	at := now
+	if prev, ok := t.SourceErrors[id]; ok {
+		at = prev.At
+	}
+	t.SourceErrors[id] = SourceError{Code: code, Message: msg, At: at}
+}
+
 // EnsureWait returns the wait state of source id, created on first use.
 // Call it only inside Update.
 func (t *Target) EnsureWait(id string) *SourceWait {

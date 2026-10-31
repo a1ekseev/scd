@@ -603,8 +603,9 @@ func TestTickObservatoryDebugWithInfoError(t *testing.T) {
 }
 
 // A selection outside the namespaces of the balancer's sources warns once
-// per tag (a repeat is debug, a new tag warns again) and its end recovers;
-// a pool with one foreign candidate is foreign too.
+// at the start of the episode (a repeat and another tag inside it are
+// debug) and its end recovers; a pool with one foreign candidate is foreign
+// too.
 func TestTickForeignSelection(t *testing.T) {
 	srv, _ := xrayfake.Start(t,
 		xrayfake.WithStaticOutbounds(prefix+"wg-1", prefix+"other-1", prefix+"other-2"),
@@ -631,7 +632,7 @@ func TestTickForeignSelection(t *testing.T) {
 	tick()
 	srv.SetOverride("x-balancer", prefix+"other-2")
 	tick()
-	if got, want := levels("balancer_foreign_selection"), []any{"WARN", prefix + "other-1", "DEBUG", prefix + "other-1", "WARN", prefix + "other-2"}; !slices.Equal(got, want) {
+	if got, want := levels("balancer_foreign_selection"), []any{"WARN", prefix + "other-1", "DEBUG", prefix + "other-1", "DEBUG", prefix + "other-2"}; !slices.Equal(got, want) {
 		t.Fatalf("balancer_foreign_selection %v, want %v", got, want)
 	}
 	srv.SetOverride("x-balancer", prefix+"wg-1")
@@ -703,7 +704,8 @@ func TestTickForeignEmptyAndPoolSet(t *testing.T) {
 		t.Fatalf("foreign %v, recovered %v", levels, logs.events(t, "balancer_foreign_selection_recovered"))
 	}
 
-	// A pool whose first foreign tag stays while another joins warns again.
+	// A pool whose first foreign tag stays while another joins: debug inside
+	// the episode, with the new set.
 	srv2, _ := xrayfake.Start(t,
 		xrayfake.WithStaticOutbounds(prefix+"a-1", prefix+"wg-1"),
 		xrayfake.WithBalancer("x-balancer", []string{prefix}, "random"))
@@ -726,7 +728,7 @@ func TestTickForeignEmptyAndPoolSet(t *testing.T) {
 	tick()
 	ev := logs.events(t, "balancer_foreign_selection")
 	last := ev[len(ev)-1]
-	if last["level"] != "WARN" || !slices.Equal(last["selectedTags"].([]any), []any{prefix + "a-1", prefix + "b-1"}) {
+	if last["level"] != "DEBUG" || !slices.Equal(last["selectedTags"].([]any), []any{prefix + "a-1", prefix + "b-1"}) {
 		t.Fatalf("pool events %v", ev[len(ev)-2:])
 	}
 }

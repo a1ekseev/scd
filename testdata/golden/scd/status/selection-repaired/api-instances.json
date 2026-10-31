@@ -130,7 +130,42 @@
                   "selectedSince": "2026-10-17T08:45:00.000Z",
                   "lastCheckedAt": "2026-10-17T09:00:30.000Z",
                   "lastSuccessAt": "2026-10-17T09:00:30.000Z"
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "healthy",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 55,
+                      "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+                      "lastSuccessAt": "2026-10-17T09:00:30.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 55,
+                      "remotePingState": "idle"
+                    },
+                    "selection": {
+                      "balancerTag": "x-balancer",
+                      "state": "ok",
+                      "mode": "single",
+                      "selectedOutboundTag": "x-observe-de-1",
+                      "selectedTunnelId": "de-1",
+                      "selectedDisplayName": "🇩🇪 Germany 1",
+                      "selectedCountryIso2": "DE",
+                      "selectedManaged": true,
+                      "selectedDelayMs": 42,
+                      "principleTargets": [
+                        "x-observe-de-1"
+                      ],
+                      "selectedSince": "2026-10-17T08:45:00.000Z",
+                      "lastCheckedAt": "2026-10-17T09:00:30.000Z",
+                      "lastSuccessAt": "2026-10-17T09:00:30.000Z"
+                    }
+                  }
+                ]
               }
             ]
           }

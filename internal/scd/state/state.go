@@ -297,6 +297,9 @@ type Target struct {
 	// Waits holds the dependency wait of each source with dependsOn, by
 	// source id (the tunnel monitor writes it).
 	Waits map[string]*SourceWait
+	// SourceErrors holds, by source id, the current failure of the source
+	// in sync (status API); a successful sync of the source clears it.
+	SourceErrors map[string]SourceError
 	// CheckFailed holds, by source id, the reason code of a failed check
 	// before the last apply of the source (source_check_failed); the
 	// monitor treats such a source as waiting.
@@ -520,6 +523,7 @@ func (m *Memory) DropSource(key, sourceID string) {
 	}
 	delete(t.Waits, sourceID)
 	delete(t.CheckFailed, sourceID)
+	delete(t.SourceErrors, sourceID)
 	if _, ok := t.Sources[sourceID]; !ok {
 		return
 	}

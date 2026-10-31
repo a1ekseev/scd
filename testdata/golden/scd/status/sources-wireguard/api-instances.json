@@ -141,6 +141,25 @@
                       }
                     ]
                   }
+                ],
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "main",
+                      "wg"
+                    ],
+                    "monitor": {
+                      "state": "healthy",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 17,
+                      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 17,
+                      "remotePingState": "idle"
+                    }
+                  }
                 ]
               }
             ]

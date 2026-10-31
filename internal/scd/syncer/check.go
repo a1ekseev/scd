@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a1ekseev/scd/internal/scd/apply"
 	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/state"
@@ -101,6 +102,7 @@ func (s *Syncer) checkSource(ctx context.Context, l manifest.LoadedSource) (r Ta
 		return TargetReport{}, false
 	}
 	if err != nil {
+		s.noteError(c, src.ID, CodeApplyFailed, err.Error())
 		return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, err.Error(), true), nil), false
 	}
 	key := sourceKey(c.ID, src.ID)
@@ -145,7 +147,48 @@ func (s *Syncer) checkSource(ctx context.Context, l manifest.LoadedSource) (r Ta
 		slog.String("targetAddress", c.Target.Address),
 		slog.String("reasonCode", f.code),
 		slog.String("error", f.msg))
+	s.noteError(c, src.ID, f.code, f.msg)
 	return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, f.text(), false), nil), false
+}
+
+// Codes of a source error in state (status API) besides the check codes.
+const (
+	CodeFetchFailed        = "fetch_failed"
+	CodeManifestInvalid    = "manifest_invalid"
+	CodeApplyFailed        = "apply_failed"
+	CodeOrphanRemoveFailed = "orphan_remove_failed"
+)
+
+// noteError records the failure of source id of c in state for the status
+// API (state.Target.SetSourceError), the first one of this sync only.
+func (s *Syncer) noteError(c config.SubscriptionConfig, id, code, msg string) {
+	key := sourceKey(c.ID, id)
+	if s.errNoted[key] {
+		return
+	}
+	s.errNoted[key] = true
+	k := state.Key(c.ID, c.Target.Address)
+	s.Memory.Ensure(k)
+	now := s.now()
+	s.Memory.Update(k, func(tg *state.Target) { tg.SetSourceError(id, code, msg, now) })
+}
+
+// clearError forgets the failure of source id of c after a successful sync
+// of it.
+func (s *Syncer) clearError(c config.SubscriptionConfig, id string) {
+	s.Memory.Update(state.Key(c.ID, c.Target.Address), func(tg *state.Target) { delete(tg.SourceErrors, id) })
+}
+
+// firstFailure is the message of the first failed item of r.
+func firstFailure(r TargetReport) string {
+	for _, k := range r.Resources {
+		for _, it := range k.Items {
+			if it.Status == apply.StatusFailed && it.Message != "" {
+				return it.Message
+			}
+		}
+	}
+	return "apply failed"
 }
 
 // runChecks runs the checks of checkSource: a failed check is f, an error

@@ -1,0 +1,487 @@
+{
+  "now": "2026-10-31T08:30:00.000Z",
+  "config": {
+    "instanceId": "router-ru-1",
+    "subscriptions": [
+      {
+        "id": "main",
+        "enabled": true,
+        "address": "127.0.0.1:10085",
+        "observatorySubjectSelectorPrefix": "x-observe-",
+        "balancers": [
+          {
+            "tag": "x-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            },
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true,
+              "strategy": "leastPing"
+            }
+          },
+          {
+            "tag": "x-warp-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            },
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true,
+              "strategy": "leastPing"
+            }
+          },
+          {
+            "tag": "x-proton-balancer",
+            "monitor": {
+              "enabled": true,
+              "schedule": "*/1 * * * *"
+            },
+            "selection": {
+              "enabled": true,
+              "schedule": "*/15 * * * * *",
+              "observatory": true,
+              "strategy": "leastPing"
+            }
+          }
+        ],
+        "sources": [
+          {
+            "id": "vless",
+            "type": "vless",
+            "enabled": true,
+            "balancer": "x-balancer"
+          },
+          {
+            "id": "warp",
+            "type": "masque",
+            "enabled": true,
+            "maxActive": 2,
+            "balancer": "x-warp-balancer",
+            "dialerProxy": "chain-blanc",
+            "dependsOn": [
+              {
+                "source": "vless",
+                "health": "balancer",
+                "recoverGraceSeconds": 180
+              }
+            ],
+            "wgpDir": "wgp"
+          },
+          {
+            "id": "proton",
+            "type": "wireguard",
+            "enabled": true,
+            "maxActive": 2,
+            "balancer": "x-proton-balancer",
+            "dialerProxy": "chain-blanc",
+            "dependsOn": [
+              {
+                "source": "vless",
+                "health": "balancer",
+                "recoverGraceSeconds": 180
+              }
+            ],
+            "wgpDir": "wgp"
+          }
+        ]
+      }
+    ],
+    "remoteInstances": [],
+    "runtimeState": {
+      "enabled": true,
+      "includeRaw": false,
+      "includeSecrets": false
+    }
+  },
+  "targets": [
+    {
+      "subscriptionId": "main",
+      "targetAddress": "127.0.0.1:10085",
+      "balancers": [
+        {
+          "tag": "x-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "ok",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastRunAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastStatusCode": 200,
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 118,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 118
+          },
+          "selection": {
+            "balancerTag": "x-balancer",
+            "state": "ok",
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "consecutiveFailures": 0,
+            "observatoryCheckedAt": "2026-10-31T08:29:45.000Z",
+            "overrideTarget": "",
+            "lastError": "",
+            "previousSelectedTag": "",
+            "observatoryError": "",
+            "mode": "single",
+            "selectedOutboundTag": "x-observe-vless-nl-amsterdam-tcp-reality-11aa",
+            "principleTargets": [
+              "x-observe-vless-nl-amsterdam-tcp-reality-11aa"
+            ],
+            "selectedSince": "2026-10-31T08:02:11.000Z",
+            "observatory": [
+              {
+                "tag": "x-observe-vless-nl-amsterdam-tcp-reality-11aa",
+                "alive": true,
+                "delayMs": 312,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              },
+              {
+                "tag": "x-observe-vless-de-frankfurt-tcp-reality-22bb",
+                "alive": true,
+                "delayMs": 340,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              },
+              {
+                "tag": "x-observe-vless-fi-helsinki-tcp-reality-33cc",
+                "alive": true,
+                "delayMs": 388,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "x-warp-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "ok",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastRunAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastStatusCode": 200,
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 236,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 236
+          },
+          "selection": {
+            "balancerTag": "x-warp-balancer",
+            "state": "ok",
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "consecutiveFailures": 0,
+            "observatoryCheckedAt": "2026-10-31T08:29:45.000Z",
+            "overrideTarget": "",
+            "lastError": "",
+            "previousSelectedTag": "",
+            "observatoryError": "",
+            "mode": "single",
+            "selectedOutboundTag": "x-observe-warp-warp-1-mq-44dd",
+            "principleTargets": [
+              "x-observe-warp-warp-1-mq-44dd"
+            ],
+            "selectedSince": "2026-10-31T08:02:11.000Z",
+            "observatory": [
+              {
+                "tag": "x-observe-warp-warp-1-mq-44dd",
+                "alive": true,
+                "delayMs": 455,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              },
+              {
+                "tag": "x-observe-warp-warp-2-mq-55ee",
+                "alive": true,
+                "delayMs": 502,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "x-proton-balancer",
+          "monitor": {
+            "state": "healthy",
+            "remotePingState": "ok",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastReportedStatus": "up",
+            "remotePingLastRunAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "remotePingLastStatusCode": 200,
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 251,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 251
+          },
+          "selection": {
+            "balancerTag": "x-proton-balancer",
+            "state": "ok",
+            "lastCheckedAt": "2026-10-31T08:29:45.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:45.000Z",
+            "consecutiveFailures": 0,
+            "observatoryCheckedAt": "2026-10-31T08:29:45.000Z",
+            "overrideTarget": "",
+            "lastError": "",
+            "previousSelectedTag": "",
+            "observatoryError": "",
+            "mode": "single",
+            "selectedOutboundTag": "x-observe-proton-nl-amsterdam-wg-66ff",
+            "principleTargets": [
+              "x-observe-proton-nl-amsterdam-wg-66ff"
+            ],
+            "selectedSince": "2026-10-31T08:02:11.000Z",
+            "observatory": [
+              {
+                "tag": "x-observe-proton-nl-amsterdam-wg-66ff",
+                "alive": true,
+                "delayMs": 421,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              },
+              {
+                "tag": "x-observe-proton-de-frankfurt-wg-77aa",
+                "alive": true,
+                "delayMs": 447,
+                "lastSeenAt": "2026-10-31T08:29:40.000Z",
+                "lastTryAt": "2026-10-31T08:29:40.000Z"
+              }
+            ]
+          }
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "vless"
+        },
+        {
+          "sourceId": "warp",
+          "candidateCount": 3
+        },
+        {
+          "sourceId": "proton",
+          "candidateCount": 5
+        }
+      ],
+      "tunnels": [
+        {
+          "sourceId": "vless",
+          "baseTunnelId": "vless-nl-amsterdam-tcp-reality-11aa",
+          "displayName": "🇳🇱 Amsterdam",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 20000,
+          "outboundTagInitial": "x-observe-vless-nl-amsterdam-tcp-reality-11aa",
+          "outboundTagCurrent": "x-observe-vless-nl-amsterdam-tcp-reality-11aa",
+          "outboundWithoutPrefixTag": "vless-nl-amsterdam-tcp-reality-11aa",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 112,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 112
+          }
+        },
+        {
+          "sourceId": "vless",
+          "baseTunnelId": "vless-de-frankfurt-tcp-reality-22bb",
+          "displayName": "🇩🇪 Frankfurt",
+          "countryIso2": "DE",
+          "listen": "127.0.0.1",
+          "port": 20001,
+          "outboundTagInitial": "x-observe-vless-de-frankfurt-tcp-reality-22bb",
+          "outboundTagCurrent": "x-observe-vless-de-frankfurt-tcp-reality-22bb",
+          "outboundWithoutPrefixTag": "vless-de-frankfurt-tcp-reality-22bb",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 125,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 125
+          }
+        },
+        {
+          "sourceId": "vless",
+          "baseTunnelId": "vless-fi-helsinki-tcp-reality-33cc",
+          "displayName": "🇫🇮 Helsinki",
+          "countryIso2": "FI",
+          "listen": "127.0.0.1",
+          "port": 20002,
+          "outboundTagInitial": "x-observe-vless-fi-helsinki-tcp-reality-33cc",
+          "outboundTagCurrent": "x-observe-vless-fi-helsinki-tcp-reality-33cc",
+          "outboundWithoutPrefixTag": "vless-fi-helsinki-tcp-reality-33cc",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 141,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 141
+          }
+        },
+        {
+          "sourceId": "warp",
+          "baseTunnelId": "warp-warp-1-mq-44dd",
+          "displayName": "☁️ WARP #1",
+          "countryIso2": "",
+          "listen": "127.0.0.1",
+          "port": 21100,
+          "outboundTagInitial": "x-observe-warp-warp-1-mq-44dd",
+          "outboundTagCurrent": "x-observe-warp-warp-1-mq-44dd",
+          "outboundWithoutPrefixTag": "warp-warp-1-mq-44dd",
+          "protocol": "masque",
+          "transport": "h3",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 198,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 198
+          }
+        },
+        {
+          "sourceId": "warp",
+          "baseTunnelId": "warp-warp-2-mq-55ee",
+          "displayName": "☁️ WARP #2",
+          "countryIso2": "",
+          "listen": "127.0.0.1",
+          "port": 21101,
+          "outboundTagInitial": "x-observe-warp-warp-2-mq-55ee",
+          "outboundTagCurrent": "x-observe-warp-warp-2-mq-55ee",
+          "outboundWithoutPrefixTag": "warp-warp-2-mq-55ee",
+          "protocol": "masque",
+          "transport": "h2",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 221,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 221
+          }
+        },
+        {
+          "sourceId": "proton",
+          "baseTunnelId": "proton-nl-amsterdam-wg-66ff",
+          "displayName": "🇳🇱 Amsterdam · NL-FREE#214",
+          "countryIso2": "NL",
+          "listen": "127.0.0.1",
+          "port": 21200,
+          "outboundTagInitial": "x-observe-proton-nl-amsterdam-wg-66ff",
+          "outboundTagCurrent": "x-observe-proton-nl-amsterdam-wg-66ff",
+          "outboundWithoutPrefixTag": "proton-nl-amsterdam-wg-66ff",
+          "protocol": "wireguard",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 176,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 176
+          }
+        },
+        {
+          "sourceId": "proton",
+          "baseTunnelId": "proton-de-frankfurt-wg-77aa",
+          "displayName": "🇩🇪 Frankfurt · DE-FREE#33",
+          "countryIso2": "DE",
+          "listen": "127.0.0.1",
+          "port": 21201,
+          "outboundTagInitial": "x-observe-proton-de-frankfurt-wg-77aa",
+          "outboundTagCurrent": "x-observe-proton-de-frankfurt-wg-77aa",
+          "outboundWithoutPrefixTag": "proton-de-frankfurt-wg-77aa",
+          "protocol": "wireguard",
+          "monitor": {
+            "state": "healthy",
+            "consecutiveFailures": 0,
+            "lastCheckedAt": "2026-10-31T08:29:30.000Z",
+            "lastSuccessAt": "2026-10-31T08:29:30.000Z",
+            "lastStatusCode": 204,
+            "lastLatencyMs": 189,
+            "lastSuccessStatusCode": 204,
+            "lastSuccessLatencyMs": 189
+          }
+        }
+      ],
+      "waits": {
+        "warp": {
+          "deps": {
+            "vless": {
+              "State": "healthy",
+              "Since": "2026-10-31T08:01:00.000Z"
+            }
+          }
+        },
+        "proton": {
+          "deps": {
+            "vless": {
+              "State": "healthy",
+              "Since": "2026-10-31T08:01:00.000Z"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "remotes": [],
+  "wgp": {
+    "wgp": {
+      "version": 1,
+      "updatedAt": "2026-10-31T08:29:12Z",
+      "providers": [
+        {
+          "id": "warp",
+          "output": "warp",
+          "type": "warp",
+          "state": "ok",
+          "lastTickAt": "2026-10-31T08:29:12Z",
+          "lastSuccessAt": "2026-10-31T08:29:12Z",
+          "issued": 3
+        },
+        {
+          "id": "proton",
+          "output": "proton",
+          "type": "proton",
+          "state": "ok",
+          "lastTickAt": "2026-10-31T08:29:12Z",
+          "lastSuccessAt": "2026-10-31T08:29:12Z",
+          "issued": 5,
+          "limit": 10,
+          "expiresAt": "2026-11-07T06:00:00Z"
+        }
+      ]
+    }
+  }
+}

@@ -360,17 +360,19 @@ func TestSourceWaiting(t *testing.T) {
 	}
 }
 
-// DropSource forgets the wait and the failed check of the source too.
+// DropSource forgets the wait, the failed check and the error of the
+// source too.
 func TestDropSourceForgetsWaitAndCheck(t *testing.T) {
 	m := New()
 	m.ReplaceSourceTopology("k", "a", topology.Topology{}, nil)
 	m.Update("k", func(tg *Target) {
 		tg.EnsureWait("a")
 		tg.CheckFailed = map[string]string{"a": "balancer_not_found"}
+		tg.SetSourceError("a", "balancer_not_found", "x", time.Now())
 	})
 	m.DropSource("k", "a")
 	m.View("k", func(tg *Target) {
-		if len(tg.Waits) != 0 || len(tg.CheckFailed) != 0 {
+		if len(tg.Waits) != 0 || len(tg.CheckFailed) != 0 || len(tg.SourceErrors) != 0 {
 			t.Fatalf("waits %v, checks %v", tg.Waits, tg.CheckFailed)
 		}
 	})

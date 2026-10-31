@@ -77,7 +77,19 @@
                 "balancerMonitor": {
                   "state": "idle",
                   "remotePingState": "idle"
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "idle",
+                      "remotePingState": "idle"
+                    }
+                  }
+                ]
               }
             ]
           }

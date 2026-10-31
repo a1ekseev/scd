@@ -27,7 +27,7 @@ func TestSourcesJSON(t *testing.T) {
 	h := NewHandler(l.deps())
 	body := json.RawMessage(get(t, h, "/api/instance-status").Body.Bytes())
 	target := index(t, field(t, index(t, field(t, body, "subscriptions"), 0), "targets"), 0)
-	if got, want := objectKeys(t, target), []string{"subscriptionId", "targetAddress", "tunnels", "balancerMonitor", "sources"}; !slices.Equal(got, want) {
+	if got, want := objectKeys(t, target), []string{"subscriptionId", "targetAddress", "tunnels", "balancerMonitor", "sources", "balancers"}; !slices.Equal(got, want) {
 		t.Errorf("target keys %v, want %v", got, want)
 	}
 	jsonEqual(t, decode(t, field(t, target, "sources")), decode(t, []byte(sourcesTwoWant)))
@@ -110,33 +110,34 @@ func TestRemoteSnapshotsWithAndWithoutSources(t *testing.T) {
 	jsonEqual(t, decode(t, again), decode(t, raw))
 }
 
-// The sources card follows the balancer cards; tunnels show their source;
-// the old remote tab has neither.
+// Each source is a Source row of the group head, before Check and the
+// tunnel grid; tunnels show their source; the old remote tab has neither.
 func TestDashboardSources(t *testing.T) {
 	body := bodyOf(t, dashboard(t, "sources-two", "/"))
 	local, remote, ok := strings.Cut(body, `id="instance-panel-1"`)
 	if !ok {
 		t.Fatal("no remote panel")
 	}
-	i := strings.Index(local, ">Sources<")
+	i := strings.Index(local, "<dt>Source</dt>")
 	if i < 0 {
-		t.Fatal("no sources card")
+		t.Fatal("no source row")
 	}
-	card, _, _ := strings.Cut(local[strings.LastIndex(local[:i], "<article"):], "</article>")
-	assertContains(t, card, `class="balancer-card state-repairing"`, ">2 source(s)<",
-		`<span class="metric source-chip `+sourceColor("main")+`"><span class="metric-label">main</span><span class="metric-value">vless</span></span>`,
+	head, _, _ := strings.Cut(local[strings.LastIndex(local[:i], `<header class="bal-head`):], "</header>")
+	assertContains(t, head,
+		`<span class="metric source-chip `+sourceColor("main")+`"><span class="metric-label">main</span><span class="metric-value">vless · 2 tunnels</span></span>`,
 		`<span class="metric metric-state-repairing" title="spare: port_range_exhausted"><span class="metric-label">Warning</span>`+
 			`<span class="metric-value">2 lines were skipped: the source portRange has no free port for them.</span></span>`)
-	ext, src, grid := strings.Index(local, "External SOCKS check"), i, strings.Index(local, `class="nodes-grid"`)
-	if ext >= src || src >= grid {
-		t.Errorf("card order: external %d, sources %d, grid %d", ext, src, grid)
+	assertContains(t, local, ">3 tunnels · 1 balancer · 2 sources<")
+	src, ext, grid := i, strings.Index(local, "<dt>Check</dt>"), strings.Index(local, `class="nodes-grid"`)
+	if src >= ext || ext >= grid {
+		t.Errorf("order: source %d, check %d, grid %d", src, ext, grid)
 	}
 	// The source is a badge in the card head, its color the one of its chip.
-	assertContains(t, nodeCard(t, local, "🇳🇱 Amsterdam"), `<div class="node-meta">NL · 127.0.0.1:21000</div>`,
+	assertContains(t, nodeCard(t, local, "🇳🇱 Amsterdam"), `<div class="node-meta">NL · VLESS · 127.0.0.1:21000</div>`,
 		`<span class="source-badge `+sourceColor("spare")+`">spare</span></div>`)
-	assertContains(t, nodeCard(t, local, "🇦🇹 Vienna"), `<div class="node-meta">AT · 127.0.0.1:20000</div>`,
+	assertContains(t, nodeCard(t, local, "🇦🇹 Vienna"), `<div class="node-meta">AT · VLESS · 127.0.0.1:20000</div>`,
 		`<span class="source-badge `+sourceColor("main")+`">main</span></div>`)
-	assertNotContains(t, remote, ">Sources<", "Warning")
+	assertNotContains(t, remote, "<dt>Source</dt>", "Warning")
 
 	// Disabled source.
 	l := loadFixture(t, "sources-two")
@@ -145,7 +146,7 @@ func TestDashboardSources(t *testing.T) {
 	if err := RenderDashboard(&page, AggregatedView{Local: BuildInstanceSnapshot(l.mem, l.cfg.Config, "x", l.now)}); err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, page.String(), `<span class="metric-label">spare</span><span class="metric-value">vless · disabled</span>`)
+	assertContains(t, page.String(), `<span class="metric source-chip `+sourceColor("spare")+` is-off"><span class="metric-label">spare</span><span class="metric-value">vless · 1 tunnel · disabled</span>`)
 }
 
 // A wireguard source: its counts and the no_replacement warning, in the

@@ -35,6 +35,8 @@ type Tunnel struct {
 	// Protocol is "wireguard" or "masque" for a candidate tunnel, "" for
 	// VLESS.
 	Protocol string
+	// Transport is "h2" or "h3" for a masque tunnel, "" otherwise.
+	Transport string
 	// BaseTunnelID and BaseOutboundTag are the entry tag.
 	BaseTunnelID    string
 	DisplayName     string
@@ -119,6 +121,9 @@ func NewTunnel(e manifest.Entry, sourceID string, t config.SubscriptionTargetCon
 	}
 	if e.Country != nil {
 		tn.CountryISO2 = e.Country.ISO2
+	}
+	if e.Protocol == manifest.ProtocolMasque {
+		tn.Transport = e.SelectionCandidate().Transport
 	}
 	return tn
 }

@@ -167,8 +167,8 @@ func TestDashboardWGP(t *testing.T) {
 		`<span class="metric metric-state-healthy"><span class="metric-label">Status</span><span class="metric-value">ok</span></span>`,
 		`<span class="metric-label">Issued</span><span class="metric-value">3 of 10</span>`,
 		`<span class="metric-label">Issued</span><span class="metric-value">2</span>`,
-		`<span class="metric"><span class="metric-label">Expires</span><span class="metric-value">2026-08-22T09:00:00.000Z</span></span>`,
-		`<span class="metric-label">Last Success</span><span class="metric-value">2026-08-15T09:58:00.000Z</span>`)
+		`<span class="metric"><span class="metric-label">Expires</span><span class="metric-value"><time datetime="2026-08-22T09:00:00.000Z">2026-08-22T09:00:00.000Z</time></span></span>`,
+		`<span class="metric-label">Last Success</span><span class="metric-value"><time datetime="2026-08-15T09:58:00.000Z">2026-08-15T09:58:00.000Z</time></span>`)
 	assertNotContains(t, local, "state-degraded")
 	if w, s := strings.Index(local, "<h2>wgp</h2>"), strings.Index(local, "<h2>sub-1</h2>"); w < 0 || w > s {
 		t.Errorf("wgp section (%d) must precede the subscriptions (%d)", w, s)

@@ -131,10 +131,36 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .metric-state-repairing .metric-label, .metric-remote-pending .metric-label,
 .metric-state-idle .metric-label, .metric-balancer-na .metric-label, .metric-remote-idle .metric-label { color: currentColor; opacity: .74; }
 .empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; }
+.bal-group { margin: 14px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 253, 248, .82); }
+.bal-head {
+  display: flex; gap: 13px; align-items: flex-start; margin: 0 0 12px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, var(--panel-strong), #fffdf8);
+}
+.bal-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bal-title h4 { margin: 0; font-size: 17px; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: baseline; margin: 12px 0 0; }
+.kv dt { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding-top: 6px; }
+.kv dd { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; min-width: 0; }
+.metric { max-width: 100%; }
+.metric-value { overflow-wrap: anywhere; }
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.cards-grid .balancer-card { margin: 0; }
+.group-summary { margin: 0 4px 10px; font-size: 12px; font-weight: 700; }
+.source-chip.is-off { opacity: .55; text-decoration: line-through; }
+.node-card .node-head { align-items: flex-start; }
+.node-card .node-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.node-card .source-badge { margin-top: 1px; }
+.node-card .node-meta { white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   main { padding: 18px; }
   .nodes-grid { grid-template-columns: 1fr; }
   .subscription-card, .target-card { border-radius: 16px; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .kv dt { padding-top: 8px; }
+  .bal-group { padding: 8px; }
+  .bal-head { padding: 12px; gap: 10px; }
+  .cards-grid { grid-template-columns: 1fr; }
+  .subscription-card, .target-card { padding: 10px; }
 }
   </style>
 </head>
@@ -166,7 +192,7 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   aria-labelledby="instance-tab-0"
   tabindex="0"
 >
-  <div class="instance-head"><div><h2>local-main</h2><p>local · Updated 2026-08-15T10:00:00.000Z</p></div></div>
+  <div class="instance-head"><div><h2>local-main</h2><p>local · Updated <time datetime="2026-08-15T10:00:00.000Z">2026-08-15T10:00:00.000Z</time></p></div></div>
   <section class="subscription-card">
   <div class="subscription-head">
     <h2>sub-1</h2>
@@ -175,30 +201,34 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   <div class="target-head">
     <div>
       <h3>127.0.0.1:8080</h3>
-      <p>2 tunnel(s)</p>
+      <p>2 tunnels · 1 balancer</p>
     </div>
   </div>
-  <article class="balancer-card state-degraded">
-    <div class="node-orb" aria-hidden="true"></div>
-    <div class="node-main">
-      <div class="node-kicker">Balancer</div>
-      <div class="node-title">External SOCKS check</div>
-      <div class="node-metrics">
-        <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
-        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: &lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</span></span>
-        <span class="metric metric-remote-idle"><span class="metric-label">Remote Push</span><span class="metric-value">idle</span></span>
+  <section class="bal-group">
+    <header class="bal-head state-degraded">
+      <div class="node-orb" aria-hidden="true"></div>
+      <div class="node-main">
+        <div class="node-kicker">Balancer</div>
+        <div class="bal-title"><h4>x-balancer</h4></div>
+        <dl class="kv">
+          <dt>Check</dt><dd>
+            <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+            <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: &lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</span></span>
+            <span class="metric metric-remote-idle"><span class="metric-label">Remote Push</span><span class="metric-value">idle</span></span>
+          </dd>
+        </dl>
       </div>
-    </div>
-  </article>
-  <div class="nodes-grid">
-    <article class="node-card state-healthy">
+    </header>
+    <p class="group-summary">2 tunnels · 1 healthy · 1 degraded</p>
+    <div class="nodes-grid">
+      <article class="node-card state-healthy">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-head"><div class="node-title">&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</div></div>
-    <div class="node-meta">AT · 127.0.0.1:20000</div>
+    <div class="node-head"><div class="node-title" title="&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;">&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</div></div>
+    <div class="node-meta">AT · VLESS · 127.0.0.1:20000</div>
     <div class="node-metrics">
       <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
-      <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">42 ms</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">42 ms</span></span>
       <span class="metric metric-balancer-active"><span class="metric-label">Balancer</span><span class="metric-value">active</span></span>
     </div>
   </div>
@@ -206,16 +236,17 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 <article class="node-card state-degraded">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-head"><div class="node-title">Zulu</div></div>
-    <div class="node-meta">NL · 127.0.0.1:20001</div>
+    <div class="node-head"><div class="node-title" title="Zulu">Zulu</div></div>
+    <div class="node-meta">NL · VLESS · 127.0.0.1:20001</div>
     <div class="node-metrics">
       <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
-      <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: &lt;img src=x onerror=alert(1)&gt; &#34;quoted&#34; &amp; &#39;single&#39;</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: &lt;img src=x onerror=alert(1)&gt; &#34;quoted&#34; &amp; &#39;single&#39;</span></span>
       <span class="metric metric-balancer-active"><span class="metric-label">Balancer</span><span class="metric-value">active</span></span>
     </div>
   </div>
 </article>
-  </div>
+    </div>
+  </section>
 </section>
 </section>
 </section>
@@ -235,35 +266,40 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   <div class="target-head">
     <div>
       <h3>10.0.0.2:8080</h3>
-      <p>1 tunnel(s)</p>
+      <p>1 tunnel</p>
     </div>
   </div>
-  <article class="balancer-card state-healthy">
-    <div class="node-orb" aria-hidden="true"></div>
-    <div class="node-main">
-      <div class="node-kicker">Balancer</div>
-      <div class="node-title">External SOCKS check</div>
-      <div class="node-metrics">
-        <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
-        <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">-</span></span>
-        <span class="metric metric-remote-idle"><span class="metric-label">Remote Push</span><span class="metric-value">idle</span></span>
+  <section class="bal-group">
+    <header class="bal-head state-healthy">
+      <div class="node-orb" aria-hidden="true"></div>
+      <div class="node-main">
+        <div class="node-kicker">Balancer</div>
+        
+        <dl class="kv">
+          <dt>Check</dt><dd>
+            <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
+            <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">-</span></span>
+            <span class="metric metric-remote-idle"><span class="metric-label">Remote Push</span><span class="metric-value">idle</span></span>
+          </dd>
+        </dl>
       </div>
-    </div>
-  </article>
-  <div class="nodes-grid">
-    <article class="node-card state-healthy">
+    </header>
+    <p class="group-summary">1 tunnel · 1 healthy</p>
+    <div class="nodes-grid">
+      <article class="node-card state-healthy">
   <div class="node-orb" aria-hidden="true"></div>
   <div class="node-main">
-    <div class="node-head"><div class="node-title">&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</div></div>
-    <div class="node-meta">DE · 10.0.0.2:20000</div>
+    <div class="node-head"><div class="node-title" title="&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;">&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; &#39;q&#39;</div></div>
+    <div class="node-meta">DE · VLESS · 10.0.0.2:20000</div>
     <div class="node-metrics">
       <span class="metric metric-state-healthy"><span class="metric-label">State</span><span class="metric-value">healthy</span></span>
-      <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">64 ms</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">64 ms</span></span>
       <span class="metric metric-balancer-active"><span class="metric-label">Balancer</span><span class="metric-value">active</span></span>
     </div>
   </div>
 </article>
-  </div>
+    </div>
+  </section>
 </section>
 </section>
 </section>
@@ -303,6 +339,14 @@ p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
     });
   });
 })();
+// Times: the browser's time zone, the ISO value in the title.
+document.querySelectorAll('time[datetime]').forEach((el) => {
+  const d = new Date(el.getAttribute('datetime'));
+  if (Number.isNaN(d.getTime())) return;
+  const p = (n) => String(n).padStart(2, '0');
+  el.title = el.getAttribute('datetime');
+  el.textContent = `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+});
   </script>
 </body>
 </html>

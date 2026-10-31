@@ -139,7 +139,8 @@ func Tick(ctx context.Context, d Deps, sub config.SubscriptionConfig, b config.B
 // the namespaces of the enabled sources of sub with that balancer: an
 // override or principle targets outside them are foreign
 // (balancer_foreign_selection with selectedTag, the first, and selectedTags;
-// warn when the set of foreign tags is new, else debug); the return to the
+// warn at the start of the episode, debug inside it, also for another set
+// of tags); the return to the
 // sources' own outbounds logs balancer_foreign_selection_recovered. A
 // balancer without sources is never foreign; an empty selection changes
 // nothing (a flapping selection does not end and restart the episode).
@@ -171,8 +172,8 @@ func recordForeign(s *state.SelectionState, sub config.SubscriptionConfig, tag s
 	switch {
 	case len(foreign) > 0:
 		level := slog.LevelWarn
-		if slices.Equal(foreign, prev) {
-			level = slog.LevelDebug
+		if len(prev) > 0 {
+			level = slog.LevelDebug // inside the episode: a new set too
 		}
 		return []logEvent{{
 			level, "The balancer selects an outbound outside the namespaces of its sources.",

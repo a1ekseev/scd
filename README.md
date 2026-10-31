@@ -601,7 +601,7 @@ replacement, quarantine and hysteresis, secrets and status
 
 | Path | Content |
 |---|---|
-| `/`, `/status` (any other path) | HTML dashboard: instance tabs (local first), then subscription → target, balancer cards first, tunnel cards sorted by latency. |
+| `/`, `/status` (any other path) | HTML dashboard: instance tabs (local first), wgp cards, then subscription → target → balancer groups (see below). |
 | `/api/status` | `{tunnels, wgp?}` |
 | `/api/instance-status` | Local snapshot `{version: 1, instanceId, capturedAt, subscriptions, tunnels, …}`, which remote collectors poll. |
 | `/api/instances` | Local snapshot plus the last successful snapshot of each remote instance (`lastError` on failure). |
@@ -616,11 +616,52 @@ A target whose subscription has several sources, a `wireguard` or `masque` sourc
 source with a warning, gets `targets[].sources[]` =
 `{sourceId, type, enabled, maxActive?, activeCount?, candidateCount?, warnings?[]{code, message}}`
 in source id order, and its tunnels get `sourceId`; a WireGuard or MASQUE
-tunnel also has `protocol: "wireguard"` or `"masque"` (VLESS tunnels have no `protocol`). The dashboard then shows a
-Sources card with the warnings (for example `port_range_exhausted`) and a
-colored badge with the source id in the title of each tunnel card (the color
-follows the id). A subscription with one source and no
-warning has neither key, as before.
+tunnel also has `protocol: "wireguard"` or `"masque"` (VLESS tunnels have no
+`protocol`). A subscription with one source and no warning has neither key, as
+before.
+
+The dashboard shows each target as balancer groups (one group for a target
+without `targets[].balancers`, also for an older remote snapshot). A group head
+has the balancer tag and its source badges, then rows: **Source** per source
+(type and counts, `via <dialerProxy>`, `Depends on`, `Waiting for` with the
+time, `Recovering · replace paused until`, `Recovered · failures reset` for 10
+minutes after the end of a wait, `Error`, `Warning`), **Check** (the external
+check, `off` without a monitor) and **Selection** (what Xray selects). The orb
+of a group follows the balancer itself: healthy while it selects a live
+outbound and its check is not degraded; degraded otherwise, orange when every
+source of the group waits for a dependency; without balancer data it follows
+the sources. A summary line and the tunnel cards follow; the tunnels of a
+waiting source show `Replace paused · waiting for <id>` (while the dependency
+is unhealthy) or `Replace paused · until <time>` (in the pause) and come last; a
+tunnel with failed checks shows `Failures N in row`. Tunnel titles wrap to
+three lines (full name on hover), the meta line is `<country> · <protocol>
+<transport> · <endpoint>`, and the `Probe` pill is scd's own check (the
+`Observatory` pill is Xray's). Times are shown in the browser's time zone
+(ISO on hover, ISO without JavaScript).
+
+With the cascade keys a source view also has `balancer?`, `dialerProxy?`,
+`dependsOn?[]{sourceId, health, state, since?, recoveredAt?, graceUntil?}`
+(`state` is `healthy`, `unhealthy`, `not_applied` when the dependency was never
+applied to the target, or `unknown` before the first check, after a failed one
+and while the Xray API is unavailable; `recoveredAt`/`graceUntil` are the pause
+after a recovery), `resetAt?` (the end of the source's last wait, when the
+failed checks of its tunnels were reset) and `error?{code, message, at}`, the
+current failure of the source in sync (`fetch_failed` or
+`<type>_input_refused`, `manifest_invalid`, `apply_failed`,
+`orphan_remove_failed`, `balancer_not_found`, `routing_service_disabled`,
+`dialer_proxy_missing`, `dependency_not_applied`; `at` is the start of the
+episode). A source with `balancer` or `error` is listed even when it is the only
+VLESS source. A target with `target.balancers` or a source `balancer` gets
+`targets[].balancers[]{balancerTag, sourceIds, monitor?, selection?}`: one group
+per balancer of the sources (the sources without one in group `""`, a
+configured balancer without sources alone), or, when no source names a
+balancer, one group of `balancers[0]` with every source; ordered by the
+`dependsOn` depth of their deepest source (a group after the groups of its
+dependencies), then tag. `monitor` and `selection` are present when configured. The target's
+`balancerMonitor` is the first balancer with a monitor (else `balancers[0]`)
+and `balancerSelection` that of `balancers[0]`; the balancer fields of a tunnel
+follow the balancer of its source (else `balancers[0]`). Tunnels also have
+`transport` (`h2`/`h3`, MASQUE only) and `failuresInRow` (when > 0).
 
 Each enabled `wireguard` or `masque` source has its input directory checked
 for `status.json` (written by wgp) on every request to `/api/status`,
@@ -826,7 +867,8 @@ What is shown, per strategy:
   (`sources[].balancer`), an override or a principle target outside their
   tag namespaces (for example a selector wider than the sources) logs
   `balancer_foreign_selection` (warn, `selectedTag` and every foreign tag in
-  `selectedTags`; the same set again is debug, another set warns again) and
+  `selectedTags`; warn at the start of the episode, debug inside it, also
+  when the set changes) and
   `balancer_foreign_selection_recovered` (info) when the selection is the
   sources' own again. An empty selection changes nothing.
 

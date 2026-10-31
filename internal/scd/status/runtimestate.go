@@ -66,10 +66,11 @@ type rsConfig struct {
 	Resources    config.ResourceConfig           `json:"resources"`
 }
 
-// rsServiceState is the state of the first balancer of the target.
+// rsServiceState is the balancer state of the target: the monitor of its
+// first balancer with one, the selection of balancers[0].
 type rsServiceState struct {
-	// BalancerMonitor is set after a sync reached the target when
-	// target.balancers[0] has a monitor.
+	// BalancerMonitor is set after a sync reached the target when one of
+	// target.balancers has a monitor.
 	BalancerMonitor *rsBalancerMonitor `json:"balancerMonitor,omitempty"`
 	// BalancerSelection is set when the selection of target.balancers[0] is
 	// enabled (D22, 10 §6.6).
@@ -274,13 +275,13 @@ func BuildRuntimeState(ctx context.Context, d Deps, subscriptionID, targetAddres
 	}
 	if d.Memory != nil {
 		d.Memory.View(state.Key(subscriptionID, targetAddress), func(t *state.Target) {
-			b := firstBalancer(sub)
-			bal := balancerState(t, b)
-			if t.SyncSeen && b.Monitor != nil {
+			if mb := monitorBalancer(sub); t.SyncSeen && mb.Monitor != nil {
+				bal := balancerState(t, mb)
 				snap.ServiceState.BalancerMonitor = &rsBalancerMonitor{balancerView(&bal.Monitor), bal.Monitor.ConsecutiveFailures}
 			}
+			b := firstBalancer(sub)
 			if bs := enabledSelection(b); bs != nil {
-				snap.ServiceState.BalancerSelection = runtimeSelection(*bs, b.Tag, sub.Target.ObservatorySubjectSelectorPrefix, &bal.Selection, t.Tunnels)
+				snap.ServiceState.BalancerSelection = runtimeSelection(*bs, b.Tag, sub.Target.ObservatorySubjectSelectorPrefix, &balancerState(t, b).Selection, t.Tunnels)
 			}
 		})
 	}

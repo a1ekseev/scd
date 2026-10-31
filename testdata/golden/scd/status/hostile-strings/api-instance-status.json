@@ -54,7 +54,22 @@
             "lastCheckedAt": "2026-08-15T10:00:00.000Z",
             "lastFailureAt": "2026-08-15T10:00:00.000Z",
             "remotePingState": "idle"
-          }
+          },
+          "balancers": [
+            {
+              "balancerTag": "x-balancer",
+              "sourceIds": [
+                "vless"
+              ],
+              "monitor": {
+                "state": "degraded",
+                "lastError": "<script>alert(\"x\")</script> & 'q'",
+                "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                "remotePingState": "idle"
+              }
+            }
+          ]
         }
       ]
     }

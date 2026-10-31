@@ -32,7 +32,31 @@
                   "remotePingLastReportedStatus": "up",
                   "remotePingLastReportedMsg": "OK",
                   "remotePingLastReportedPingMs": 17
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "healthy",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 17,
+                      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 17,
+                      "remotePingState": "ok",
+                      "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                      "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                      "remotePingLastStatusCode": 200,
+                      "remotePingLastReportedStatus": "up",
+                      "remotePingLastReportedMsg": "OK",
+                      "remotePingLastReportedPingMs": 17
+                    }
+                  }
+                ]
               }
             ]
           }

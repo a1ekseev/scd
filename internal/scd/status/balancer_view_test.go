@@ -71,7 +71,7 @@ func TestFeatureOnJSONKeys(t *testing.T) {
 		t.Errorf("version %s", v)
 	}
 	target := index(t, field(t, index(t, field(t, body, "subscriptions"), 0), "targets"), 0)
-	if got, want := objectKeys(t, target), []string{"subscriptionId", "targetAddress", "tunnels", "balancerMonitor", "balancerSelection"}; !slices.Equal(got, want) {
+	if got, want := objectKeys(t, target), []string{"subscriptionId", "targetAddress", "tunnels", "balancerMonitor", "balancerSelection", "balancers"}; !slices.Equal(got, want) {
 		t.Errorf("target keys %v, want %v", got, want)
 	}
 	sel := field(t, target, "balancerSelection")
@@ -241,7 +241,7 @@ func TestParseRemoteAcceptsNewFields(t *testing.T) {
 	if err := RenderDashboard(&page, AggregatedView{Remotes: []RemoteView{{ID: "edge", Snapshot: &parsed}}}); err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, bodyOf(t, page.String()), "Xray selection · x-balancer", "pool (3) · random")
+	assertContains(t, bodyOf(t, page.String()), "<h4>x-balancer</h4>", "<dt>Selection</dt>", "pool (3) · random")
 
 	old, err := os.ReadFile(goldenDir + "old-remote-snapshot.json")
 	if err != nil {
@@ -262,15 +262,16 @@ func TestParseRemoteAcceptsNewFields(t *testing.T) {
 	}
 }
 
-// selectionCardHTML returns the HTML of the "Xray selection" card of body.
+// selectionCardHTML returns the HTML of the head of the first balancer
+// group of body with a Selection row.
 func selectionCardHTML(t *testing.T, body string) string {
 	t.Helper()
-	i := strings.Index(body, "Xray selection")
+	i := strings.Index(body, "<dt>Selection</dt>")
 	if i < 0 {
-		t.Fatal("no selection card")
+		t.Fatal("no selection row")
 	}
-	start := strings.LastIndex(body[:i], "<article")
-	end := strings.Index(body[i:], "</article>")
+	start := strings.LastIndex(body[:i], `<header class="bal-head`)
+	end := strings.Index(body[i:], "</header>")
 	return body[start : i+end]
 }
 
@@ -294,8 +295,8 @@ func TestDashboardSelectionCard(t *testing.T) {
 		nodes   map[string][]string
 	}{
 		{"selection-single", []string{
-			`class="balancer-card state-healthy"`, ">Xray selection · x-balancer<",
-			">Selected<", ">DE · 🇩🇪 Germany 1<", ">Latency<", ">42 ms<", ">Since<", ">2026-10-17T08:45:00.000Z<",
+			`class="bal-head state-healthy"`, "<h4>x-balancer</h4>",
+			">Selected<", ">DE · 🇩🇪 Germany 1<", ">Latency<", ">42 ms<", ">Since<", `<time datetime="2026-10-17T08:45:00.000Z">`,
 			">Observatory<", ">3/3 alive<",
 		}, map[string][]string{
 			"🇩🇪 Germany 1":     {`class="node-card state-healthy is-selected"`, `<span class="node-badge">Selected</span>`, ">alive · 42 ms<", "metric-observatory-alive"},
@@ -303,27 +304,27 @@ func TestDashboardSelectionCard(t *testing.T) {
 		}},
 		{
 			"selection-override",
-			[]string{`class="balancer-card state-healthy"`, ">override → x-observe-nl-1<", ">95 ms<"},
+			[]string{`class="bal-head state-healthy"`, ">override → x-observe-nl-1<", ">95 ms<"},
 			map[string][]string{"🇳🇱 Netherlands 1": {"is-selected", ">Selected<"}, "🇩🇪 Germany 1": {`class="node-card state-healthy"`}},
 		},
 		{
 			"selection-pool",
-			[]string{`class="balancer-card state-healthy"`, ">pool (3) · random<", ">Latency<", ">-<", ">2/3 alive<"},
+			[]string{`class="bal-head state-healthy"`, ">pool (3) · random<", ">Latency<", ">-<", ">2/3 alive<"},
 			map[string][]string{
 				"🇦🇹 Austria 1": {`<span class="node-badge">Pool</span>`, ">dead<", "metric-observatory-dead", `title="the outbound x-observe-at-1 is dead: GET request failed: context deadline exceeded"`},
 				"🇩🇪 Germany 1": {`<span class="node-badge">Pool</span>`, ">alive · 42 ms<"},
 			},
 		},
-		{"selection-none", []string{`class="balancer-card state-degraded"`, ">none (fallback/default outbound)<", ">0/3 alive<"}, nil},
+		{"selection-none", []string{`class="bal-head state-degraded"`, ">none (fallback/default outbound)<", ">0/3 alive<"}, nil},
 		{"selection-error", []string{
-			`class="balancer-card state-degraded"`, ">DE · 🇩🇪 Germany 1 (stale)<", ">Error<",
+			`class="bal-head state-degraded"`, ">DE · 🇩🇪 Germany 1 (stale)<", ">Error<",
 			">Request to Xray API at 127.0.0.1:8080 timed out after 5000ms.<", `class="metric metric-state-degraded"`,
 		}, nil},
 		{"selection-observatory-unavailable", []string{
-			`class="balancer-card state-healthy"`, ">DE · 🇩🇪 Germany 1<", ">unavailable<",
+			`class="bal-head state-healthy"`, ">DE · 🇩🇪 Germany 1<", ">unavailable<",
 			`title="Xray API service ObservatoryService is not enabled (add it to api.services)."`, "metric-observatory-na",
 		}, map[string][]string{"🇩🇪 Germany 1": {"is-selected", ">n/a<", "metric-observatory-na"}}},
-		{"selection-repaired", []string{`class="balancer-card state-healthy"`, ">1/2 alive<"}, map[string][]string{
+		{"selection-repaired", []string{`class="bal-head state-healthy"`, ">1/2 alive<"}, map[string][]string{
 			"🇳🇱 Netherlands 1": {`class="node-card state-degraded"`, ">n/a<", ">removed<"},
 			"🇦🇹 Austria 1":     {">awaiting<", "metric-observatory-awaiting"},
 		}},
@@ -336,9 +337,9 @@ func TestDashboardSelectionCard(t *testing.T) {
 			for name, want := range c.nodes {
 				assertContains(t, nodeCard(t, body, name), want...)
 			}
-			// The selection card follows the external SOCKS check and
+			// The Selection row follows the external check (Check) and
 			// precedes the tunnel grid (10 §6.7).
-			ext, sel, grid := strings.Index(body, "External SOCKS check"), strings.Index(body, "Xray selection"), strings.Index(body, `class="nodes-grid"`)
+			ext, sel, grid := strings.Index(body, "<dt>Check</dt>"), strings.Index(body, "<dt>Selection</dt>"), strings.Index(body, `class="nodes-grid"`)
 			if ext >= sel || sel >= grid {
 				t.Errorf("card order: external %d, selection %d, grid %d", ext, sel, grid)
 			}
@@ -346,7 +347,7 @@ func TestDashboardSelectionCard(t *testing.T) {
 	}
 
 	// Override to a tag outside the topology and a dead selected tunnel are
-	// degraded; never polled is idle.
+	// degraded; never polled leaves the group to its healthy check.
 	for _, c := range []struct {
 		fixture, want string
 		mutate        func(l loaded)
@@ -363,7 +364,7 @@ func TestDashboardSelectionCard(t *testing.T) {
 				s.Mode, s.SelectedTag = "single", "x-observe-at-1"
 			})
 		}},
-		{"selection-single", "state-idle", func(l loaded) {
+		{"selection-single", "state-healthy", func(l loaded) {
 			l.mem.Update("sub-1::127.0.0.1:8080", func(tg *state.Target) { tg.EnsureBalancer("x-balancer").Selection = state.SelectionState{} })
 		}},
 	} {
@@ -371,7 +372,7 @@ func TestDashboardSelectionCard(t *testing.T) {
 		c.mutate(l)
 		rec := get(t, NewHandler(l.deps()), "/")
 		card := selectionCardHTML(t, bodyOf(t, rec.Body.String()))
-		assertContains(t, card, `class="balancer-card `+c.want+`"`)
+		assertContains(t, card, `class="bal-head `+c.want+`"`)
 	}
 }
 
@@ -381,7 +382,7 @@ func TestDashboardFeatureOffNoMarkup(t *testing.T) {
 	for _, name := range fixtureNames(t) {
 		t.Run(name, func(t *testing.T) {
 			page := dashboard(t, name, "/")
-			assertNotContains(t, page, "Xray selection", "is-selected", "node-badge", "Observatory", "observatory")
+			assertNotContains(t, page, "<dt>Selection</dt>", "is-selected", "node-badge", "Observatory", "observatory")
 		})
 	}
 	// The selection CSS is only inlined when a target has a selection.
@@ -467,10 +468,10 @@ func TestSelectionBeforeSyncKeepsMonitorAbsent(t *testing.T) {
 	jsonEqual(t, decode(t, field(t, target, "balancerMonitor")), map[string]any{"state": "idle"})
 }
 
-// Until the status API lists every balancer, the target and tunnel views
-// show target.balancers[0]; runtime-state has its balancerMonitor only when
-// balancers[0] has a monitor.
-func TestStatusShowsFirstBalancer(t *testing.T) {
+// The target-level balancerMonitor is the first balancer with a monitor;
+// a tunnel shows the balancer of its source, else balancers[0]; the
+// runtime-state monitor is the target-level one.
+func TestStatusBalancerFields(t *testing.T) {
 	l := loadFixture(t, "healthy-single")
 	tg := &l.cfg.Config.Subscriptions[0].Target
 	tg.Balancers = []config.BalancerConfig{{Tag: "up-balancer"}, tg.Balancers[0]}
@@ -479,12 +480,16 @@ func TestStatusShowsFirstBalancer(t *testing.T) {
 	})
 	inst := json.RawMessage(get(t, NewHandler(l.deps()), "/api/instance-status").Body.Bytes())
 	target := index(t, field(t, index(t, field(t, inst, "subscriptions"), 0), "targets"), 0)
-	if got := decode(t, field(t, target, "balancerMonitor")).(map[string]any)["state"]; got != state.BalancerDegraded {
-		t.Errorf("target balancerMonitor.state %v, want the first balancer's", got)
+	if got := decode(t, field(t, target, "balancerMonitor")).(map[string]any)["state"]; got != state.BalancerHealthy {
+		t.Errorf("target balancerMonitor.state %v, want x-balancer's", got)
 	}
 	tunnel := index(t, field(t, inst, "tunnels"), 0)
 	if got := decode(t, field(t, tunnel, "balancerMonitorState")); got != state.BalancerDegraded {
-		t.Errorf("tunnel balancerMonitorState %v", got)
+		t.Errorf("tunnel balancerMonitorState %v, want balancers[0]'s", got)
+	}
+	groups := decode(t, field(t, target, "balancers")).([]any)
+	if len(groups) != 1 || groups[0].(map[string]any)["balancerTag"] != "up-balancer" {
+		t.Errorf("balancers %v", groups)
 	}
 
 	fake, _ := xrayfake.Start(t)
@@ -496,7 +501,7 @@ func TestStatusShowsFirstBalancer(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(body)
-	if strings.Contains(string(field(t, json.RawMessage(raw), "serviceState")), "balancerMonitor") {
-		t.Errorf("runtime-state has a balancerMonitor without balancers[0].monitor: %s", raw)
+	if got := decode(t, field(t, field(t, field(t, json.RawMessage(raw), "serviceState"), "balancerMonitor"), "state")); got != state.BalancerHealthy {
+		t.Errorf("runtime-state balancerMonitor %v", got)
 	}
 }

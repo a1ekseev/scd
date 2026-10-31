@@ -18,3 +18,5 @@
 .metric-observatory-alive .metric-label, .metric-observatory-dead .metric-label,
 .metric-observatory-awaiting .metric-label, .metric-observatory-na .metric-label { color: currentColor; opacity: .74; }
 .metric[title] { cursor: help; }
+
+.node-card .node-meta .node-badge { vertical-align: 0; }

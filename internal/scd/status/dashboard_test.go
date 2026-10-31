@@ -55,16 +55,16 @@ func TestDashboardCardsAndClasses(t *testing.T) {
 	body := bodyOf(t, page)
 	assertContains(t, page, "<title>Subscription Control Daemon Status</title>")
 	assertContains(t, body,
-		`class="balancer-card state-degraded"`, `class="node-card state-healthy"`,
+		`class="bal-head state-degraded"`, `class="node-card state-healthy"`,
 		">Last Check<", ">42 ms<", ">Remote Push<", ">failed down<",
 		`class="metric metric-state-healthy"`, `class="metric metric-state-degraded"`,
 		`class="metric metric-balancer-active"`)
 	assertNotContains(t, page, "HTTP 204", "Last success", "Remote Ping ok", "Kuma",
 		"Current runtime state (JSON)", "/api/runtime-state", "<table>",
 		`<link rel="stylesheet"`, "<script src=", "<link ")
-	b, n := strings.Index(body, "balancer-card"), strings.Index(body, "nodes-grid")
+	b, n := strings.Index(body, "bal-head"), strings.Index(body, "nodes-grid")
 	if b < 0 || n < 0 || b > n {
-		t.Errorf("balancer-card (%d) must precede nodes-grid (%d)", b, n)
+		t.Errorf("bal-head (%d) must precede nodes-grid (%d)", b, n)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestDashboardDegradedCurrentErrorAndBalancerRemoved(t *testing.T) {
 // 03 §10.4 item 3.
 func TestDashboardTargetWithoutTunnels(t *testing.T) {
 	body := bodyOf(t, dashboard(t, "balancer-only", "/"))
-	assertContains(t, body, "127.0.0.1:8080", `class="balancer-card state-healthy"`, "No tunnel data.",
+	assertContains(t, body, "127.0.0.1:8080", `class="bal-head state-healthy"`, "No tunnel data.",
 		">17 ms<", ">delivered up<", `class="metric metric-remote-up"`)
 	assertNotContains(t, body, "HTTP 204")
 }
@@ -192,8 +192,8 @@ func TestDashboardWithoutInstances(t *testing.T) {
 	assertNotContains(t, body, "instance-tabs", "instance-panel")
 }
 
-// A remote snapshot without balancer monitor or country renders with
-// the fallbacks idle and "-".
+// A remote snapshot without balancer monitor or country renders one group
+// with the fallback idle and no empty country.
 func TestDashboardRemoteFallbacks(t *testing.T) {
 	snap := &InstanceSnapshot{Subscriptions: []GroupedSubscription{{
 		SubscriptionID: "sub-r",
@@ -207,9 +207,10 @@ func TestDashboardRemoteFallbacks(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := bodyOf(t, buf.String())
-	assertContains(t, body, `class="balancer-card state-idle"`, `class="node-card state-idle"`,
+	assertContains(t, body, `class="bal-head state-idle"`, `class="node-card state-idle"`,
 		`class="metric metric-state-idle"><span class="metric-label">State</span><span class="metric-value">weird<`,
-		">- · 10.0.0.9:2<", "remote · Updated 2026-01-01T00:00:00.000Z", `class="metric metric-balancer-na"`)
+		">VLESS · 10.0.0.9:2<", `remote · Updated <time datetime="2026-01-01T00:00:00.000Z">`, `class="metric metric-balancer-na"`)
+	assertNotContains(t, body, "- · 10.0.0.9")
 }
 
 func TestDashboardHelpers(t *testing.T) {

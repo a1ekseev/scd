@@ -32,3 +32,11 @@
     });
   });
 })();
+// Times: the browser's time zone, the ISO value in the title.
+document.querySelectorAll('time[datetime]').forEach((el) => {
+  const d = new Date(el.getAttribute('datetime'));
+  if (Number.isNaN(d.getTime())) return;
+  const p = (n) => String(n).padStart(2, '0');
+  el.title = el.getAttribute('datetime');
+  el.textContent = `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+});

@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Control Daemon Status</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f2efe7;
+  --panel: #fffaf0;
+  --panel-strong: #fff4df;
+  --ink: #1f1a14;
+  --muted: #766b5c;
+  --line: #dfd3c0;
+  --healthy: #16864d;
+  --degraded: #c53931;
+  --repairing: #c27a12;
+  --idle: #8b8580;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(194, 122, 18, .16), transparent 32rem),
+    linear-gradient(135deg, #f8f5ed, var(--bg));
+}
+main { max-width: 1440px; margin: 0 auto; padding: 28px; }
+h1 { margin: 0 0 20px; font-size: clamp(28px, 4vw, 48px); letter-spacing: -.04em; }
+h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+h3 { margin: 0; font-size: 18px; }
+p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.subscription-card {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 250, 240, .78);
+  box-shadow: 0 18px 50px rgba(72, 55, 32, .08);
+  backdrop-filter: blur(14px);
+}
+.instance-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 0 20px;
+  padding: 4px 4px 10px;
+  scrollbar-width: thin;
+}
+.instance-tab {
+  flex: 0 0 auto;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 250, 240, .7);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.instance-tab:hover { background: var(--panel-strong); }
+.instance-tab:focus-visible { outline: 3px solid rgba(194, 122, 18, .35); outline-offset: 2px; }
+.instance-tab.is-active { border-color: #b86f08; color: #754604; background: var(--panel-strong); }
+.instance-panel { margin: 0 0 34px; outline: none; }
+.instance-panel[hidden] { display: none; }
+.instance-head { margin: 0 0 12px; padding: 0 4px; }
+.target-card {
+  margin: 14px 0 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, .82);
+}
+.subscription-head, .target-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
+.balancer-card, .node-card {
+  position: relative;
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffdf8, #fbf4e7);
+  box-shadow: 0 10px 24px rgba(72, 55, 32, .06);
+}
+.balancer-card { margin: 0 0 14px; padding: 16px; background: linear-gradient(135deg, var(--panel-strong), #fffdf8); }
+.nodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.node-card { padding: 14px; }
+.node-orb {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--idle);
+  box-shadow: 0 0 0 6px rgba(139, 133, 128, .14);
+}
+.state-healthy .node-orb { background: var(--healthy); box-shadow: 0 0 0 6px rgba(22, 134, 77, .14); }
+.state-degraded .node-orb { background: var(--degraded); box-shadow: 0 0 0 6px rgba(197, 57, 49, .14); }
+.state-repairing .node-orb { background: var(--repairing); box-shadow: 0 0 0 6px rgba(194, 122, 18, .18); }
+.node-main { min-width: 0; width: 100%; }
+.node-kicker { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; font-size: 15px; }
+.node-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.node-head { display: flex; align-items: center; gap: 8px; }
+.node-head .node-title { flex: 1; min-width: 0; }
+.source-badge { flex: none; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.metric.source-chip { padding: 6px 11px; }
+.source-chip .metric-label { color: currentColor; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.source-chip .metric-value { font-size: 13px; }
+.src-0 { background: #dbe7fb; color: #1c4f8f; }
+.src-1 { background: #ebe1fb; color: #5a2d97; }
+.src-2 { background: #d3efea; color: #0c5c53; }
+.src-3 { background: #fbdfe7; color: #8d1f48; }
+.src-4 { background: #e0e5ef; color: #2c3d57; }
+.src-5 { background: #f1e3d3; color: #6a3d12; }
+.src-6 { background: #d6eef7; color: #0b5570; }
+.node-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.metric { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 8px; border-radius: 999px; background: rgba(239, 230, 215, .8); }
+.metric-label { color: var(--muted); font-size: 11px; }
+.metric-value { font-size: 12px; font-weight: 750; }
+.metric-state-healthy, .metric-balancer-active, .metric-remote-up { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+.metric-state-degraded, .metric-balancer-removed, .metric-remote-down { background: rgba(197, 57, 49, .14); color: #8f241f; }
+.metric-state-repairing, .metric-remote-pending { background: rgba(194, 122, 18, .16); color: #8a5307; }
+.metric-state-idle, .metric-balancer-na, .metric-remote-idle { background: rgba(139, 133, 128, .14); color: #5f5a55; }
+.metric-state-healthy .metric-label, .metric-balancer-active .metric-label, .metric-remote-up .metric-label,
+.metric-state-degraded .metric-label, .metric-balancer-removed .metric-label, .metric-remote-down .metric-label,
+.metric-state-repairing .metric-label, .metric-remote-pending .metric-label,
+.metric-state-idle .metric-label, .metric-balancer-na .metric-label, .metric-remote-idle .metric-label { color: currentColor; opacity: .74; }
+.empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; }
+.bal-group { margin: 14px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 253, 248, .82); }
+.bal-head {
+  display: flex; gap: 13px; align-items: flex-start; margin: 0 0 12px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, var(--panel-strong), #fffdf8);
+}
+.bal-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bal-title h4 { margin: 0; font-size: 17px; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: baseline; margin: 12px 0 0; }
+.kv dt { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding-top: 6px; }
+.kv dd { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; min-width: 0; }
+.metric { max-width: 100%; }
+.metric-value { overflow-wrap: anywhere; }
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.cards-grid .balancer-card { margin: 0; }
+.group-summary { margin: 0 4px 10px; font-size: 12px; font-weight: 700; }
+.source-chip.is-off { opacity: .55; text-decoration: line-through; }
+.node-card .node-head { align-items: flex-start; }
+.node-card .node-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.node-card .source-badge { margin-top: 1px; }
+.node-card .node-meta { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  main { padding: 18px; }
+  .nodes-grid { grid-template-columns: 1fr; }
+  .subscription-card, .target-card { border-radius: 16px; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .kv dt { padding-top: 8px; }
+  .bal-group { padding: 8px; }
+  .bal-head { padding: 12px; gap: 10px; }
+  .cards-grid { grid-template-columns: 1fr; }
+  .subscription-card, .target-card { padding: 10px; }
+}
+.node-card.is-selected { border-color: rgba(22, 134, 77, .55); box-shadow: 0 0 0 2px rgba(22, 134, 77, .22), 0 10px 24px rgba(72, 55, 32, .06); }
+.node-badge {
+  display: inline-block;
+  margin: 0 6px 0 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(194, 122, 18, .16);
+  color: #8a5307;
+  font-size: 11px;
+  font-weight: 750;
+  vertical-align: 1px;
+}
+.is-selected .node-badge { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+.metric-observatory-alive { background: rgba(22, 134, 77, .14); color: #0f5f36; }
+.metric-observatory-dead { background: rgba(197, 57, 49, .14); color: #8f241f; }
+.metric-observatory-awaiting { background: rgba(194, 122, 18, .16); color: #8a5307; }
+.metric-observatory-na { background: rgba(139, 133, 128, .14); color: #5f5a55; }
+.metric-observatory-alive .metric-label, .metric-observatory-dead .metric-label,
+.metric-observatory-awaiting .metric-label, .metric-observatory-na .metric-label { color: currentColor; opacity: .74; }
+.metric[title] { cursor: help; }
+
+.node-card .node-meta .node-badge { vertical-align: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Subscription Control Daemon Status</h1>
+    <nav class="instance-tabs" role="tablist" aria-label="Instances"><button
+  type="button"
+  class="instance-tab is-active"
+  id="instance-tab-0"
+  role="tab"
+  aria-selected="true"
+  aria-controls="instance-panel-0"
+  tabindex="0"
+>router-ru-1</button></nav>
+    <section
+  class="instance-panel"
+  id="instance-panel-0"
+  role="tabpanel"
+  aria-labelledby="instance-tab-0"
+  tabindex="0"
+>
+  <div class="instance-head"><div><h2>router-ru-1</h2><p>local · Updated <time datetime="2026-10-31T08:30:00.000Z">2026-10-31T08:30:00.000Z</time></p></div></div>
+  <section class="subscription-card">
+  <div class="subscription-head">
+    <h2>main</h2>
+  </div>
+  <section class="target-card">
+  <div class="target-head">
+    <div>
+      <h3>127.0.0.1:10085</h3>
+      <p>7 tunnels · 3 balancers · 3 sources</p>
+    </div>
+  </div>
+  <section class="bal-group">
+    <header class="bal-head state-degraded">
+      <div class="node-orb" aria-hidden="true"></div>
+      <div class="node-main">
+        <div class="node-kicker">Balancer</div>
+        <div class="bal-title"><h4>x-balancer</h4><span class="source-badge src-4">vless</span></div>
+        <dl class="kv">
+          <dt>Source</dt><dd>
+            <span class="metric source-chip src-4"><span class="metric-label">vless</span><span class="metric-value">vless · 3 tunnels</span></span>
+          </dd>
+          <dt>Check</dt><dd>
+            <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+            <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: SOCKS5 proxy connect failed: i/o timeout.</span></span>
+            <span class="metric metric-remote-down"><span class="metric-label">Remote Push</span><span class="metric-value">delivered down</span></span>
+          </dd>
+          <dt>Selection</dt><dd>
+            <span class="metric"><span class="metric-label">Selected</span><span class="metric-value">none (fallback/default outbound)</span></span>
+            <span class="metric"><span class="metric-label">Latency</span><span class="metric-value">-</span></span>
+            <span class="metric"><span class="metric-label">Since</span><span class="metric-value">-</span></span>
+            <span class="metric metric-observatory-na"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+          </dd>
+        </dl>
+      </div>
+    </header>
+    <p class="group-summary">3 tunnels · 3 degraded</p>
+    <div class="nodes-grid">
+      <article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="🇩🇪 Frankfurt">🇩🇪 Frankfurt</div><span class="source-badge src-4">vless</span></div>
+    <div class="node-meta">DE · VLESS · 127.0.0.1:20001</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: SOCKS5 connect failed: connection refused.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">3 in row</span></span>
+    </div>
+  </div>
+</article>
+<article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="🇫🇮 Helsinki">🇫🇮 Helsinki</div><span class="source-badge src-4">vless</span></div>
+    <div class="node-meta">FI · VLESS · 127.0.0.1:20002</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: SOCKS5 connect failed: connection refused.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">3 in row</span></span>
+    </div>
+  </div>
+</article>
+<article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="🇳🇱 Amsterdam">🇳🇱 Amsterdam</div><span class="source-badge src-4">vless</span></div>
+    <div class="node-meta">NL · VLESS · 127.0.0.1:20000</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: SOCKS5 connect failed: connection refused.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">3 in row</span></span>
+    </div>
+  </div>
+</article>
+    </div>
+  </section>
+  <section class="bal-group">
+    <header class="bal-head state-repairing">
+      <div class="node-orb" aria-hidden="true"></div>
+      <div class="node-main">
+        <div class="node-kicker">Balancer</div>
+        <div class="bal-title"><h4>x-proton-balancer</h4><span class="source-badge src-2">proton</span></div>
+        <dl class="kv">
+          <dt>Source</dt><dd>
+            <span class="metric source-chip src-2"><span class="metric-label">proton</span><span class="metric-value">wireguard · 2/2 active of 5</span></span>
+            <span class="metric" title="sockopt.dialerProxy: the outbounds of proton dial through this outbound"><span class="metric-label">via</span><span class="metric-value">chain-blanc</span></span>
+            <span class="metric metric-state-repairing" title="health: balancer — the balancer of vless selects an outbound (GetBalancerInfo). Its tunnels are only repaired, not replaced."><span class="metric-label">Waiting for</span><span class="metric-value">vless · balancer down since <time datetime="2026-10-31T08:26:10.000Z">2026-10-31T08:26:10.000Z</time></span></span>
+          </dd>
+          <dt>Check</dt><dd>
+            <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+            <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: SOCKS5 proxy connect failed: i/o timeout.</span></span>
+            <span class="metric metric-remote-down"><span class="metric-label">Remote Push</span><span class="metric-value">delivered down</span></span>
+          </dd>
+          <dt>Selection</dt><dd>
+            <span class="metric"><span class="metric-label">Selected</span><span class="metric-value">none (fallback/default outbound)</span></span>
+            <span class="metric"><span class="metric-label">Latency</span><span class="metric-value">-</span></span>
+            <span class="metric"><span class="metric-label">Since</span><span class="metric-value">-</span></span>
+            <span class="metric metric-observatory-na"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+          </dd>
+        </dl>
+      </div>
+    </header>
+    <p class="group-summary">2 tunnels · 2 degraded</p>
+    <div class="nodes-grid">
+      <article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="🇩🇪 Frankfurt · DE-FREE#33">🇩🇪 Frankfurt · DE-FREE#33</div><span class="source-badge src-2">proton</span></div>
+    <div class="node-meta">DE · WireGuard · 127.0.0.1:21201</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: Handshake did not complete after 5 seconds.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">4 in row</span></span>
+      <span class="metric metric-state-repairing"><span class="metric-label">Replace paused</span><span class="metric-value">waiting for vless</span></span>
+    </div>
+  </div>
+</article>
+<article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="🇳🇱 Amsterdam · NL-FREE#214">🇳🇱 Amsterdam · NL-FREE#214</div><span class="source-badge src-2">proton</span></div>
+    <div class="node-meta">NL · WireGuard · 127.0.0.1:21200</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: Handshake did not complete after 5 seconds.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">4 in row</span></span>
+      <span class="metric metric-state-repairing"><span class="metric-label">Replace paused</span><span class="metric-value">waiting for vless</span></span>
+    </div>
+  </div>
+</article>
+    </div>
+  </section>
+  <section class="bal-group">
+    <header class="bal-head state-repairing">
+      <div class="node-orb" aria-hidden="true"></div>
+      <div class="node-main">
+        <div class="node-kicker">Balancer</div>
+        <div class="bal-title"><h4>x-warp-balancer</h4><span class="source-badge src-1">warp</span></div>
+        <dl class="kv">
+          <dt>Source</dt><dd>
+            <span class="metric source-chip src-1"><span class="metric-label">warp</span><span class="metric-value">masque · 2/2 active of 3</span></span>
+            <span class="metric" title="sockopt.dialerProxy: the outbounds of warp dial through this outbound"><span class="metric-label">via</span><span class="metric-value">chain-blanc</span></span>
+            <span class="metric metric-state-repairing" title="health: balancer — the balancer of vless selects an outbound (GetBalancerInfo). Its tunnels are only repaired, not replaced."><span class="metric-label">Waiting for</span><span class="metric-value">vless · balancer down since <time datetime="2026-10-31T08:26:10.000Z">2026-10-31T08:26:10.000Z</time></span></span>
+          </dd>
+          <dt>Check</dt><dd>
+            <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+            <span class="metric"><span class="metric-label">Last Check</span><span class="metric-value">Error: SOCKS5 proxy connect failed: i/o timeout.</span></span>
+            <span class="metric metric-remote-down"><span class="metric-label">Remote Push</span><span class="metric-value">delivered down</span></span>
+          </dd>
+          <dt>Selection</dt><dd>
+            <span class="metric"><span class="metric-label">Selected</span><span class="metric-value">none (fallback/default outbound)</span></span>
+            <span class="metric"><span class="metric-label">Latency</span><span class="metric-value">-</span></span>
+            <span class="metric"><span class="metric-label">Since</span><span class="metric-value">-</span></span>
+            <span class="metric metric-observatory-na"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+          </dd>
+        </dl>
+      </div>
+    </header>
+    <p class="group-summary">2 tunnels · 2 degraded</p>
+    <div class="nodes-grid">
+      <article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="☁️ WARP #1">☁️ WARP #1</div><span class="source-badge src-1">warp</span></div>
+    <div class="node-meta">MASQUE h3 · 127.0.0.1:21100</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: SOCKS5 connect failed: connection refused.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">4 in row</span></span>
+      <span class="metric metric-state-repairing"><span class="metric-label">Replace paused</span><span class="metric-value">waiting for vless</span></span>
+    </div>
+  </div>
+</article>
+<article class="node-card state-degraded">
+  <div class="node-orb" aria-hidden="true"></div>
+  <div class="node-main">
+    <div class="node-head"><div class="node-title" title="☁️ WARP #2">☁️ WARP #2</div><span class="source-badge src-1">warp</span></div>
+    <div class="node-meta">MASQUE h2 · 127.0.0.1:21101</div>
+    <div class="node-metrics">
+      <span class="metric metric-state-degraded"><span class="metric-label">State</span><span class="metric-value">degraded</span></span>
+      <span class="metric" title="scd probe: request to the response headers through the tunnel&#39;s SOCKS inbound"><span class="metric-label">Probe</span><span class="metric-value">Error: SOCKS5 connect failed: connection refused.</span></span>
+      <span class="metric metric-balancer-removed"><span class="metric-label">Balancer</span><span class="metric-value">removed</span></span>
+      <span class="metric metric-observatory-na" title="Xray observatory: its own probe of the outbound"><span class="metric-label">Observatory</span><span class="metric-value">n/a</span></span>
+      <span class="metric"><span class="metric-label">Failures</span><span class="metric-value">4 in row</span></span>
+      <span class="metric metric-state-repairing"><span class="metric-label">Replace paused</span><span class="metric-value">waiting for vless</span></span>
+    </div>
+  </div>
+</article>
+    </div>
+  </section>
+</section>
+</section>
+</section>
+  </main>
+  <script>
+(() => {
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+
+  const activate = (nextTab, moveFocus) => {
+    const selectedIndex = tabs.indexOf(nextTab);
+    if (selectedIndex < 0) return;
+
+    tabs.forEach((tab, index) => {
+      const selected = index === selectedIndex;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels[index].hidden = !selected;
+    });
+
+    if (moveFocus) nextTab.focus();
+  };
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activate(tab, false));
+    tab.addEventListener('keydown', (event) => {
+      let nextIndex;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      if (nextIndex === undefined) return;
+
+      event.preventDefault();
+      activate(tabs[nextIndex], true);
+    });
+  });
+})();
+// Times: the browser's time zone, the ISO value in the title.
+document.querySelectorAll('time[datetime]').forEach((el) => {
+  const d = new Date(el.getAttribute('datetime'));
+  if (Number.isNaN(d.getTime())) return;
+  const p = (n) => String(n).padStart(2, '0');
+  el.title = el.getAttribute('datetime');
+  el.textContent = `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+});
+  </script>
+</body>
+</html>

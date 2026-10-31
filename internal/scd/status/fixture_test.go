@@ -53,6 +53,11 @@ type fixture struct {
 				// WGPDir extends the contract (wgp-*): the source input is
 				// <tmp>/<wgpDir>/<id>, next to the status.json of wgp[wgpDir].
 				WGPDir string `json:"wgpDir"`
+				// Balancer, DialerProxy and DependsOn are the cascade keys
+				// (chain-*).
+				Balancer    string                    `json:"balancer"`
+				DialerProxy string                    `json:"dialerProxy"`
+				DependsOn   []config.DependencyConfig `json:"dependsOn"`
 			} `json:"sources"`
 		} `json:"subscriptions"`
 		RemoteInstances []struct {
@@ -71,7 +76,25 @@ type fixture struct {
 			Monitor   *fixtureBalancer  `json:"monitor"`
 			Selection *fixtureSelection `json:"selection"`
 		} `json:"balancers"`
-		// Sources are the source warnings (sources-*).
+		// XrayDown marks the Xray API of the target unavailable (chain-*).
+		XrayDown bool `json:"xrayDown"`
+		// Waits is the dependency wait of each source (chain-*).
+		Waits map[string]struct {
+			Since   *time.Time `json:"since"`
+			ResetAt *time.Time `json:"resetAt"`
+			Deps    map[string]struct {
+				State                          string
+				Since, RecoveredAt, GraceUntil *time.Time
+			} `json:"deps"`
+		} `json:"waits"`
+		// SourceErrors is the current failure of each source (chain-*).
+		SourceErrors map[string]struct {
+			Code    string    `json:"code"`
+			Message string    `json:"message"`
+			At      time.Time `json:"at"`
+		} `json:"sourceErrors"`
+		// Sources are the applied sources with their warnings; a source
+		// listed here without tunnels is applied with an empty topology.
 		Sources []struct {
 			SourceID       string              `json:"sourceId"`
 			Warnings       []normalize.Warning `json:"warnings"`
@@ -81,7 +104,10 @@ type fixture struct {
 		} `json:"sources"`
 		Tunnels []struct {
 			// SourceID is the source (sources-*); "" = "vless".
-			SourceID                 string         `json:"sourceId"`
+			SourceID string `json:"sourceId"`
+			// Protocol and Transport are the candidate tunnel fields (chain-*).
+			Protocol                 string         `json:"protocol"`
+			Transport                string         `json:"transport"`
 			BaseTunnelID             string         `json:"baseTunnelId"`
 			DisplayName              string         `json:"displayName"`
 			CountryISO2              string         `json:"countryIso2"`
@@ -110,9 +136,9 @@ type fixtureMonitor struct {
 	LastSuccessStatusCode, LastSuccessLatencyMs *int
 	LastError                                   string
 	ConsecutiveFailures                         int
-	// FailuresInRow and the rest are not in the API; the fixtures never set
-	// them.
-	FailuresInRow   int             `json:"-"`
+	// FailuresInRow is in the API (failuresInRow); the rest are not and the
+	// fixtures never set them.
+	FailuresInRow   int             `json:"failuresInRow"`
 	FailingSince    *time.Time      `json:"-"`
 	LastRepairError string          `json:"-"`
 	LastRejoinError string          `json:"-"`
@@ -211,12 +237,17 @@ const sourcesPrefix = "sources-"
 // wgpPrefix names the fixtures with wgp status files.
 const wgpPrefix = "wgp-"
 
+// chainPrefix names the cascade fixtures (balancer groups, dependencies,
+// source errors).
+const chainPrefix = "chain-"
+
 // fixtureNames lists the base fixtures: no balancer selection, no several
-// sources and no wgp block.
+// sources, no wgp block and no cascade.
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
 	return globFixtures(t, func(name string) bool {
-		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix) && !strings.HasPrefix(name, wgpPrefix)
+		return !strings.HasPrefix(name, selectionPrefix) && !strings.HasPrefix(name, sourcesPrefix) &&
+			!strings.HasPrefix(name, wgpPrefix) && !strings.HasPrefix(name, chainPrefix)
 	})
 }
 
@@ -286,6 +317,7 @@ func loadFixture(t *testing.T, name string) loaded {
 					src.Input = filepath.Join(wgpRoot, fs.WGPDir, fs.ID)
 				}
 				src.ID, src.Type, src.Enabled, src.MaxActive = fs.ID, fs.Type, fs.Enabled, fs.MaxActive
+				src.Balancer, src.DialerProxy, src.DependsOn = fs.Balancer, fs.DialerProxy, fs.DependsOn
 				sources = append(sources, src)
 			}
 		}
@@ -320,6 +352,7 @@ func loadFixture(t *testing.T, name string) loaded {
 			monitors[tn.OutboundTagInitial] = state.TunnelMonitor(tn.Monitor)
 			topos[id].Tunnels = append(topos[id].Tunnels, topology.Tunnel{
 				BaseTunnelID: tn.BaseTunnelID, DisplayName: tn.DisplayName, CountryISO2: tn.CountryISO2,
+				SourceID: id, Protocol: tn.Protocol, Transport: tn.Transport,
 				BaseOutboundTag:    tn.OutboundWithoutPrefixTag,
 				OutboundTagInitial: tn.OutboundTagInitial, OutboundTagCurrent: tn.OutboundTagCurrent,
 				InboundTag: "in-" + tn.BaseTunnelID, RouteTag: "route-" + tn.BaseTunnelID,
@@ -327,6 +360,11 @@ func loadFixture(t *testing.T, name string) loaded {
 				OutboundInitial:       topology.PreparedOutbound{Tag: tn.OutboundTagInitial},
 				OutboundWithoutPrefix: topology.PreparedOutbound{Tag: tn.OutboundWithoutPrefixTag},
 			})
+		}
+		for _, s := range tg.Sources {
+			if topos[s.SourceID] == nil {
+				topos[s.SourceID] = &topology.Topology{}
+			}
 		}
 		if len(topos) == 0 {
 			topos["vless"] = &topology.Topology{}
@@ -346,6 +384,19 @@ func loadFixture(t *testing.T, name string) loaded {
 			}
 			for _, tn := range st.Tunnels {
 				tn.Monitor = monitors[tn.Mapping.OutboundTagInitial]
+			}
+			if tg.XrayDown {
+				st.XrayDown = &state.XrayIssue{Error: "unavailable", Since: f.Now}
+			}
+			for id, w := range tg.Waits {
+				sw := st.EnsureWait(id)
+				sw.Since, sw.ResetAt = w.Since, w.ResetAt
+				for dep, h := range w.Deps {
+					sw.Deps[dep] = &state.DepHealth{State: h.State, Since: h.Since, RecoveredAt: h.RecoveredAt, GraceUntil: h.GraceUntil}
+				}
+			}
+			for id, e := range tg.SourceErrors {
+				st.SetSourceError(id, e.Code, e.Message, e.At)
 			}
 			for _, s := range tg.Sources {
 				src := st.Sources[s.SourceID]

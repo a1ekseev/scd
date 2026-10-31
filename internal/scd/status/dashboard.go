@@ -5,6 +5,7 @@ import (
 	"embed"
 	"html/template"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,12 +28,10 @@ var dashboardTemplate = template.Must(template.New("dashboard.html.tmpl").Funcs(
 	"formatRemotePushStatus": formatRemotePushStatus,
 	"metricClass":            metricClass,
 	"metric":                 func(label, value string) metricView { return metricView{Label: label, Value: value} },
-	"selectionCard":          selectionCard,
-	"sourcesCard":            sourcesCard,
-	"tunnelCards":            tunnelCards,
+	"targetCard":             targetCard,
+	"failures":               func(n int) string { return strconv.Itoa(n) + " in row" },
 	"wgpCards":               wgpCards,
 	"orIdle":                 func(s string) string { return cmp.Or(s, state.BalancerIdle) },
-	"orDash":                 func(s string) string { return cmp.Or(s, "-") },
 	"sourceColor":            sourceColor,
 }).ParseFS(web, "web/dashboard.html.tmpl"))
 
@@ -61,19 +60,23 @@ type dashboardData struct {
 }
 
 // instanceView is one instance tab: the local instance first, then the
-// remotes. Snapshot is shared with the aggregator and only read.
+// remotes. Snapshot is shared with the aggregator and only read. UpdatedAt
+// is the time of the "Updated" line, else Freshness is the line.
 type instanceView struct {
-	ID, Source, Freshness string
-	Snapshot              *InstanceSnapshot
+	ID, Source, Freshness, UpdatedAt string
+	Snapshot                         *InstanceSnapshot
 }
 
 // metricView is one metric pill; Title, when set, becomes its tooltip;
-// Class, when set, is an extra CSS class with a leading space.
-type metricView struct{ Label, Value, Title, Class string }
+// Class, when set, is an extra CSS class with a leading space. The value is
+// Value, then Time as a <time> element (shown in the browser's time zone by
+// dashboard.js, ISO without JS), then After.
+type metricView struct{ Label, Value, Title, Class, Time, After string }
 
 // RenderDashboard writes the HTML status dashboard of agg (03 §6.6): one
 // tab per instance (the local one, if stored, first and active), each with
-// its subscription → target → balancer-first cards. CSS and JS are inlined;
+// its subscription → target → balancer groups (head with the sources, the
+// external check and the Xray selection, then the tunnels). CSS and JS are inlined;
 // the page has no external resources. The snapshots of agg are not
 // modified.
 func RenderDashboard(w io.Writer, agg AggregatedView) error {
@@ -85,13 +88,15 @@ func RenderDashboard(w io.Writer, agg AggregatedView) error {
 	if agg.Local.CapturedAt != "" {
 		local := agg.Local
 		data.Instances = append(data.Instances, instanceView{
-			ID: local.InstanceID, Source: "local", Freshness: freshness("", local.CapturedAt), Snapshot: &local,
+			ID: local.InstanceID, Source: "local", UpdatedAt: local.CapturedAt, Snapshot: &local,
 		})
 	}
 	for _, r := range agg.Remotes {
-		data.Instances = append(data.Instances, instanceView{
-			ID: r.ID, Source: "remote", Freshness: freshness(r.LastError, r.LastSuccessAt), Snapshot: r.Snapshot,
-		})
+		in := instanceView{ID: r.ID, Source: "remote", Freshness: freshness(r.LastError, ""), Snapshot: r.Snapshot}
+		if r.LastError == "" {
+			in.UpdatedAt = r.LastSuccessAt
+		}
+		data.Instances = append(data.Instances, in)
 	}
 	return dashboardTemplate.Execute(w, data)
 }
@@ -197,7 +202,7 @@ func metricClass(label, value string) string {
 		}
 	case "Error":
 		return " metric-state-degraded"
-	case "Warning":
+	case "Warning", "Replace paused":
 		return " metric-state-repairing"
 	case "Remote Push":
 		switch {
@@ -227,7 +232,7 @@ func hasSelection(agg AggregatedView) bool {
 		}
 		for _, sub := range s.Subscriptions {
 			for _, t := range sub.Targets {
-				if t.BalancerSelection != nil {
+				if t.BalancerSelection != nil || slices.ContainsFunc(t.Balancers, func(g BalancerGroupView) bool { return g.Selection != nil }) {
 					return true
 				}
 			}
@@ -244,24 +249,25 @@ type selectionCardView struct {
 	Metrics     []metricView
 }
 
-// selectionCard is the selection card of t, nil without a selection.
-func selectionCard(t GroupedStatusTarget) *selectionCardView {
-	v := t.BalancerSelection
-	if v == nil {
-		return nil
-	}
+// selectionCard is the Selection row of a group with selection v over its
+// tunnels.
+func selectionCard(v *BalancerSelectionView, tunnels []StatusTunnel) *selectionCardView {
 	latency := "-"
 	if v.SelectedDelayMs != nil {
 		latency = strconv.FormatInt(*v.SelectedDelayMs, 10) + " ms"
 	}
-	obs, obsTitle := observatorySummary(v, t.Tunnels)
+	obs, obsTitle := observatorySummary(v, tunnels)
+	since := metricView{Label: "Since", Value: "-"}
+	if v.SelectedSince != "" {
+		since = metricView{Label: "Since", Time: v.SelectedSince}
+	}
 	c := &selectionCardView{
-		Class:       selectionClass(v, t.Tunnels),
+		Class:       selectionClass(v, tunnels),
 		BalancerTag: v.BalancerTag,
 		Metrics: []metricView{
 			{Label: "Selected", Value: selectedText(v)},
 			{Label: "Latency", Value: latency},
-			{Label: "Since", Value: cmp.Or(v.SelectedSince, "-")},
+			since,
 			{Label: "Observatory", Value: obs, Title: obsTitle},
 		},
 	}
@@ -283,7 +289,10 @@ func selectedText(v *BalancerSelectionView) string {
 	case state.ModeSingle:
 		s = v.SelectedOutboundTag
 		if v.SelectedTunnelID != "" {
-			s = cmp.Or(v.SelectedCountryISO2, "-") + " · " + v.SelectedDisplayName
+			s = v.SelectedDisplayName
+			if v.SelectedCountryISO2 != "" {
+				s = v.SelectedCountryISO2 + " · " + s
+			}
 		}
 	case state.ModePool:
 		s = "pool (" + strconv.Itoa(len(v.PrincipleTargets)) + ")"
@@ -352,40 +361,6 @@ func selectionClass(v *BalancerSelectionView, tunnels []StatusTunnel) string {
 	return state.TunnelHealthy
 }
 
-// sourcesCardView is the "Sources" card of a target with sources.
-type sourcesCardView struct {
-	// Class is repairing with a source warning, else idle.
-	Class   string
-	Title   string
-	Metrics []metricView
-}
-
-// sourcesCard is the sources card of t, nil without sources: a metric per
-// source ("<id>": "<type>", "· <active>/<maxActive> active of
-// <candidates>" for wireguard, "· disabled" when off), followed by its
-// warnings (the code as tooltip).
-func sourcesCard(t GroupedStatusTarget) *sourcesCardView {
-	if len(t.Sources) == 0 {
-		return nil
-	}
-	c := &sourcesCardView{Class: state.TunnelIdle, Title: strconv.Itoa(len(t.Sources)) + " source(s)"}
-	for _, s := range t.Sources {
-		v := s.Type
-		if s.MaxActive > 0 {
-			v += " · " + strconv.Itoa(s.ActiveCount) + "/" + strconv.Itoa(s.MaxActive) + " active of " + strconv.Itoa(s.CandidateCount)
-		}
-		if !s.Enabled {
-			v += " · disabled"
-		}
-		c.Metrics = append(c.Metrics, metricView{Label: s.SourceID, Value: v, Class: " source-chip " + sourceColor(s.SourceID)})
-		for _, w := range s.Warnings {
-			c.Class = state.TunnelRepairing
-			c.Metrics = append(c.Metrics, metricView{Label: "Warning", Value: w.Message, Title: s.SourceID + ": " + w.Code})
-		}
-	}
-	return c
-}
-
 // sourceColors is the number of source colors (src-0 … in the CSS).
 const sourceColors = 7
 
@@ -399,39 +374,38 @@ func sourceColor(id string) string {
 	return "src-" + strconv.Itoa(n%sourceColors)
 }
 
-// tunnelCard is a tunnel of the dashboard with its balancer selection
-// decoration (only when the target has a polled selection).
+// tunnelCard is a tunnel of the dashboard: its title, meta line and
+// pills, with the selection decoration of its group (only when the group
+// has a polled selection).
 type tunnelCard struct {
 	StatusTunnel
+	Meta        string
 	Selected    bool
 	Badge       string
+	Probe       metricView
 	Observatory *metricView
+	// Paused is the Replace paused pill of a tunnel of a waiting source.
+	Paused *metricView
 }
 
-// tunnelCards returns the tunnels of t in order with their selection badge
-// (Selected, or Pool for a candidate in pool mode) and Observatory metric.
-func tunnelCards(t GroupedStatusTarget) []tunnelCard {
-	cards := make([]tunnelCard, 0, len(t.Tunnels))
-	for _, tn := range t.Tunnels {
-		c := tunnelCard{StatusTunnel: tn}
-		if v := t.BalancerSelection; v != nil && tn.ObservatoryStatus != "" {
+// tunnelCards returns tunnels in order with their meta line, Probe pill and,
+// with selection sel, their Selected or Pool badge and Observatory pill.
+func tunnelCards(sel *BalancerSelectionView, tunnels []StatusTunnel) []tunnelCard {
+	cards := make([]tunnelCard, 0, len(tunnels))
+	for _, tn := range tunnels {
+		c := tunnelCard{
+			StatusTunnel: tn, Meta: tunnelMeta(tn),
+			Probe: metricView{Label: "Probe", Value: formatLastCheck(tn.LastLatencyMs, tn.LastError), Title: probeTitle},
+		}
+		if sel != nil && tn.ObservatoryStatus != "" {
 			c.Selected = tn.BalancerSelected != nil && *tn.BalancerSelected
 			switch {
 			case c.Selected:
 				c.Badge = "Selected"
-			case state.Mode(v.Mode) == state.ModePool && tn.BalancerCandidate != nil && *tn.BalancerCandidate:
+			case state.Mode(sel.Mode) == state.ModePool && tn.BalancerCandidate != nil && *tn.BalancerCandidate:
 				c.Badge = "Pool"
 			}
-			m := metricView{Label: "Observatory", Value: tn.ObservatoryStatus}
-			switch tn.ObservatoryStatus {
-			case balancer.ObservatoryAlive:
-				if tn.ObservatoryDelayMs != nil {
-					m.Value += " · " + strconv.FormatInt(*tn.ObservatoryDelayMs, 10) + " ms"
-				}
-			case balancer.ObservatoryDead:
-				m.Title = tn.ObservatoryLastError
-			}
-			c.Observatory = &m
+			c.Observatory = new(observatoryMetric(tn))
 		}
 		cards = append(cards, c)
 	}

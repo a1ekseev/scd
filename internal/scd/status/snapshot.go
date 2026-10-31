@@ -102,6 +102,10 @@ type StatusTunnel struct {
 	// Protocol is the tunnel protocol, set only when it is not VLESS
 	// ("wireguard").
 	Protocol string `json:"protocol,omitempty"`
+	// Transport is h2 or h3, set only for masque.
+	Transport string `json:"transport,omitempty"`
+	// FailuresInRow is the number of failed checks in a row, set when > 0.
+	FailuresInRow int `json:"failuresInRow,omitempty"`
 }
 
 // SourceView is one source of a grouped target, in source id order.
@@ -116,6 +120,49 @@ type SourceView struct {
 	CandidateCount int `json:"candidateCount,omitempty"`
 	// Warnings are the source-level warnings of its last successful sync.
 	Warnings []normalize.Warning `json:"warnings,omitempty"`
+	// Balancer and DialerProxy are the source's config keys.
+	Balancer    string `json:"balancer,omitempty"`
+	DialerProxy string `json:"dialerProxy,omitempty"`
+	// DependsOn are the direct dependencies with their health.
+	DependsOn []DependencyView `json:"dependsOn,omitempty"`
+	// ResetAt is the end of the source's last dependency wait (its
+	// tunnels' failed checks were reset then).
+	ResetAt string `json:"resetAt,omitempty"`
+	// Error is the current failure of the source in sync.
+	Error *SourceErrorView `json:"error,omitempty"`
+}
+
+// DependencyView is one dependsOn entry of a source.
+type DependencyView struct {
+	SourceID string `json:"sourceId"`
+	Health   string `json:"health"`
+	// State is healthy, unhealthy, not_applied (the dependency has never
+	// been applied to the target) or unknown (not checked yet, the check
+	// failed, or the Xray API is unavailable).
+	State string `json:"state"`
+	// Since is when State was entered; RecoveredAt and GraceUntil are the
+	// start and end of the pause after the dependency recovered in a wait.
+	Since       string `json:"since,omitempty"`
+	RecoveredAt string `json:"recoveredAt,omitempty"`
+	GraceUntil  string `json:"graceUntil,omitempty"`
+}
+
+// SourceErrorView is the current failure of a source: its code, redacted
+// message and the start of the episode.
+type SourceErrorView struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	At      string `json:"at"`
+}
+
+// BalancerGroupView is one balancer group of a target: a balancer tag
+// ("" for the sources without one), its sources and its monitor and
+// selection when they are configured.
+type BalancerGroupView struct {
+	BalancerTag string                 `json:"balancerTag"`
+	SourceIDs   []string               `json:"sourceIds"`
+	Monitor     *BalancerMonitorView   `json:"monitor,omitempty"`
+	Selection   *BalancerSelectionView `json:"selection,omitempty"`
 }
 
 // BalancerSelectionView is the balancer selection of a grouped target
@@ -186,6 +233,9 @@ type GroupedStatusTarget struct {
 	// Sources is nil (no key) for a subscription with one source and no
 	// source warning: the form of older snapshots.
 	Sources []SourceView `json:"sources,omitempty"`
+	// Balancers are the balancer groups in dashboard order, nil (no key)
+	// unless the target has balancers or a source names one.
+	Balancers []BalancerGroupView `json:"balancers,omitempty"`
 }
 
 // GroupedSubscription is a subscription with its targets, sorted by address.
@@ -264,8 +314,8 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 		}
 		m.View(key, func(t *state.Target) {
 			withSource := sourceViews(sub, t) != nil
-			bal := balancerState(t, firstBalancer(sub))
 			for _, tn := range t.Tunnels {
+				bal := balancerState(t, tunnelBalancer(sub, tn.Mapping.SourceID))
 				st := statusTunnel(subID, addr, tn, &bal.Monitor)
 				if bal.Selection.State != "" {
 					addSelection(&st, tn, &bal.Selection)
@@ -273,7 +323,8 @@ func BuildTunnels(m *state.Memory, cfg config.AppConfig) []StatusTunnel {
 				if withSource {
 					st.SourceID = tn.Mapping.SourceID
 				}
-				st.Protocol = tn.Mapping.Protocol
+				st.Protocol, st.Transport = tn.Mapping.Protocol, tn.Mapping.Transport
+				st.FailuresInRow = tn.Monitor.FailuresInRow
 				tunnels = append(tunnels, st)
 			}
 		})
@@ -315,14 +366,18 @@ func enabledSelection(b config.BalancerConfig) *config.BalancerSelectionConfig {
 }
 
 // sourceViews is the sources[] of target t (nil before any state) of sub:
-// every source of sub in id order with its warnings and, for wireguard and masque, its
-// counts; nil when sub has one VLESS source without warnings (the form of
-// older snapshots).
+// every source of sub in id order with its warnings, cascade keys,
+// dependencies and error and, for wireguard and masque, its counts; nil
+// when sub has one VLESS source without warnings, balancer or error (the
+// form of older snapshots).
 func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 	views := make([]SourceView, 0, len(sub.Sources))
 	shown := len(sub.Sources) > 1
 	for _, src := range sub.Sources {
-		v := SourceView{SourceID: src.ID, Type: src.Type, Enabled: src.Enabled, MaxActive: src.MaxActive}
+		v := SourceView{
+			SourceID: src.ID, Type: src.Type, Enabled: src.Enabled, MaxActive: src.MaxActive,
+			Balancer: src.Balancer, DialerProxy: src.DialerProxy,
+		}
 		if t != nil {
 			if s := t.Sources[src.ID]; s != nil {
 				v.Warnings = s.AllWarnings()
@@ -330,8 +385,15 @@ func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 					v.ActiveCount, v.CandidateCount = len(s.Topology.Tunnels), s.CandidateCount
 				}
 			}
+			if e, ok := t.SourceErrors[src.ID]; ok {
+				v.Error = &SourceErrorView{Code: e.Code, Message: e.Message, At: formatTime(e.At)}
+			}
+			if w := t.Waits[src.ID]; w != nil {
+				v.ResetAt = formatOptTime(w.ResetAt)
+			}
 		}
-		shown = shown || len(v.Warnings) > 0 || src.Type != config.SourceVLESS
+		v.DependsOn = dependencyViews(src, t)
+		shown = shown || len(v.Warnings) > 0 || src.Type != config.SourceVLESS || v.Balancer != "" || v.Error != nil || len(v.DependsOn) > 0
 		views = append(views, v)
 	}
 	if !shown {
@@ -535,7 +597,8 @@ func sortGroups(subs []GroupedSubscription) {
 // BuildConfiguredGroups groups tunnels and makes sure that every enabled
 // subscription of cfg and its target are present, even without tunnels or
 // memory state. A configured target's balancer monitor is the memory state
-// of its first balancer, else the group's, else idle; when the selection of
+// of its first balancer with a monitor (else balancers[0]), else the
+// group's, else idle; when the selection of
 // the first balancer is enabled it also gets the selection view (idle until
 // polled), and its sources when sourceViews has them.
 func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *state.Memory) []GroupedSubscription {
@@ -561,7 +624,7 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			bm  *BalancerMonitorView
 			sel *BalancerSelectionView
 		)
-		srcs := sourceViews(c, nil)
+		srcs, groups := sourceViews(c, nil), balancerGroups(c, nil)
 		b := firstBalancer(c)
 		bs := enabledSelection(b)
 		prefix := c.Target.ObservatorySubjectSelectorPrefix
@@ -569,14 +632,13 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 			sel = new(selectionView(*bs, b.Tag, prefix, nil, nil))
 		}
 		m.View(state.Key(c.ID, addr), func(t *state.Target) {
-			bal := balancerState(t, b)
 			if t.SyncSeen {
-				v := balancerView(&bal.Monitor)
+				v := balancerView(&balancerState(t, monitorBalancer(c)).Monitor)
 				bm = &v
 			}
-			srcs = sourceViews(c, t)
+			srcs, groups = sourceViews(c, t), balancerGroups(c, t)
 			if bs != nil {
-				sel = new(selectionView(*bs, b.Tag, prefix, &bal.Selection, t.Tunnels))
+				sel = new(selectionView(*bs, b.Tag, prefix, &balancerState(t, b).Selection, t.Tunnels))
 			}
 		})
 		if j >= 0 {
@@ -584,6 +646,7 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 				subs[i].Targets[j].BalancerMonitor = *bm
 			}
 			subs[i].Targets[j].BalancerSelection, subs[i].Targets[j].Sources = sel, srcs
+			subs[i].Targets[j].Balancers = groups
 			continue
 		}
 		if bm == nil {
@@ -591,6 +654,7 @@ func BuildConfiguredGroups(tunnels []StatusTunnel, cfg config.AppConfig, m *stat
 		}
 		subs[i].Targets = append(subs[i].Targets, GroupedStatusTarget{
 			SubscriptionID: c.ID, TargetAddress: addr, Tunnels: []StatusTunnel{}, BalancerMonitor: *bm, BalancerSelection: sel, Sources: srcs,
+			Balancers: groups,
 		})
 	}
 	sortGroups(subs)

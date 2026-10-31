@@ -74,15 +74,16 @@ created with `-update`).
 | `config.instanceId` | `statusServer.instanceId` (required: the hostname never reaches a golden file) |
 | `config.subscriptions[]` | `id`, `enabled`, `address` (= `target.address`), optional `observatorySubjectSelectorPrefix`; everything else takes config defaults (the input is never read). Only enabled subscriptions appear on the dashboard |
 | `config.subscriptions[].balancers` | `target.balancers` in the Go config form (`[{tag, monitor?, selection?}]`); the status views show the first |
-| `config.subscriptions[].sources` | `[{id, type, enabled, maxActive?, wgpDir?}]`; absent = one source `vless`; `wgpDir` makes the source input `<tmp>/<wgpDir>/<id>` |
+| `config.subscriptions[].sources` | `[{id, type, enabled, maxActive?, wgpDir?, balancer?, dialerProxy?, dependsOn?}]`; absent = one source `vless`; `wgpDir` makes the source input `<tmp>/<wgpDir>/<id>` |
 | `config.remoteInstances[]` | `statusServer.remoteInstances[]`: `id`, `apiUrl`, `schedule` |
 | `config.runtimeState` | `statusServer.runtimeState` |
 | `wgp` | `{"<dir>": status.json}` written to `<tmp>/<dir>/status.json` with mode 0600; a JSON string is written verbatim (a broken file) |
 | `targets[]` | memory state of one target; must match a configured subscription id + address; absent target = no state (before the first sync) |
 | `targets[].balancers[]` | `{tag, monitor?, selection?}`: the state of balancer `tag`; `monitor` is `state.BalancerMonitor`, assigned as is |
 | `targets[].balancers[].selection` | `state.SelectionState`: the keys of the JSON view where they overlap, plus `previousSelectedTag`, `consecutiveFailures`, `observatoryCheckedAt` and `observatory` (`[{tag, alive, delayMs?, lastError?, lastSeenAt?, lastTryAt?, healthPing?}]`, `null` = unavailable) |
-| `targets[].sources` | `[{sourceId, warnings, candidateCount?, noReplacement?}]` |
-| `targets[].tunnels[]` | tunnels in topology order (`sourceId` absent = `vless`); `inboundTag` = `in-<baseTunnelId>`, `routeTag` = `route-<baseTunnelId>`; the three tags give `balanced`; `monitor` is `state.TunnelMonitor` |
+| `targets[].sources` | `[{sourceId, warnings, candidateCount?, noReplacement?}]`: the applied sources (one listed without tunnels has an empty topology; a source missing here was never applied) |
+| `targets[].xrayDown`, `waits`, `sourceErrors` | the Xray API marked unavailable; `{<sourceId>: {since?, resetAt?, deps: {<dep>: {State, Since, RecoveredAt, GraceUntil}}}}` (`state.SourceWait`); `{<sourceId>: {code, message, at}}` (`state.SourceError`) |
+| `targets[].tunnels[]` | tunnels in topology order (`sourceId` absent = `vless`); `inboundTag` = `in-<baseTunnelId>`, `routeTag` = `route-<baseTunnelId>`; the three tags give `balanced`; `monitor` is `state.TunnelMonitor` (`failuresInRow` included); `protocol`, `transport` of a candidate tunnel |
 | `remotes[]` | the aggregation state of a configured remote (`id` and `apiUrl` must match): optional `lastAttemptAt`, `lastSuccessAt`, `lastError`, `snapshot` (parsed and passed through, unknown fields included). A remote with only `id`/`apiUrl` has no data |
 
 Fixtures: `empty`, `healthy-single`, `degraded-repaired`, `balancer-only`,
@@ -92,4 +93,4 @@ Fixtures: `empty`, `healthy-single`, `degraded-repaired`, `balancer-only`,
 data), `remote-ping-states`, `hostile-strings` (`<script>`, quotes, `&`);
 `selection-*` (balancer selection: single, override, pool, none, error,
 observatory unavailable, repaired); `sources-two`, `sources-wireguard`;
-`wgp-ok`, `wgp-needs-login`.
+`wgp-ok`, `wgp-needs-login`; `chain-normal`, `chain-upstream-down`, `chain-recovering`, `chain-recovered`, `chain-config-error`, `chain-shared-balancer` (a cascade vless → warp/proton: normal, the upper balancer down, the pause, after the reset, source errors, two sources in one balancer).

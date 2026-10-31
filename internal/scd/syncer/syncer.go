@@ -11,6 +11,7 @@
 package syncer
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -45,6 +46,9 @@ type Syncer struct {
 	// and Run never overlaps it (Memory.TryStartSync), so no lock.
 	lastFetch map[string]failure // the current fetch failure per source
 	lastCheck map[string]failure // the current source_check_failed per source
+	// errNoted holds the sources whose failure of this sync is already in
+	// state (noteError).
+	errNoted map[string]bool
 	// outbounds holds, by subscription id, the outbound tags of its target
 	// after the orphan removal of this sync (nil when not listed); the
 	// dialerProxy check reads it.
@@ -154,6 +158,7 @@ func (s *Syncer) perform(ctx context.Context) Report {
 		s.lastOrphan, s.blocked, s.lastCheck = map[string]failure{}, map[string]bool{}, map[string]failure{}
 	}
 	s.applyLogged, s.drifted, s.startedAt = map[string]bool{}, map[string]bool{}, startedAt
+	s.errNoted = map[string]bool{}
 	s.outbounds = map[string][]string{}
 	subs := s.Config.Config.Subscriptions
 	enabledSources := 0
@@ -316,6 +321,7 @@ func (s *Syncer) failedLoad(ctx context.Context, f manifest.FailedSource) Target
 	}
 	s.lastFetch[key] = prev
 	s.Log.LogAttrs(ctx, level, "Subscription fetch failed.", attrs...)
+	s.noteError(c, src.ID, cmp.Or(f.Code, CodeFetchFailed), msg)
 	return newTargetReport(c.ID, c.Target.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, msg, false), nil)
 }
 
@@ -363,9 +369,11 @@ func (s *Syncer) syncSubscription(ctx context.Context, sl subscriptionLoad) (rep
 		return nil, nil, false
 	}
 	if err != nil {
+		msg := fmt.Errorf("orphan removal: %w", err).Error()
 		for _, l := range sl.loaded {
 			reports = append(reports, newTargetReport(c.ID, c.Target.Address, l.Config.ID, nil,
-				s.failAll(ctx, c, l.Config.ID, nil, fmt.Errorf("orphan removal: %w", err).Error(), false), nil))
+				s.failAll(ctx, c, l.Config.ID, nil, msg, false), nil))
+			s.noteError(c, l.Config.ID, CodeOrphanRemoveFailed, msg)
 		}
 		return reports, nil, true
 	}
@@ -384,6 +392,11 @@ func (s *Syncer) syncSubscription(ctx context.Context, sl subscriptionLoad) (rep
 		r, sk, ok := s.syncSource(ctx, l)
 		if !ok {
 			return reports, skipped, false
+		}
+		if r.Failed == 0 {
+			s.clearError(c, l.Config.ID)
+		} else {
+			s.noteError(c, l.Config.ID, CodeApplyFailed, firstFailure(r))
 		}
 		reports = append(reports, r)
 		skipped = append(skipped, sk...)
@@ -599,6 +612,7 @@ func (s *Syncer) syncSource(ctx context.Context, l manifest.LoadedSource) (r Tar
 			slog.String("sourceId", src.ID),
 			slog.String("error", err.Error()),
 			slog.String("targetAddress", t.Address))
+		s.noteError(c, src.ID, CodeManifestInvalid, err.Error())
 		return newTargetReport(c.ID, t.Address, src.ID, nil, s.failAll(ctx, c, src.ID, nil, err.Error(), false), nil), nil, true
 	}
 	s.logEntryWarnings(ctx, c, src.ID, m)

@@ -70,7 +70,35 @@
                   "remotePingLastReportedStatus": "down",
                   "remotePingLastReportedMsg": "probe failed",
                   "remotePingLastReportedPingMs": 33
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "degraded",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 17,
+                      "lastError": "probe failed",
+                      "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessAt": "2026-08-15T09:55:00.000Z",
+                      "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 17,
+                      "remotePingState": "failed",
+                      "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastSuccessAt": "2026-08-15T09:55:00.000Z",
+                      "remotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastStatusCode": 500,
+                      "remotePingLastError": "push failed",
+                      "remotePingLastReportedStatus": "down",
+                      "remotePingLastReportedMsg": "probe failed",
+                      "remotePingLastReportedPingMs": 33
+                    }
+                  }
+                ]
               }
             ]
           }

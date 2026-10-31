@@ -34,7 +34,33 @@
                   "remotePingLastReportedStatus": "down",
                   "remotePingLastReportedMsg": "Unexpected HTTP status 503.",
                   "remotePingLastReportedPingMs": 120
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "degraded",
+                      "lastStatusCode": 503,
+                      "lastLatencyMs": 120,
+                      "lastError": "Unexpected HTTP status 503.",
+                      "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessAt": "2026-08-15T09:55:00.000Z",
+                      "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 19,
+                      "remotePingState": "ok",
+                      "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastSuccessAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastStatusCode": 200,
+                      "remotePingLastReportedStatus": "down",
+                      "remotePingLastReportedMsg": "Unexpected HTTP status 503.",
+                      "remotePingLastReportedPingMs": 120
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -60,7 +86,31 @@
                   "remotePingLastReportedStatus": "up",
                   "remotePingLastReportedMsg": "OK",
                   "remotePingLastReportedPingMs": 17
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "healthy",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 17,
+                      "lastCheckedAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessAt": "2026-08-15T09:59:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 17,
+                      "remotePingState": "ok",
+                      "remotePingLastRunAt": "2026-08-15T09:59:00.000Z",
+                      "remotePingLastSuccessAt": "2026-08-15T09:59:00.000Z",
+                      "remotePingLastStatusCode": 200,
+                      "remotePingLastReportedStatus": "up",
+                      "remotePingLastReportedMsg": "OK",
+                      "remotePingLastReportedPingMs": 17
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -110,7 +160,28 @@
                   "remotePingLastError": "push failed",
                   "remotePingLastReportedStatus": "down",
                   "remotePingLastReportedMsg": "SOCKS5 connect timed out"
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "degraded",
+                      "lastError": "SOCKS5 connect timed out",
+                      "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                      "lastFailureAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingState": "failed",
+                      "remotePingLastRunAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastFailureAt": "2026-08-15T10:00:00.000Z",
+                      "remotePingLastStatusCode": 500,
+                      "remotePingLastError": "push failed",
+                      "remotePingLastReportedStatus": "down",
+                      "remotePingLastReportedMsg": "SOCKS5 connect timed out"
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -124,7 +195,19 @@
                 "balancerMonitor": {
                   "state": "idle",
                   "remotePingState": "idle"
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "idle",
+                      "remotePingState": "idle"
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -145,7 +228,26 @@
                   "lastSuccessLatencyMs": 21,
                   "remotePingState": "pending",
                   "remotePingLastRunAt": "2026-08-15T10:00:00.000Z"
-                }
+                },
+                "balancers": [
+                  {
+                    "balancerTag": "x-balancer",
+                    "sourceIds": [
+                      "vless"
+                    ],
+                    "monitor": {
+                      "state": "healthy",
+                      "lastStatusCode": 204,
+                      "lastLatencyMs": 21,
+                      "lastCheckedAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessAt": "2026-08-15T10:00:00.000Z",
+                      "lastSuccessStatusCode": 204,
+                      "lastSuccessLatencyMs": 21,
+                      "remotePingState": "pending",
+                      "remotePingLastRunAt": "2026-08-15T10:00:00.000Z"
+                    }
+                  }
+                ]
               }
             ]
           }

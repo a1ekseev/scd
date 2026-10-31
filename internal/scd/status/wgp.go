@@ -159,13 +159,17 @@ func wgpCards(s *InstanceSnapshot) []wgpCardView {
 			}
 			c.Metrics = append(c.Metrics, status, metricView{Label: "Issued", Value: issued})
 			if p.ExpiresAt != "" {
-				exp := metricView{Label: "Expires", Value: p.ExpiresAt}
+				exp := metricView{Label: "Expires", Time: p.ExpiresAt}
 				if at, err := time.Parse(time.RFC3339, p.ExpiresAt); err == nil && !captured.IsZero() && at.Sub(captured) < wgpExpirySoon {
 					c.Class, exp.Class = state.TunnelDegraded, " metric-state-degraded"
 				}
 				c.Metrics = append(c.Metrics, exp)
 			}
-			c.Metrics = append(c.Metrics, metricView{Label: "Last Success", Value: cmp.Or(p.LastSuccessAt, "-")})
+			last := metricView{Label: "Last Success", Value: "-"}
+			if p.LastSuccessAt != "" {
+				last = metricView{Label: "Last Success", Time: p.LastSuccessAt}
+			}
+			c.Metrics = append(c.Metrics, last)
 			if p.Error != "" {
 				c.Metrics = append(c.Metrics, metricView{Label: "Error", Value: p.Error})
 			}
