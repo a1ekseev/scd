@@ -110,7 +110,7 @@
       },
       "deviceLostAfterChecks": 2,
       "reRegisterMinIntervalMinutes": 1440,
-      "label": "☁️ WARP",
+      "label": "☁️ WARP {n}",
       "wireguard": {
         "dns": [
           "1.1.1.1",
@@ -136,7 +136,7 @@
       },
       "deviceLostAfterChecks": 2,
       "reRegisterMinIntervalMinutes": 1440,
-      "label": "☁️ WARP",
+      "label": "☁️ WARP {n}",
       "masque": {
         "transports": [
           "h3",

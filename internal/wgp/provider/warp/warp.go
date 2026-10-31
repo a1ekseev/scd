@@ -183,7 +183,7 @@ func (w *WARP) parseWireGuard(n *schema.Node) {
 	// The config values go through the candidate parser, as the API values do.
 	if _, err := w.line(profile{
 		ClientID: "AAAA", V4: "192.0.2.2", PeerKey: dummyKey, Endpoint: "192.0.2.1:2408",
-	}, [32]byte{}); err != nil {
+	}, [32]byte{}, 0); err != nil {
 		n.Addf("wireguard", "%v", err)
 	}
 }
@@ -221,7 +221,7 @@ func (w *WARP) parseMasque(n *schema.Node) {
 	if a, err := netip.ParseAddr(w.Masque.SNI); err == nil && a.Is4() {
 		endpoint = a.String()
 	}
-	if _, err := w.masqueLines(profile{V4: "192.0.2.2", PeerKey: dummyPEM, EndpointV4: endpoint + ":0"}, dummyECKey); err != nil {
+	if _, err := w.masqueLines(profile{V4: "192.0.2.2", PeerKey: dummyPEM, EndpointV4: endpoint + ":0"}, dummyECKey, 0); err != nil {
 		n.Addf("masque", "%v", err)
 	}
 }
@@ -489,12 +489,19 @@ func (w *WARP) slot(ctx context.Context, i int, d *device, save func() error, ev
 			}
 		}
 	}
-	lines, err = w.lines(*d)
+	lines, err = w.lines(*d, i)
 	return lines, join(append(errs, err))
 }
 
-// lines builds the candidate lines of a device from the state record.
-func (w *WARP) lines(d device) ([]string, error) {
+// label is the candidate label of slot i: "{n}" in the configured label is
+// the candidate number i+1 (all lines of one slot share it).
+func (w *WARP) label(i int) string {
+	return strings.ReplaceAll(w.Label, "{n}", strconv.Itoa(i+1))
+}
+
+// lines builds the candidate lines of the device of slot i from the state
+// record.
+func (w *WARP) lines(d device, i int) ([]string, error) {
 	if w.Tunnel == tunnelMasque {
 		if d.MasqueKey == nil {
 			return nil, errors.New("no MASQUE key yet")
@@ -504,12 +511,12 @@ func (w *WARP) lines(d device) ([]string, error) {
 		if err != nil || !ok {
 			return nil, errors.New("state record: bad MASQUE key")
 		}
-		return w.masqueLines(d.Profile, key)
+		return w.masqueLines(d.Profile, key, i)
 	}
 	if len(d.PrivateKey) != 32 {
 		return nil, errors.New("state record: bad private key")
 	}
-	line, err := w.line(d.Profile, [32]byte(d.PrivateKey))
+	line, err := w.line(d.Profile, [32]byte(d.PrivateKey), i)
 	if err != nil {
 		return nil, err
 	}
@@ -667,10 +674,10 @@ func publicKey(priv []byte) string {
 	return base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())
 }
 
-// line builds the candidate line of a device. Errors name the field, never
+// line builds the candidate line of the device of slot slot. Errors name the field, never
 // the value.
-func (w *WARP) line(p profile, key [32]byte) (string, error) {
-	c := candidate.WireGuard{Provider: Type, PrivateKey: key, MTU: w.WireGuard.MTU, Label: w.Label}
+func (w *WARP) line(p profile, key [32]byte, slot int) (string, error) {
+	c := candidate.WireGuard{Provider: Type, PrivateKey: key, MTU: w.WireGuard.MTU, Label: w.label(slot)}
 	reserved, err := base64.StdEncoding.DecodeString(p.ClientID)
 	if err != nil || len(reserved) != 3 {
 		return "", errors.New("client_id: reserved must be exactly 3 bytes")
@@ -739,11 +746,12 @@ func dnsIPs(list []string) ([]netip.Addr, error) {
 }
 
 // masqueLines builds one candidate line of a MASQUE device per transport,
-// with the transport index as priority: endpoint.v4 with masque.port, the
+// with the transport index as priority and the label of slot slot:
+// endpoint.v4 with masque.port, the
 // PEM endpoint key and the device addresses of the API. Errors name the
 // field, never the value.
-func (w *WARP) masqueLines(p profile, key *ecdsa.PrivateKey) ([]string, error) {
-	c := candidate.Masque{Provider: Type, PrivateKey: key, SNI: w.Masque.SNI, Label: w.Label}
+func (w *WARP) masqueLines(p profile, key *ecdsa.PrivateKey, slot int) ([]string, error) {
+	c := candidate.Masque{Provider: Type, PrivateKey: key, SNI: w.Masque.SNI, Label: w.label(slot)}
 	blk, _ := pem.Decode([]byte(p.PeerKey))
 	if blk == nil || blk.Type != "PUBLIC KEY" {
 		return nil, errors.New("peer public_key: must be a PEM PKIX ECDSA P-256 key")

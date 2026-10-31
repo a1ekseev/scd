@@ -130,7 +130,7 @@ providers:
       rotateOnStart: true        # новый ключ при старте: PATCH /reg/{id}, reserved из ответа
     deviceLostAfterChecks: 2     # D=2; 404/1006 или 401/1012 подряд → устройство потеряно
     reRegisterMinIntervalMinutes: 1440  # новая регистрация не чаще (момент — в state)
-    label: "☁️ WARP"             # флаг страны для фильтра scd вписывается сюда
+    label: "☁️ WARP {n}"         # флаг страны для фильтра scd вписывается сюда; {n} — номер кандидата
     wireguard:
       mtu: 1280                  # D=1280
       dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # D=эти
@@ -151,7 +151,7 @@ providers:
       rotateOnStart: true        # новый ключ P-256 при старте; заменённый сразу перестаёт работать
     deviceLostAfterChecks: 2     # D=2
     reRegisterMinIntervalMinutes: 1440
-    label: "☁️ WARP"
+    label: "☁️ WARP {n}"
     masque:
       transports: [h3, h2]       # по строке на транспорт, priority = позиция (h3 → 0, h2 → 1);
                                  # scd ставит один на устройство: h3, после его замены — h2

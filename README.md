@@ -1261,7 +1261,8 @@ providers:
       rotateOnStart: true         # required: a new key for every device at start
     deviceLostAfterChecks: 2      # default 2, >= 1
     reRegisterMinIntervalMinutes: 1440  # required, >= 1
-    label: "WARP"                 # required; put a flag here for scd country filters
+    label: "WARP {n}"             # required; put a flag here for scd country filters;
+                                  # {n} is the candidate number (1, 2, …), the same for the lines of one device
     wireguard:                    # optional; only with tunnel: wireguard
       dns: [1.1.1.1, 1.0.0.1, "2606:4700:4700::1111", "2606:4700:4700::1001"]  # default these
       mtu: 1280                   # default 1280, 576..1500

@@ -206,14 +206,14 @@ func TestMasqueBadAnswer(t *testing.T) {
 			if strings.HasPrefix(tc.name, "sni") {
 				w = masqueTest(f, &clock{}, 1, func(w *WARP) { w.Masque.SNI = "162.159.198.2" })
 			}
-			if _, err := w.masqueLines(p, dummyECKey); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := w.masqueLines(p, dummyECKey, 0); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err %v, want %q", err, tc.want)
 			}
 		})
 	}
 	// An IP sni equal to the endpoint IP is accepted.
 	w = masqueTest(f, &clock{}, 1, func(w *WARP) { w.Masque.SNI = "162.159.198.2"; w.Masque.Transports = []string{"h2"} })
-	if l, err := w.masqueLines(ok, dummyECKey); err != nil || len(l) != 1 || !strings.Contains(l[0], "sni=162.159.198.2&transport=h2") {
+	if l, err := w.masqueLines(ok, dummyECKey, 0); err != nil || len(l) != 1 || !strings.Contains(l[0], "sni=162.159.198.2&transport=h2") {
 		t.Fatalf("lines %d, err %v", len(l), err)
 	}
 }

@@ -594,3 +594,45 @@ outputs: [{id: warp, path: /app/out/warp, provider: warp, candidates: 2}]
 		})
 	}
 }
+
+// "{n}" in the label is the candidate number: one per slot, the same for
+// the MASQUE lines of a slot; a label without it is kept.
+func TestLabelCandidateNumber(t *testing.T) {
+	for _, tunnel := range []string{tunnelWireGuard, tunnelMasque} {
+		t.Run(tunnel, func(t *testing.T) {
+			c := &clock{time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)}
+			mutate := func(w *WARP) { w.Label = "☁️ WARP {n}" }
+			w := newTest(newFake(t), c, 2, mutate)
+			if tunnel == tunnelMasque {
+				w = masqueTest(newFake(t), c, 2, mutate)
+			}
+			var labels []string
+			for _, l := range tick(t, w, &memStore{}).Lines {
+				if tunnel == tunnelMasque {
+					m, err := candidate.ParseMasque(l)
+					if err != nil {
+						t.Fatal(err)
+					}
+					labels = append(labels, m.Label)
+					continue
+				}
+				g, err := candidate.ParseWireGuard(l)
+				if err != nil {
+					t.Fatal(err)
+				}
+				labels = append(labels, g.Label)
+			}
+			want := []string{"☁️ WARP 1", "☁️ WARP 2"}
+			if tunnel == tunnelMasque {
+				want = []string{"☁️ WARP 1", "☁️ WARP 1", "☁️ WARP 2", "☁️ WARP 2"}
+			}
+			if !slices.Equal(labels, want) {
+				t.Errorf("labels %q, want %q", labels, want)
+			}
+		})
+	}
+	w := newTest(newFake(t), &clock{time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)}, 1, nil)
+	if l := w.label(4); l != "WARP" {
+		t.Errorf("label without {n}: %q", l)
+	}
+}
