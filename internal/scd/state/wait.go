@@ -24,7 +24,7 @@ type SourceWait struct {
 	// before it is not a new series.
 	ResetAt *time.Time
 	// Deps is the health of each dependency by DependencyConfig.Name (a source
-	// id or "balancer:<tag>").
+	// id, "balancer:<tag>" or "balancer:<subscription>/<tag>").
 	Deps map[string]*DepHealth
 }
 
@@ -39,6 +39,34 @@ type DepHealth struct {
 	// start of its pause) and GraceUntil the end of the pause; both nil
 	// otherwise.
 	RecoveredAt, GraceUntil *time.Time
+}
+
+// SelectionHealth is the health of balancer tag of target key by its
+// balancer selection state (another subscription's balancer as a
+// dependency): DepHealthy when the last check succeeded, is not stale and
+// selects an outbound (an override or a principle target), DepUnhealthy
+// when it selects none, DepUnknown without the target or the balancer
+// state, before the first check, after a failed one, while the Xray API of
+// the target is unavailable or when stale(LastSuccessAt) is true. It takes
+// the read lock: never call it inside Update or View. It does not look at
+// the subscription's Enabled.
+func (m *Memory) SelectionHealth(key, tag string, stale func(last time.Time) bool) string {
+	h := DepUnknown
+	m.View(key, func(t *Target) {
+		b, ok := t.BalancerState(tag)
+		if !ok || t.XrayDown != nil {
+			return
+		}
+		s := b.Selection
+		switch {
+		case s.State != SelectionOK || s.LastSuccessAt == nil || stale(*s.LastSuccessAt):
+		case s.OverrideTarget != "" || len(s.PrincipleTargets) > 0:
+			h = DepHealthy
+		default:
+			h = DepUnhealthy
+		}
+	})
+	return h
 }
 
 // SourceError is the current failure of a source in sync, for the status

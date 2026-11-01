@@ -96,6 +96,28 @@ func TestBalancerDependencyStates(t *testing.T) {
 	}
 }
 
+// A dependency on another subscription's balancer carries subscription in
+// the JSON, no sourceId, its state from Deps["balancer:<sub>/<tag>"], is
+// unknown while its own target's Xray is down, and adds no group depth.
+func TestCrossBalancerDependencyStates(t *testing.T) {
+	l := loadFixture(t, "chain-cross-balancer-dep")
+	d := sourceJSON(t, l, 1, 0, "warp")["dependsOn"].([]any)[0].(map[string]any)
+	if _, ok := d["sourceId"]; ok || d["subscription"] != "blanc-en" || d["balancer"] != "pool-blanc" || d["state"] != state.DepUnhealthy {
+		t.Errorf("down %v", d)
+	}
+	if got := depState(t, sourceJSON(t, l, 1, 0, "proton")); got != state.DepHealthy {
+		t.Errorf("pause %s", got)
+	}
+	l.mem.Update("blanc-ru::127.0.0.1:10086", func(tg *state.Target) { tg.XrayDown = &state.XrayIssue{} })
+	if got := depState(t, sourceJSON(t, l, 1, 0, "warp")); got != state.DepUnknown {
+		t.Errorf("own xray down %s", got)
+	}
+	src := config.SourceConfig{ID: "w", DependsOn: []config.DependencyConfig{{Subscription: "blanc-en", Balancer: "pool-blanc", Health: "balancer"}}}
+	if n := dependencyDepth([]config.SourceConfig{src})["w"]; n != 0 {
+		t.Errorf("depth %d", n)
+	}
+}
+
 // Groups: one per balancer of the sources, the sources without one in
 // group "", a balancer without sources alone; without any source balancer
 // one group of balancers[0]; order by dependsOn, then tag.

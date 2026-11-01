@@ -106,6 +106,11 @@ func TestPrintConfigCascade(t *testing.T) {
 	printConfigGolden(t, printConfigDir+"cascade.yml", printConfigDir+"cascade.json")
 }
 
+// A dependency on a balancer of another subscription prints its subscription.
+func TestPrintConfigCascadeCross(t *testing.T) {
+	printConfigGolden(t, printConfigDir+"cascade-cross.yml", printConfigDir+"cascade-cross.json")
+}
+
 func TestValidateConfigJSON(t *testing.T) {
 	for _, p := range []string{exampleConfig, realShapeGo, printConfigDir + "minimal.sources.yml"} {
 		abs, err := filepath.Abs(p)

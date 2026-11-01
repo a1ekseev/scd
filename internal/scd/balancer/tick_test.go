@@ -732,3 +732,25 @@ func TestTickForeignEmptyAndPoolSet(t *testing.T) {
 		t.Fatalf("pool events %v", ev[len(ev)-2:])
 	}
 }
+
+// NotFound is set by a BalancerNotFound answer only and cleared by a
+// success.
+func TestTickNotFound(t *testing.T) {
+	e := newEnv(false)
+	for _, step := range []struct {
+		err  error
+		want bool
+	}{
+		{&xrayapi.BalancerNotFoundError{Tag: "x-balancer"}, true},
+		{nil, false},
+		{&xrayapi.Error{Message: "down", Unavailable: true}, false},
+		{&xrayapi.BalancerNotFoundError{Tag: "x-balancer"}, true},
+		{&xrayapi.ServiceDisabledError{Service: "RoutingService"}, false},
+	} {
+		e.c.set(func(s *stubClient) { s.info, s.infoErr = single(prefix+"de-1"), step.err })
+		e.tick(t)
+		if got := e.sel(t).NotFound; got != step.want {
+			t.Errorf("after %v: NotFound = %v, want %v", step.err, got, step.want)
+		}
+	}
+}

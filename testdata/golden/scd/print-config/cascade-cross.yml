@@ -1,0 +1,41 @@
+# Two subscriptions (two Xray): warp of blanc-ru depends on the balancer
+# pool-blanc of blanc-en, the balancer of its source blanc.
+subscriptions:
+  - id: blanc-en
+    sources:
+      - id: blanc
+        type: vless
+        input: ./en.txt
+        portRange: {start: 20000, end: 20009}
+        balancer: pool-blanc
+    target:
+      address: 127.0.0.1:8080
+      inboundSocks: {listen: 127.0.0.1}
+      observatorySubjectSelectorPrefix: obs-
+      balancers:
+        - {tag: pool-blanc, selection: {enabled: true, schedule: '*/15 * * * * *'}}
+  - id: blanc-ru
+    sources:
+      - id: warp
+        type: vless
+        input: ./ru.txt
+        portRange: {start: 20100, end: 20109}
+        balancer: pool-vpn
+        dependsOn: [{subscription: blanc-en, balancer: pool-blanc, health: balancer, recoverGraceSeconds: 240}]
+      - id: proton
+        type: vless
+        input: ./ru2.txt
+        portRange: {start: 20110, end: 20119}
+        balancer: pool-p
+    target:
+      address: 127.0.0.1:8081
+      inboundSocks: {listen: 127.0.0.1}
+      observatorySubjectSelectorPrefix: obs-
+      balancers:
+        - {tag: pool-vpn, selection: {enabled: true, schedule: '*/15 * * * * *'}}
+        - {tag: pool-p, selection: {enabled: true, schedule: '*/15 * * * * *'}}
+runtime: {}
+logging: {}
+resources:
+  inbounds: {enabled: true}
+  routing: {enabled: true}

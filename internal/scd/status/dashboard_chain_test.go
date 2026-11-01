@@ -63,6 +63,12 @@ func TestDashboardChain(t *testing.T) {
 	assertContains(t, groupHTML(t, bd, "x-proton-balancer"), `<span class="metric-label">Depends on</span><span class="metric-value">pool-en · balancer · healthy</span>`)
 	assertNotContains(t, bd, "the balancer of")
 
+	cross := bodyOf(t, dashboard(t, "chain-cross-balancer-dep", "/"))
+	assertContains(t, groupHTML(t, cross, "pool-vpn"),
+		`<span class="metric-value">blanc-en/pool-blanc · balancer down since`,
+		`<span class="metric-value">waiting for blanc-en/pool-blanc</span>`,
+		`balancer pool-blanc of subscription blanc-en selects an outbound (its balancer selection)`)
+
 	errs := bodyOf(t, dashboard(t, "chain-config-error", "/"))
 	assertContains(t, groupHTML(t, errs, "x-warp-balancer"), `class="bal-head state-degraded"`, "Source not applied.",
 		`title="warp: dialer_proxy_missing"><span class="metric-label">Error</span>`)
@@ -91,4 +97,50 @@ func TestDashboardChain(t *testing.T) {
 	if p, w := strings.Index(vpn, `title="🇳🇱 Amsterdam · NL-FREE#214"`), strings.Index(vpn, `title="☁️ WARP #1"`); p < 0 || w < 0 || w < p {
 		t.Errorf("tunnel order: proton %d, waiting warp %d", p, w)
 	}
+}
+
+// A waiting source whose dependency reads unknown (its Xray is down) shows
+// Waiting for and Replace paused too; without a wait it is only Depends on.
+func TestDashboardUnknownWhileWaiting(t *testing.T) {
+	for _, fx := range []string{"chain-upstream-down", "chain-cross-balancer-dep"} {
+		l := loadFixture(t, fx)
+		key := "main::127.0.0.1:10085"
+		if fx != "chain-upstream-down" {
+			key = "blanc-ru::127.0.0.1:10086"
+		}
+		l.mem.Update(key, func(tg *state.Target) { tg.XrayDown = &state.XrayIssue{} })
+		body := bodyOf(t, get(t, NewHandler(l.deps()), "/").Body.String())
+		assertContains(t, body, `<span class="metric-label">Waiting for</span><span class="metric-value">`, " · unknown</span>",
+			`<span class="metric-label">Replace paused</span><span class="metric-value">waiting for `)
+		l.mem.Update(key, func(tg *state.Target) { tg.XrayDown, tg.Waits = nil, nil })
+		body = bodyOf(t, get(t, NewHandler(l.deps()), "/").Body.String())
+		assertNotContains(t, body, "Replace paused")
+	}
+}
+
+// CheckFailed is no dependency wait, and an unchecked dependency without a
+// wait entry is only Depends on; the JSON waiting flag follows the wait.
+func TestDashboardUnknownNotWaiting(t *testing.T) {
+	l := loadFixture(t, "chain-upstream-down")
+	key := "main::127.0.0.1:10085"
+	if w := sourceJSON(t, l, 0, 0, "warp")["waiting"]; w != true {
+		t.Errorf("waiting %v", w)
+	}
+	l.mem.Update(key, func(tg *state.Target) {
+		tg.XrayDown = &state.XrayIssue{}
+		tg.CheckFailed = map[string]string{"warp": "boom"}
+	})
+	if w, ok := sourceJSON(t, l, 0, 0, "warp")["waiting"]; ok {
+		t.Errorf("check failed: waiting %v", w)
+	}
+	body := bodyOf(t, get(t, NewHandler(l.deps()), "/").Body.String())
+	assertNotContains(t, groupHTML(t, body, "x-warp-balancer"), "Waiting for", "Replace paused")
+	l.mem.Update(key, func(tg *state.Target) { tg.XrayDown, tg.Waits, tg.CheckFailed = nil, nil, nil })
+	if _, ok := sourceJSON(t, l, 0, 0, "warp")["waiting"]; ok {
+		t.Error("no wait: waiting set")
+	}
+	body = bodyOf(t, get(t, NewHandler(l.deps()), "/").Body.String())
+	warp := groupHTML(t, body, "x-warp-balancer")
+	assertContains(t, warp, " · unknown")
+	assertNotContains(t, warp, "Waiting for", "Replace paused")
 }

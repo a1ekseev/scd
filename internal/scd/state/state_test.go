@@ -377,3 +377,55 @@ func TestDropSourceForgetsWaitAndCheck(t *testing.T) {
 		}
 	})
 }
+
+func TestSelectionHealth(t *testing.T) {
+	t0 := time.Unix(1000, 0)
+	fresh := func(time.Time) bool { return false }
+	stale := func(time.Time) bool { return true }
+	for _, tc := range []struct {
+		name  string
+		set   func(tg *Target) // nil: no target
+		stale func(time.Time) bool
+		want  string
+	}{
+		{"no target", nil, fresh, DepUnknown},
+		{"no balancer", func(*Target) {}, fresh, DepUnknown},
+		{"never polled", func(tg *Target) { tg.EnsureBalancer("b") }, fresh, DepUnknown},
+		{"error", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt, s.OverrideTarget = SelectionError, &t0, "x"
+		}, fresh, DepUnknown},
+		{"xray down", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt, s.OverrideTarget = SelectionOK, &t0, "x"
+			tg.XrayDown = &XrayIssue{Error: "down", Since: t0}
+		}, fresh, DepUnknown},
+		{"stale", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt, s.OverrideTarget = SelectionOK, &t0, "x"
+		}, stale, DepUnknown},
+		{"override", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt, s.OverrideTarget = SelectionOK, &t0, "x"
+		}, fresh, DepHealthy},
+		{"principle", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt, s.PrincipleTargets = SelectionOK, &t0, []string{"x", "y"}
+		}, fresh, DepHealthy},
+		{"empty", func(tg *Target) {
+			s := &tg.EnsureBalancer("b").Selection
+			s.State, s.LastSuccessAt = SelectionOK, &t0
+		}, fresh, DepUnhealthy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New()
+			if tc.set != nil {
+				m.Ensure("k")
+				m.Update("k", tc.set)
+			}
+			if got := m.SelectionHealth("k", "b", tc.stale); got != tc.want {
+				t.Errorf("SelectionHealth = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

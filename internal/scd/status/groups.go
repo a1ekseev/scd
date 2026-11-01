@@ -50,7 +50,7 @@ func monitorBalancer(sub config.SubscriptionConfig) config.BalancerConfig {
 func dependencyViews(src config.SourceConfig, t *state.Target) []DependencyView {
 	var out []DependencyView
 	for _, d := range src.DependsOn {
-		v := DependencyView{SourceID: d.Source, Balancer: d.Balancer, Health: d.Health, State: state.DepUnknown}
+		v := DependencyView{SourceID: d.Source, Subscription: d.Subscription, Balancer: d.Balancer, Health: d.Health, State: state.DepUnknown}
 		switch {
 		case d.Source != "" && (t == nil || t.Sources[d.Source] == nil):
 			v.State = DepNotApplied

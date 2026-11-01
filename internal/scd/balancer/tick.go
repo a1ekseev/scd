@@ -2,6 +2,7 @@ package balancer
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"slices"
 	"sync"
@@ -205,6 +206,7 @@ func record(s *state.SelectionState, tag string, now time.Time, info xrayapi.Bal
 			})
 		}
 		s.State = state.SelectionError
+		s.NotFound = errors.As(infoErr, new(*xrayapi.BalancerNotFoundError))
 		s.LastError = msg
 		s.LastFailureAt = &now
 		s.ConsecutiveFailures++
@@ -238,6 +240,7 @@ func record(s *state.SelectionState, tag string, now time.Time, info xrayapi.Bal
 		s.PrincipleTargets = slices.Clone(info.PrincipleTargets)
 		s.LastSuccessAt = &now
 		s.LastError = ""
+		s.NotFound = false
 		s.ConsecutiveFailures = 0
 	}
 	return events

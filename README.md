@@ -235,7 +235,7 @@ statusServer:
 | `.sources[].monitor.request.timeoutMs`, `.monitor.retry.{attempts,delayMs}` | Any type: override `target.monitor` for the source's tunnels. See [Monitoring and repair](#monitoring-and-repair). | the target's |
 | `.sources[].balancer` | Tag of the Xray balancer (`routing.balancers[].tag`) whose selector holds the source's outbounds. Changes nothing in Xray: checked before every apply, judged by `health: balancer` of dependent sources, groups the status API and dashboard. Must differ from the `balancer` of every (transitive) dependency. See [Cascade of sources](#cascade-of-sources). | none |
 | `.sources[].dialerProxy` | `wireguard` and `masque` only: a tag of `target.fixedOutbounds` outside the namespace of every enabled source (a loopback to the upper stage), written to `streamSettings.sockopt.dialerProxy` of the source's outbounds. | none |
-| `.sources[].dependsOn[]` | `{source \| balancer, health, recoverGraceSeconds}`, exactly one of `source` / `balancer`. `source`: another enabled source of the subscription (no repeats, no cycle) that must be applied first. `balancer`: the tag of a balancer of the same Xray that belongs to no source of the subscription (a probe, see [Cascade of sources](#cascade-of-sources)). Either way its balancer must select an outbound before this source's tunnels are replaced. `health` is required, only `balancer`; `recoverGraceSeconds` ≥ 0. | `[]`; `180` |
+| `.sources[].dependsOn[]` | `{source \| balancer, subscription?, health, recoverGraceSeconds}`, exactly one of `source` / `balancer`; `subscription` only with `balancer`. `source`: another enabled source of the subscription (no repeats, no cycle) that must be applied first. `balancer`: the tag of a balancer of the same Xray that belongs to no source of the subscription (a probe, see [Cascade of sources](#cascade-of-sources)). With `subscription`: the balancer `balancer` of another subscription of the same config, read from that subscription's balancer selection (needs `target.balancers[]{tag, selection.enabled: true}` there; no request to that Xray, see [Cascade of sources](#cascade-of-sources)). Either way its balancer must select an outbound before this source's tunnels are replaced. `health` is required, only `balancer`; `recoverGraceSeconds` ≥ 0. | `[]`; `180` |
 | `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
@@ -490,6 +490,37 @@ is a working example):
     never replaced.
   - Check it by a failure once: stop the second Xray and see
     `source_dependency_unhealthy` and no replacements.
+- **A dependency on the pool of another Xray (another subscription)**
+  (`dependsOn: [{subscription: blanc-en, balancer: pool-blanc, health:
+  balancer}]` on a source of `blanc-ru`). When the path leads through a second
+  Xray that scd manages as another subscription of the same config (the same
+  process), no probe is needed: the state comes from the balancer selection
+  of that subscription, so `target.balancers[]{tag: pool-blanc,
+  selection.enabled: true}` is required there (validate-config checks it).
+  scd makes no request to that Xray for the dependency. Rules:
+  - An unavailable second Xray means waiting (`source_dependency_unhealthy`);
+    selection data older than three missed activations of its
+    `selection.schedule` is `unknown`, which also waits.
+  - Before an apply only a fresh `BalancerNotFound` of that subscription
+    (kept in memory, no RPC) stops the source (`source_check_failed`,
+    `reasonCode: balancer_not_found`, text `dependency balancer
+    "blanc-en/pool-blanc": …`); `ServiceDisabled`, an unreachable Xray or no
+    data only make the monitor wait.
+  - Works only between subscriptions of **one** config (one scd process),
+    not through `remoteInstances`. Sources of two subscriptions must not
+    depend on each other (`dependsOn cycle across subscriptions` is a
+    config error).
+  - The selection schedule of that subscription should not be longer than
+    the interval of the tunnel monitor, otherwise the first replacement can
+    pass before the wait starts.
+  - **The path of the pool must not lead through outbounds of the dependent
+    source itself or of sources that depend on it.** Tags are compared only;
+    such a loop between paths is not detected and the source is only
+    repaired, never replaced.
+  - The probe of the own Xray above stays for a setup without a second
+    subscription.
+  - Check it by a failure once: stop the second Xray and see
+    `source_dependency_unhealthy` and no replacements.
 - **DNS**: `dns: {}`, or a `dns.tag` with its rule first; a remote DNS
   query without a tag goes to `chain-fail`.
 - All outbounds in one `-confdir` file (the outbounds of a later file go to
@@ -687,7 +718,7 @@ Xray once more: outbounds created before it keep their direct connections
   before are released. When it ends, the failed-check counts of the
   source's tunnels are reset, so failures during the cascade's comeback
   do not trigger replacements. Logs: `source_dependency_unhealthy` (warn,
-  `dependsOn`, a list of names: a source id or `balancer:<tag>`, and `quarantineReleased`) and `source_dependency_recovered`
+  `dependsOn`, a list of names: a source id, `balancer:<tag>` or `balancer:<subscription>/<tag>`, and `quarantineReleased`) and `source_dependency_recovered`
   (info, `waitedForMs`, `failuresReset`); none while the Xray API is
   unavailable (the source counts as waiting then). A source whose last check
   before an apply failed (`source_check_failed`) is also only repaired.
@@ -695,6 +726,8 @@ Xray once more: outbounds created before it keep their direct connections
   probe gives two signals for one problem: `source_check_failed` with
   `balancer_not_found` (sync) and `source_dependency_unhealthy` with state
   `unknown` (monitor).
+  The same holds for a missing `pool-blanc` of another subscription
+  (`balancer_not_found` there, `unknown` in the monitor): one problem.
   Observatory marks the upper stage dead only after its `probeInterval`, so
   keep `replaceAfterFailures` × `target.monitor.schedule` ≥ 2 ×
   `observatory.probeInterval` + the probe timeout.
@@ -769,7 +802,7 @@ three lines (full name on hover), the meta line is `<country> · <protocol>
 (ISO on hover, ISO without JavaScript).
 
 With the cascade keys a source view also has `balancer?`, `dialerProxy?`,
-`dependsOn?[]{sourceId?, balancer?, health, state, since?, recoveredAt?, graceUntil?}`
+`dependsOn?[]{sourceId?, balancer?, subscription?, health, state, since?, recoveredAt?, graceUntil?}`
 (`state` is `healthy`, `unhealthy`, `not_applied` when the dependency source was never
 applied to the target, or `unknown` before the first check, after a failed one
 and while the Xray API is unavailable; `recoveredAt`/`graceUntil` are the pause

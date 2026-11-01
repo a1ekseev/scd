@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -453,6 +454,18 @@ func TestDaemonStartsLoopsForDisabledSubscriptionMonitors(t *testing.T) {
 			t.Errorf("dials = %v, want the selection tick of the disabled subscription", addrs)
 		}
 	})
+}
+
+// TestMonitorDepsSubscriptions: the tunnel monitor gets the subscriptions of
+// the config; without them every dependency on another subscription's
+// balancer would stay unknown.
+func TestMonitorDepsSubscriptions(t *testing.T) {
+	l := daemonConfig(sub("a-1", "/nonexistent", target("10.0.0.2:8080")), sub("b-1", "/nonexistent", target("10.0.0.3:8080")))
+	d, _ := newDaemon(t, l, (&dialRecorder{}).dial)
+	got := d.monitorDeps(state.New(), &sync.WaitGroup{}).Subscriptions
+	if len(got) != 2 || !reflect.DeepEqual(got, l.Config.Subscriptions) {
+		t.Fatalf("Subscriptions = %+v, want %+v", got, l.Config.Subscriptions)
+	}
 }
 
 func TestDaemonBindErrorFails(t *testing.T) {

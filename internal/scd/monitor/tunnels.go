@@ -42,6 +42,10 @@ type Deps struct {
 	// Sleep waits d between probe attempts or returns ctx's error.
 	Sleep      func(ctx context.Context, d time.Duration) error
 	Background *sync.WaitGroup
+	// Subscriptions are the subscriptions of the config, for dependencies
+	// on another subscription's balancer; nil: such dependencies are
+	// unknown.
+	Subscriptions []config.SubscriptionConfig
 }
 
 func (d Deps) now() time.Time {

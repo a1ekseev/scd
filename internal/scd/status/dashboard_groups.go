@@ -266,20 +266,28 @@ func sourceRow(s SourceView, n int, now time.Time) (row rowView, pause *metricVi
 		if d.Balancer != "" {
 			name = d.Balancer
 			title = "health: " + d.Health + " — balancer " + name + " selects an outbound (GetBalancerInfo)"
+			if d.Subscription != "" {
+				name = d.Subscription + "/" + d.Balancer
+				title = "health: " + d.Health + " — balancer " + d.Balancer + " of subscription " + d.Subscription + " selects an outbound (its balancer selection)"
+			}
 		}
-		switch d.State {
-		case state.DepUnhealthy:
+		unknownWait := s.Waiting && d.State == state.DepUnknown // the check failed, the wait holds
+		switch {
+		case d.State == state.DepUnhealthy || unknownWait:
 			pause = &metricView{Label: "Replace paused", Value: "waiting for " + name}
 			m := metricView{
 				Label: "Waiting for", Value: name + " · " + d.Health + " down", Class: " metric-state-repairing",
 				Title: title + ". Its tunnels are only repaired, not replaced.",
+			}
+			if unknownWait {
+				m.Value = name + " · " + d.Health + " · unknown"
 			}
 			if d.Since != "" {
 				m.Value += " since "
 				m.Time = d.Since
 			}
 			row.Metrics = append(row.Metrics, m)
-		case state.DepHealthy:
+		case d.State == state.DepHealthy:
 			row.Metrics = append(row.Metrics, metricView{Label: "Depends on", Value: name + " · " + d.Health + " · healthy", Class: " metric-state-healthy", Title: title})
 			if until, err := time.Parse(time.RFC3339, d.GraceUntil); err == nil && now.Before(until) {
 				if pause == nil {

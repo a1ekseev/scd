@@ -128,6 +128,10 @@ type SourceView struct {
 	// ResetAt is the end of the source's last dependency wait (its
 	// tunnels' failed checks were reset then).
 	ResetAt string `json:"resetAt,omitempty"`
+	// Waiting is set while the source waits on its dependencies (a wait
+	// entry held by the monitor, not a failed pre-apply check); the
+	// dashboard shows an unknown dependency as waited for only then.
+	Waiting bool `json:"waiting,omitempty"`
 	// Error is the current failure of the source in sync.
 	Error *SourceErrorView `json:"error,omitempty"`
 }
@@ -135,6 +139,9 @@ type SourceView struct {
 // DependencyView is one dependsOn entry of a source.
 type DependencyView struct {
 	SourceID string `json:"sourceId,omitempty"`
+	// Subscription is the subscription whose balancer a balancer dependency
+	// names; empty for the source's own target.
+	Subscription string `json:"subscription,omitempty"`
 	// Balancer is the Xray balancer tag of a balancer dependency (then
 	// SourceID is empty).
 	Balancer string `json:"balancer,omitempty"`
@@ -394,6 +401,7 @@ func sourceViews(sub config.SubscriptionConfig, t *state.Target) []SourceView {
 			if w := t.Waits[src.ID]; w != nil {
 				v.ResetAt = formatOptTime(w.ResetAt)
 			}
+			v.Waiting = t.Waits[src.ID] != nil && t.CheckFailed[src.ID] == "" && t.SourceWaiting(src.ID)
 		}
 		v.DependsOn = dependencyViews(src, t)
 		shown = shown || len(v.Warnings) > 0 || src.Type != config.SourceVLESS || v.Balancer != "" || v.Error != nil || len(v.DependsOn) > 0

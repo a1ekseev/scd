@@ -272,7 +272,8 @@
                   "recoveredAt": "2026-10-31T08:29:00.000Z",
                   "graceUntil": "2026-10-31T08:32:00.000Z"
                 }
-              ]
+              ],
+              "waiting": true
             },
             {
               "sourceId": "vless",
@@ -296,7 +297,8 @@
                   "state": "unhealthy",
                   "since": "2026-10-31T08:26:10.000Z"
                 }
-              ]
+              ],
+              "waiting": true
             }
           ],
           "balancers": [

@@ -23,10 +23,15 @@ func dependents(sub config.SubscriptionConfig) []config.SourceConfig {
 	return out
 }
 
-// dependencyBalancer is the balancer whose selection is the health of
-// dependency dep of sub: the tag of a balancer dependency itself, else the
-// balancer of the source dependency ("" when it has none: config rejects it).
+// dependencyBalancer is the balancer of the target whose selection is the
+// health of dependency dep of sub: the tag of a balancer dependency itself,
+// else the balancer of the source dependency ("" when it has none: config
+// rejects it, and for a balancer of another subscription, which is not
+// asked in this Xray).
 func dependencyBalancer(sub config.SubscriptionConfig, dep config.DependencyConfig) string {
+	if dep.Subscription != "" {
+		return ""
+	}
 	if dep.Balancer != "" {
 		return dep.Balancer
 	}
@@ -34,6 +39,45 @@ func dependencyBalancer(sub config.SubscriptionConfig, dep config.DependencyConf
 		return s.Balancer
 	}
 	return ""
+}
+
+// healthKey is the key of dependency dep of sub in the health map: its
+// Name for a balancer of another subscription (the same tag may be a
+// balancer of this target too), else dependencyBalancer.
+func healthKey(sub config.SubscriptionConfig, dep config.DependencyConfig) string {
+	if dep.Subscription != "" {
+		return dep.Name()
+	}
+	return dependencyBalancer(sub, dep)
+}
+
+// crossHealth adds to health the health of every dependency of srcs on a
+// balancer of another subscription, by its Name: read from the balancer
+// selection state of that subscription's target (state.SelectionHealth;
+// no RPC, the other target's state is never written), stale after three
+// activations of its selection schedule; unknown when d.Subscriptions has
+// no such balancer. Never call it inside Update or View.
+func (d Deps) crossHealth(srcs []config.SourceConfig, health map[string]string, now time.Time) map[string]string {
+	for _, src := range srcs {
+		for _, dep := range src.DependsOn {
+			name := dep.Name()
+			if dep.Subscription == "" || health[name] != "" {
+				continue
+			}
+			if health == nil {
+				health = map[string]string{}
+			}
+			other, b, ok := config.FindBalancer(d.Subscriptions, dep.Subscription, dep.Balancer)
+			if !ok || b.Selection == nil {
+				health[name] = state.DepUnknown
+				continue
+			}
+			sel := *b.Selection
+			health[name] = d.Memory.SelectionHealth(state.Key(other.ID, other.Target.Address), b.Tag,
+				func(last time.Time) bool { return sel.Stale(last, now) })
+		}
+	}
+	return health
 }
 
 // balancerTags returns the balancers of the dependencies of srcs, each
@@ -82,30 +126,32 @@ func checkBalancers(ctx context.Context, c xrayapi.Client, tags []string) (healt
 }
 
 // dependencyHealth is the first step of TunnelTick: it checks the
-// balancers of the dependencies of every enabled source with dependsOn
-// (outside the target lock) and applies the result to their waits.
+// balancers of the target that are dependencies of every enabled source
+// with dependsOn (outside the target lock; no Xray connection when there
+// are none), reads the balancers of other subscriptions from state
+// (crossHealth) and applies the result to their waits.
 func (d Deps) dependencyHealth(ctx context.Context, sub config.SubscriptionConfig) {
 	srcs := dependents(sub)
 	if len(srcs) == 0 {
 		return
 	}
 	t := sub.Target
-	tags := balancerTags(sub, srcs)
-	var (
-		health  map[string]string
-		noteErr error
-	)
-	client, err := d.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
-	if err != nil {
-		noteErr = err
-	} else {
-		health, noteErr = checkBalancers(ctx, client, tags)
-		_ = client.Close()
+	var health map[string]string
+	if tags := balancerTags(sub, srcs); len(tags) > 0 {
+		var noteErr error
+		client, err := d.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
+		if err != nil {
+			noteErr = err
+		} else {
+			health, noteErr = checkBalancers(ctx, client, tags)
+			_ = client.Close()
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		state.NoteXray(ctx, d.Memory, d.Log, sub.ID, t.Address, noteErr, d.now())
 	}
-	if ctx.Err() != nil {
-		return
-	}
-	state.NoteXray(ctx, d.Memory, d.Log, sub.ID, t.Address, noteErr, d.now())
+	health = d.crossHealth(srcs, health, d.now())
 	d.applyWaits(ctx, sub, srcs, health, false)
 }
 
@@ -119,7 +165,7 @@ type waitEvent struct {
 	released  int
 }
 
-// applyWaits applies the dependency health (by balancer tag) to the waits
+// applyWaits applies the dependency health (by healthKey) to the waits
 // of srcs. While the Xray API of the target is unavailable nothing changes
 // (the sources count as waiting, state.SourceWaiting) and nothing is
 // logged. A source with an unhealthy or unknown dependency starts waiting:
@@ -154,7 +200,7 @@ func (d Deps) applyWaits(ctx context.Context, sub config.SubscriptionConfig, src
 					dh = &state.DepHealth{}
 					w.Deps[name] = dh
 				}
-				st := health[dependencyBalancer(sub, dep)]
+				st := health[healthKey(sub, dep)]
 				if st == "" {
 					st = state.DepUnknown
 				}
@@ -246,17 +292,24 @@ func (d Deps) releaseQuarantine(key string, src config.SourceConfig, now time.Ti
 }
 
 // freshWait is the check of ReplaceFailed for a source with dependsOn,
-// under the target lock with its client: the dependencies are asked again
-// (the tick may be older than the failure), and when one is not healthy the
+// under the target lock with its client: the balancers of the target are
+// asked again (the tick may be older than the failure), those of other
+// subscriptions read from state again, and when one is not healthy the
 // source starts waiting and nothing is replaced (waiting is true).
 func (d Deps) freshWait(ctx context.Context, c xrayapi.Client, sub config.SubscriptionConfig, src config.SourceConfig) (waiting bool) {
 	if len(src.DependsOn) == 0 {
 		return false
 	}
-	health, noteErr := checkBalancers(ctx, c, balancerTags(sub, []config.SourceConfig{src}))
-	state.NoteXray(ctx, d.Memory, d.Log, sub.ID, sub.Target.Address, noteErr, d.now())
+	srcs := []config.SourceConfig{src}
+	var health map[string]string
+	if tags := balancerTags(sub, srcs); len(tags) > 0 {
+		var noteErr error
+		health, noteErr = checkBalancers(ctx, c, tags)
+		state.NoteXray(ctx, d.Memory, d.Log, sub.ID, sub.Target.Address, noteErr, d.now())
+	}
+	health = d.crossHealth(srcs, health, d.now())
 	for _, dep := range src.DependsOn {
-		if health[dependencyBalancer(sub, dep)] != state.DepHealthy {
+		if health[healthKey(sub, dep)] != state.DepHealthy {
 			d.applyWaits(ctx, sub, []config.SourceConfig{src}, health, true)
 			return true
 		}

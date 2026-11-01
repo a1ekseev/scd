@@ -97,6 +97,8 @@ type SelectionState struct {
 	// LastError is the GetBalancerInfo error of the last failed check.
 	LastError           string
 	ConsecutiveFailures int
+	// NotFound tells that the last GetBalancerInfo answered BalancerNotFound.
+	NotFound bool
 
 	// Observatory is the last GetOutboundStatus answer by tag; nil when it
 	// is disabled or failed (no decisions on stale liveness).

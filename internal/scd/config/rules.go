@@ -50,6 +50,7 @@ func checkRules(root *schema.Node, cfg *AppConfig, subNodes []*schema.Node) []st
 			warnings = append(warnings, subNodes[i].Path()+": "+noSourcesWarning)
 		}
 	}
+	warnings = append(warnings, checkCrossDependencies(cfg.Subscriptions, subNodes)...)
 
 	checkStatusServer(root, cfg.StatusServer)
 	return warnings
@@ -283,7 +284,8 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 // warnings. A dependsOn balancer is not a source: it adds no edge, may not
 // be the balancer of any source of sub (use dependsOn source), and need not
 // be in target.balancers. Disabled sources are checked too, except that only an enabled
-// source may not depend on a disabled one.
+// source may not depend on a disabled one. A dependency with subscription is
+// checked here for repeats only (checkCrossDependencies).
 func checkDependencies(n *schema.Node, sub SubscriptionConfig) []string {
 	byID := make(map[string]SourceConfig, len(sub.Sources))
 	for _, src := range sub.Sources {
@@ -319,6 +321,16 @@ func checkDependencies(n *schema.Node, sub SubscriptionConfig) []string {
 		seen := map[string]bool{}
 		for k, d := range src.DependsOn {
 			dkey := fmt.Sprintf("%sdependsOn.%d.", key, k)
+			if d.Subscription != "" {
+				// The rest is checkCrossDependencies.
+				if d.Balancer != "" {
+					if seen[d.Name()] {
+						n.Addf(dkey+"balancer", "duplicate dependency %q", d.Name())
+					}
+					seen[d.Name()] = true
+				}
+				continue
+			}
 			if d.Balancer != "" {
 				switch owner := byBalancer[d.Balancer]; {
 				case seen[d.Name()]:
@@ -388,20 +400,42 @@ const masqueVisionWarning = "a masque source behind dialerProxy with target.visi
 // the cycle that comes first in config order, and returns the ids on a
 // cycle.
 func checkCycles(n *schema.Node, sources []SourceConfig, edges map[string][]string) map[string]bool {
+	order := make([]string, len(sources))
+	index := map[string]int{}
+	for j, src := range sources {
+		order[j] = src.ID
+		if _, ok := index[src.ID]; !ok {
+			index[src.ID] = j
+		}
+	}
+	cyclic := map[string]bool{}
+	for _, cycle := range findCycles(order, edges) {
+		for _, c := range cycle {
+			cyclic[c] = true
+		}
+		n.Addf(fmt.Sprintf("sources.%d.dependsOn", index[cycle[0]]), "dependsOn cycle: %s",
+			strings.Join(append(cycle, cycle[0]), " → "))
+	}
+	return cyclic
+}
+
+// findCycles returns the cycles of edges found by a depth-first search over
+// the nodes in order, each once, rotated to the node first in order.
+func findCycles(order []string, edges map[string][]string) [][]string {
 	const (
 		unseen = iota
 		active
 		done
 	)
-	mark := map[string]int{}
-	cyclic := map[string]bool{}
-	reported := map[string]bool{}
 	index := map[string]int{}
-	for j, src := range sources {
-		if _, ok := index[src.ID]; !ok {
-			index[src.ID] = j
+	for j, id := range order {
+		if _, ok := index[id]; !ok {
+			index[id] = j
 		}
 	}
+	mark := map[string]int{}
+	reported := map[string]bool{}
+	var cycles [][]string
 	var path []string
 	var visit func(id string)
 	visit = func(id string) {
@@ -413,10 +447,7 @@ func checkCycles(n *schema.Node, sources []SourceConfig, edges map[string][]stri
 				visit(next)
 			case active:
 				cycle := slices.Clone(path[slices.Index(path, next):])
-				for _, c := range cycle {
-					cyclic[c] = true
-				}
-				// Rotate to the source first in config order: one report per cycle.
+				// Rotate to the node first in order: one report per cycle.
 				first := 0
 				for i, c := range cycle {
 					if index[c] < index[cycle[first]] {
@@ -426,20 +457,128 @@ func checkCycles(n *schema.Node, sources []SourceConfig, edges map[string][]stri
 				cycle = append(cycle[first:], cycle[:first]...)
 				if k := strings.Join(cycle, " "); !reported[k] {
 					reported[k] = true
-					n.Addf(fmt.Sprintf("sources.%d.dependsOn", index[cycle[0]]), "dependsOn cycle: %s",
-						strings.Join(append(cycle, cycle[0]), " → "))
+					cycles = append(cycles, cycle)
 				}
 			}
 		}
 		path = path[:len(path)-1]
 		mark[id] = done
 	}
-	for _, src := range sources {
-		if mark[src.ID] == unseen {
-			visit(src.ID)
+	for _, id := range order {
+		if mark[id] == unseen {
+			visit(id)
 		}
 	}
-	return cyclic
+	return cycles
+}
+
+// checkCrossDependencies checks the dependsOn entries with subscription
+// (disabled sources included), reporting at subNodes[i], and returns the
+// warnings. The subscription exists, is not the source's own, has a unique
+// id, is enabled when the source and its subscription are, and has the
+// balancer in target.balancers with an enabled selection. It also reports
+// the dependsOn cycles that span two or more subscriptions; a cycle within
+// one subscription is reported by checkCycles.
+func checkCrossDependencies(subs []SubscriptionConfig, subNodes []*schema.Node) []string {
+	count := map[string]int{}
+	used := false
+	for _, s := range subs {
+		count[s.ID]++
+		for _, src := range s.Sources {
+			for _, d := range src.DependsOn {
+				used = used || d.Subscription != ""
+			}
+		}
+	}
+	if !used {
+		return nil
+	}
+
+	// Nodes are "i/j" (subscription and source index): ids are not unique.
+	pos := map[string][2]int{}
+	node := func(i, j int) string {
+		id := fmt.Sprintf("%d/%d", i, j)
+		pos[id] = [2]int{i, j}
+		return id
+	}
+	var order []string
+	edges := map[string][]string{}
+	var warnings []string
+	for i, sub := range subs {
+		n := subNodes[i]
+		first := map[string]int{}
+		for j, src := range sub.Sources {
+			if _, ok := first[src.ID]; !ok {
+				first[src.ID] = j
+			}
+		}
+		for j, src := range sub.Sources {
+			from := node(i, j)
+			order = append(order, from)
+			for k, d := range src.DependsOn {
+				if d.Subscription == "" {
+					if t, ok := first[d.Source]; ok && d.Source != "" && d.Source != src.ID {
+						edges[from] = append(edges[from], node(i, t))
+					}
+					continue
+				}
+				if d.Balancer == "" {
+					continue // reported by parseDependency
+				}
+				dkey := fmt.Sprintf("sources.%d.dependsOn.%d.", j, k)
+				switch {
+				case d.Subscription == sub.ID:
+					n.Addf(dkey+"subscription", "the source's own subscription: omit subscription")
+					continue
+				case count[d.Subscription] == 0:
+					n.Addf(dkey+"subscription", "unknown subscription %q", d.Subscription)
+					continue
+				case count[d.Subscription] > 1:
+					n.Addf(dkey+"subscription", "subscription id %q is not unique", d.Subscription)
+					continue
+				}
+				oi := slices.IndexFunc(subs, func(s SubscriptionConfig) bool { return s.ID == d.Subscription })
+				other := subs[oi]
+				if src.Enabled && sub.Enabled && !other.Enabled {
+					n.Addf(dkey+"subscription", "subscription %q is disabled", d.Subscription)
+				}
+				for t, o := range other.Sources {
+					if o.Balancer == d.Balancer {
+						edges[from] = append(edges[from], node(oi, t))
+					}
+				}
+				_, b, ok := FindBalancer(subs, d.Subscription, d.Balancer)
+				switch {
+				case !ok:
+					n.Addf(dkey+"balancer", "balancer %q is not in target.balancers of subscription %q", d.Balancer, d.Subscription)
+				case b.Selection == nil || !b.Selection.Enabled:
+					n.Addf(dkey+"balancer", "balancer %q of subscription %q has no enabled selection; nothing tracks its health",
+						d.Balancer, d.Subscription)
+				default:
+					if st := b.Selection.Strategy; d.Health == HealthBalancer && (st == "random" || st == "roundRobin") {
+						warnings = append(warnings, fmt.Sprintf("%s.%shealth: balancer %q of subscription %q has strategy %q, "+
+							"which selects every candidate; the dependency is always healthy", n.Path(), dkey, d.Balancer, d.Subscription, st))
+					}
+				}
+			}
+		}
+	}
+
+	for _, cycle := range findCycles(order, edges) {
+		i0, j0 := pos[cycle[0]][0], pos[cycle[0]][1]
+		names := make([]string, 0, len(cycle)+1)
+		cross := false
+		for _, id := range cycle {
+			i, j := pos[id][0], pos[id][1]
+			cross = cross || i != i0
+			names = append(names, subs[i].ID+"/"+subs[i].Sources[j].ID)
+		}
+		if cross {
+			subNodes[i0].Addf(fmt.Sprintf("sources.%d.dependsOn", j0), "dependsOn cycle across subscriptions: %s",
+				strings.Join(append(names, names[0]), " → "))
+		}
+	}
+	return warnings
 }
 
 // dependencies returns the transitive dependencies of id in edges, each

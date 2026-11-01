@@ -160,12 +160,17 @@ func parseSource(n *schema.Node, dir string) SourceConfig {
 
 // parseDependency reads one sources[].dependsOn object.
 func parseDependency(n *schema.Node) DependencyConfig {
-	n.Strict("source", "balancer", "health", "recoverGraceSeconds")
+	n.Strict("source", "subscription", "balancer", "health", "recoverGraceSeconds")
 	var d DependencyConfig
 	opt := schema.StrOpt{Trim: true, MinLen: 1}
 	d.Source, _ = n.String("source", opt)
+	d.Subscription, _ = n.String("subscription", opt)
 	d.Balancer, _ = n.String("balancer", opt)
 	switch hasS, hasB := n.Has("source"), n.Has("balancer"); {
+	case n.Has("subscription") && hasS:
+		n.Addf("", "subscription requires balancer, not source")
+	case n.Has("subscription") && !hasB:
+		n.Addf("", "subscription requires balancer")
 	case hasS && hasB:
 		n.Addf("", "source and balancer are mutually exclusive")
 	case !hasS && !hasB:

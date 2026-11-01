@@ -322,7 +322,8 @@
                         "recoveredAt": "2026-10-31T08:29:00.000Z",
                         "graceUntil": "2026-10-31T08:32:00.000Z"
                       }
-                    ]
+                    ],
+                    "waiting": true
                   },
                   {
                     "sourceId": "vless",
@@ -348,7 +349,8 @@
                         "recoveredAt": "2026-10-31T08:29:00.000Z",
                         "graceUntil": "2026-10-31T08:32:00.000Z"
                       }
-                    ]
+                    ],
+                    "waiting": true
                   }
                 ],
                 "balancers": [

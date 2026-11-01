@@ -365,3 +365,121 @@ func TestCheckDependencyBalancerRoutingDisabled(t *testing.T) {
 		t.Fatalf("error %v", ev[0]["error"])
 	}
 }
+
+// crossFixture has subscription "sub" (addrA) whose wireguard source "warp"
+// depends on balancer pool-blanc of subscription blanc-en (addrB, disabled
+// here: sync never dials it); the clock is fixed. en writes the selection
+// state of pool-blanc the way balancer.Tick does.
+func crossFixture(t *testing.T) (*fixture, *xrayfake.Server, time.Time) {
+	t.Helper()
+	w := warpBalancerDep(t)
+	w.Sources[0].DependsOn = []config.DependencyConfig{{Subscription: "blanc-en", Balancer: "pool-blanc", Health: config.HealthBalancer, RecoverGraceSeconds: 60}}
+	en := sub("blanc-en", "/en", target(addrB))
+	en.Enabled = false
+	en.Target.Balancers = []config.BalancerConfig{{Tag: "pool-blanc", Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *"}}}
+	f := newFixture(t, cfg(allKinds, w, en), nil)
+	srv, _ := xrayfake.Start(t)
+	f.x.servers[addrA] = srv
+	now := time.Unix(1_800_000_000, 0)
+	f.s.Now = func() time.Time { return now }
+	return f, srv, now
+}
+
+func enState(f *fixture, fn func(tg *state.Target, s *state.SelectionState)) {
+	key := state.Key("blanc-en", addrB)
+	f.s.Memory.Ensure(key)
+	f.s.Memory.Update(key, func(tg *state.Target) { fn(tg, &tg.EnsureBalancer("pool-blanc").Selection) })
+}
+
+const enNotFound = `Xray balancer "pool-blanc" not found.`
+
+func notFoundAt(at time.Time) func(*state.Target, *state.SelectionState) {
+	return func(_ *state.Target, s *state.SelectionState) {
+		s.State, s.NotFound, s.LastCheckedAt, s.LastError = state.SelectionError, true, new(at), enNotFound
+	}
+}
+
+// A dependency on another subscription's balancer costs no RPC: only a
+// fresh BalancerNotFound in its selection state blocks the source (with
+// that target's Xray down too), until the state is ok again.
+func TestCheckCrossBalancer(t *testing.T) {
+	f, srv, now := crossFixture(t)
+	if r := f.run(t); r.Failed != 0 || len(outboundsOf(srv, "warp")) != 2 {
+		t.Fatalf("report %+v, outbounds %v", r.Targets, srv.OutboundTags())
+	}
+	if slices.Contains(srv.Calls(), "GetBalancerInfo:pool-blanc") {
+		t.Fatalf("calls %q", srv.Calls())
+	}
+
+	enState(f, notFoundAt(now))
+	n := len(srv.Calls())
+	if r := f.run(t); r.Failed == 0 || mutations(srv.Calls()[n:]) != 0 {
+		t.Fatalf("report %+v, calls %q", r.Targets, srv.Calls()[n:])
+	}
+	checkEvent(t, f, CodeBalancerNotFound, "ERROR")
+	if ev := f.logs.events(t, "source_check_failed"); ev[0]["error"] != `dependency balancer "blanc-en/pool-blanc": `+enNotFound {
+		t.Fatalf("error %v", ev[0]["error"])
+	}
+	f.s.Memory.View(state.Key("sub", addrA), func(tg *state.Target) {
+		if tg.CheckFailed["warp"] != CodeBalancerNotFound {
+			t.Fatalf("CheckFailed %v", tg.CheckFailed)
+		}
+	})
+
+	enState(f, func(tg *state.Target, _ *state.SelectionState) { tg.SetXrayDown("down", now) })
+	n = len(srv.Calls())
+	if r := f.run(t); r.Failed == 0 || mutations(srv.Calls()[n:]) != 0 {
+		t.Fatalf("XrayDown: report %+v", r.Targets)
+	}
+
+	enState(f, func(_ *state.Target, s *state.SelectionState) {
+		s.State, s.NotFound, s.LastSuccessAt, s.LastCheckedAt, s.LastError = state.SelectionOK, false, new(now), new(now), ""
+	})
+	if r := f.run(t); r.Failed != 0 {
+		t.Fatalf("report %+v", r.Targets)
+	}
+	if e := f.logs.events(t, "source_check_recovered"); len(e) != 1 {
+		t.Fatalf("source_check_recovered %v", e)
+	}
+	if d := f.x.dials(); slices.Contains(d, addrB) {
+		t.Fatalf("dials %v", d)
+	}
+}
+
+// Any other state of another subscription's balancer does not block.
+func TestCheckCrossBalancerPasses(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(now time.Time) func(*state.Target, *state.SelectionState)
+	}{
+		{"stale not found", func(now time.Time) func(*state.Target, *state.SelectionState) {
+			return notFoundAt(now.Add(-46 * time.Second))
+		}},
+		{"unavailable", func(now time.Time) func(*state.Target, *state.SelectionState) {
+			return func(_ *state.Target, s *state.SelectionState) {
+				s.State, s.LastCheckedAt, s.LastError = state.SelectionError, new(now), "unavailable"
+			}
+		}},
+		{"service disabled", func(now time.Time) func(*state.Target, *state.SelectionState) {
+			return func(_ *state.Target, s *state.SelectionState) {
+				s.State, s.LastCheckedAt, s.LastError = state.SelectionError, new(now), (&xrayapi.ServiceDisabledError{Service: "RoutingService"}).Error()
+			}
+		}},
+		{"never polled", func(time.Time) func(*state.Target, *state.SelectionState) {
+			return func(*state.Target, *state.SelectionState) {}
+		}},
+		{"unhealthy", func(now time.Time) func(*state.Target, *state.SelectionState) {
+			return func(_ *state.Target, s *state.SelectionState) {
+				s.State, s.LastSuccessAt, s.LastCheckedAt = state.SelectionOK, new(now), new(now)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, srv, now := crossFixture(t)
+			enState(f, tc.set(now))
+			if r := f.run(t); r.Failed != 0 || len(outboundsOf(srv, "warp")) != 2 {
+				t.Fatalf("report %+v", r.Targets)
+			}
+		})
+	}
+}

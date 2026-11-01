@@ -598,3 +598,194 @@ func TestWaitDependencyBalancerXrayUnavailable(t *testing.T) {
 		t.Fatalf("wait %+v", w)
 	}
 }
+
+// crossWaitEnv is waitEnv whose source "wg" depends only on balancer
+// pool-blanc of subscription blanc-en (another Xray, never dialed): its
+// health is read from the balancer selection state of blanc-en, which the
+// test writes with e.en. dials counts the dials of the env.
+func crossWaitEnv(t *testing.T, grace int) (*env, *waitClock, *int) {
+	t.Helper()
+	e, clock := waitEnv(t, grace)
+	e.sub.Sources[0].DependsOn = []config.DependencyConfig{crossDep(grace)}
+	e.deps.Subscriptions = []config.SubscriptionConfig{e.sub, {
+		ID: "blanc-en", Enabled: true,
+		Target: config.SubscriptionTargetConfig{Address: "10.9.9.9:8080", Balancers: []config.BalancerConfig{{
+			Tag: "pool-blanc", Selection: &config.BalancerSelectionConfig{Enabled: true, Schedule: "*/15 * * * * *"},
+		}}},
+	}}
+	dials := new(int)
+	e.onDial = func() { *dials++ }
+	return e, clock, dials
+}
+
+func crossDep(grace int) config.DependencyConfig {
+	return config.DependencyConfig{Subscription: "blanc-en", Balancer: "pool-blanc", Health: config.HealthBalancer, RecoverGraceSeconds: grace}
+}
+
+const crossName = "balancer:blanc-en/pool-blanc"
+
+// en sets the selection of pool-blanc of blanc-en: a successful check now
+// that selects override ("" selects nothing).
+func (e *env) en(now time.Time, override string) {
+	key := state.Key("blanc-en", "10.9.9.9:8080")
+	e.mem.Ensure(key)
+	e.mem.Update(key, func(tg *state.Target) {
+		s := &tg.EnsureBalancer("pool-blanc").Selection
+		s.State, s.LastSuccessAt, s.LastCheckedAt, s.OverrideTarget = state.SelectionOK, new(now), new(now), override
+	})
+}
+
+// An empty pool of another subscription starts the wait without any RPC
+// or dial for the dependency; the pool back starts the pause, its end
+// resets FailuresInRow.
+func TestWaitCrossBalancer(t *testing.T) {
+	e, clock, dials := crossWaitEnv(t, 60)
+	e.deps.Probe = ok(200, 10)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 1 })
+	e.en(clock.Now(), "")
+	n := len(e.xray.Calls())
+	e.tick()
+	if calls := e.callsSince(n); len(calls) != 0 || *dials != 0 {
+		t.Fatalf("calls %q, dials %d", calls, *dials)
+	}
+	ev := e.logs.events(t, "source_dependency_unhealthy")
+	if len(ev) != 1 || ev[0]["level"] != "WARN" || !slices.Equal(ev[0]["dependsOn"].([]any), []any{crossName}) {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	if w := e.wait(); w.Since == nil || w.Deps[crossName].State != state.DepUnhealthy {
+		t.Fatalf("wait %+v", w)
+	}
+	clock.advance(15 * time.Second)
+	e.en(clock.Now(), "blanc-1")
+	e.tick()
+	if w := e.wait(); w.Since == nil || w.Deps[crossName].GraceUntil == nil {
+		t.Fatalf("no pause: %+v", w)
+	}
+	clock.advance(30 * time.Second)
+	e.en(clock.Now(), "blanc-1")
+	e.tick()
+	if ev := e.logs.events(t, "source_dependency_recovered"); len(ev) != 0 {
+		t.Fatalf("recovered in the pause %v", ev)
+	}
+	clock.advance(35 * time.Second)
+	e.en(clock.Now(), "blanc-1")
+	e.tick()
+	if ev := e.logs.events(t, "source_dependency_recovered"); len(ev) != 1 {
+		t.Fatalf("source_dependency_recovered %v", ev)
+	}
+	if w := e.wait(); w.Since != nil || w.ResetAt == nil || e.tunnel(0).Monitor.FailuresInRow != 0 {
+		t.Fatalf("wait %+v, monitor %+v", w, e.tunnel(0).Monitor)
+	}
+	if *dials != 0 || len(e.callsSince(n)) != 0 {
+		t.Fatalf("calls %q, dials %d", e.callsSince(n), *dials)
+	}
+}
+
+// Unknown health of the other subscription's balancer starts the wait: its
+// Xray is down, its state is stale, or the monitor has no subscriptions.
+func TestWaitCrossBalancerUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(e *env, now time.Time)
+	}{
+		{"xray down", func(e *env, now time.Time) {
+			e.en(now, "blanc-1")
+			e.mem.Update(state.Key("blanc-en", "10.9.9.9:8080"), func(tg *state.Target) { tg.SetXrayDown("down", now) })
+		}},
+		{"stale", func(e *env, now time.Time) { e.en(now.Add(-46*time.Second), "blanc-1") }},
+		{"never polled", func(*env, time.Time) {}},
+		{"no subscriptions", func(e *env, now time.Time) { e.en(now, "blanc-1"); e.deps.Subscriptions = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, clock, _ := crossWaitEnv(t, 60)
+			e.deps.Probe = ok(200, 10)
+			tc.set(e, clock.Now())
+			e.tick()
+			if w := e.wait(); w.Since == nil || w.Deps[crossName].State != state.DepUnknown {
+				t.Fatalf("wait %+v", w)
+			}
+		})
+	}
+}
+
+// While the own Xray is down nothing changes or is logged, whatever the
+// other subscription's balancer says.
+func TestWaitCrossBalancerOwnXrayDown(t *testing.T) {
+	e, clock, _ := crossWaitEnv(t, 60)
+	e.deps.Probe = ok(200, 10)
+	e.en(clock.Now(), "")
+	e.mem.Update(e.key, func(tg *state.Target) { tg.SetXrayDown("down", clock.Now()) })
+	e.tick()
+	if w := e.wait(); w.Since != nil || len(w.Deps) != 0 {
+		t.Fatalf("wait %+v", w)
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 0 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+}
+
+// The tick read the pool healthy, it emptied before ReplaceFailed:
+// ReplaceFailed reads the state again and starts the wait: no replacement
+// (the tunnel is repaired), no quarantine.
+func TestWaitCrossBalancerFresh(t *testing.T) {
+	e, clock, dials := crossWaitEnv(t, 180)
+	e.en(clock.Now(), "blanc-1")
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 1 })
+	e.onDial = func() {
+		*dials++
+		if *dials == 1 { // ReplaceFailed: the tick dialed nothing for the dependency
+			e.en(clock.Now(), "")
+		}
+	}
+	n := len(e.xray.Calls())
+	e.tick()
+	if calls := e.callsSince(n); hasReplacement(calls) || len(e.source().Selection.Quarantine) != 0 || e.wait().Since == nil {
+		t.Fatalf("calls %q, wait %+v", calls, e.wait())
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 1 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+}
+
+// A source dependency and another subscription's balancer: both named in
+// config order while bad, each with its own health.
+func TestWaitCrossBalancerMixed(t *testing.T) {
+	e, clock, _ := crossWaitEnv(t, 60)
+	e.sub.Sources[0].DependsOn = []config.DependencyConfig{
+		{Source: "up", Health: config.HealthBalancer, RecoverGraceSeconds: 60}, crossDep(60),
+	}
+	e.deps.Probe = ok(200, 10)
+	e.en(clock.Now(), "")
+	e.tick()
+	ev := e.logs.events(t, "source_dependency_unhealthy")
+	if len(ev) != 1 || !slices.Equal(ev[0]["dependsOn"].([]any), []any{"up", crossName}) {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	e.xray.SetOverride("x-up", "up-1")
+	e.tick()
+	if w := e.wait(); w.Since == nil || w.Deps["up"].GraceUntil == nil || w.Deps[crossName].State != state.DepUnhealthy {
+		t.Fatalf("wait %+v", w)
+	}
+}
+
+// The same tag in the own Xray (healthy) and in the other subscription
+// (empty) are two dependencies: the source waits for the other one.
+func TestWaitCrossBalancerTagCollision(t *testing.T) {
+	e, clock, _ := crossWaitEnv(t, 60)
+	e.sub.Sources[0].DependsOn = []config.DependencyConfig{
+		{Balancer: "pool-blanc", Health: config.HealthBalancer, RecoverGraceSeconds: 60}, crossDep(60),
+	}
+	e.xray.AddBalancer("pool-blanc", []string{"none-"}, "random")
+	e.xray.SetOverride("pool-blanc", "up-1")
+	e.deps.Probe = ok(200, 10)
+	e.en(clock.Now(), "")
+	e.tick()
+	ev := e.logs.events(t, "source_dependency_unhealthy")
+	if len(ev) != 1 || !slices.Equal(ev[0]["dependsOn"].([]any), []any{crossName}) {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	if w := e.wait(); w.Deps["balancer:pool-blanc"].State != state.DepHealthy {
+		t.Fatalf("wait %+v", w)
+	}
+}

@@ -89,6 +89,9 @@ func (f checkFailure) text() string { return f.code + ": " + f.msg }
 //     dependency balancer starts with `dependency balancer "<tag>": `);
 //     both are answers of the API, so they end an xray_unavailable
 //     episode like a success. Only existence is checked, not health;
+//   - a dependency on another subscription's balancer: no RPC; only a fresh
+//     BalancerNotFound in that target's balancer selection state fails the
+//     check (balancer_not_found, crossChecks);
 //   - its dialerProxy is an outbound of the target (the list of this sync's
 //     orphan removal): dialer_proxy_missing.
 //
@@ -228,7 +231,7 @@ func (s *Syncer) runChecks(ctx context.Context, l manifest.LoadedSource) (f chec
 		tags = append(tags, src.Balancer)
 	}
 	for _, d := range src.DependsOn {
-		if d.Balancer != "" {
+		if d.Balancer != "" && d.Subscription == "" {
 			tags = append(tags, d.Balancer)
 		}
 	}
@@ -272,6 +275,9 @@ func (s *Syncer) runChecks(ctx context.Context, l manifest.LoadedSource) (f chec
 			}
 		}
 	}
+	if cf := s.crossChecks(src); cf.code != "" {
+		return cf, nil
+	}
 	if src.DialerProxy != "" {
 		list := s.outbounds[c.ID]
 		if list == nil {
@@ -282,4 +288,39 @@ func (s *Syncer) runChecks(ctx context.Context, l manifest.LoadedSource) (f chec
 		}
 	}
 	return checkFailure{}, nil
+}
+
+// crossChecks checks the dependencies of src on balancers of other
+// subscriptions in config order, from state only (no RPC, nothing
+// written): the last GetBalancerInfo of that subscription's balancer
+// selection answered BalancerNotFound and is not stale (its LastCheckedAt;
+// the XrayDown of that target is not looked at) fails with
+// balancer_not_found. Any other state (an error, ServiceDisabled, never
+// checked, stale) passes: the tunnel monitor waits for it.
+func (s *Syncer) crossChecks(src config.SourceConfig) checkFailure {
+	now := s.now()
+	for _, d := range src.DependsOn {
+		if d.Subscription == "" {
+			continue
+		}
+		other, b, ok := config.FindBalancer(s.Config.Config.Subscriptions, d.Subscription, d.Balancer)
+		if !ok || b.Selection == nil {
+			continue
+		}
+		msg := ""
+		s.Memory.View(state.Key(other.ID, other.Target.Address), func(tg *state.Target) {
+			bs, ok := tg.BalancerState(b.Tag)
+			if !ok {
+				return
+			}
+			sel := bs.Selection
+			if sel.State == state.SelectionError && sel.NotFound && sel.LastCheckedAt != nil && !b.Selection.Stale(*sel.LastCheckedAt, now) {
+				msg = sel.LastError
+			}
+		})
+		if msg != "" {
+			return checkFailure{CodeBalancerNotFound, fmt.Sprintf("dependency balancer %q: ", d.Subscription+"/"+d.Balancer) + msg}
+		}
+	}
+	return checkFailure{}
 }

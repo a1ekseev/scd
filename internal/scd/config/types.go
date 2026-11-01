@@ -3,6 +3,9 @@
 package config
 
 import (
+	"time"
+
+	"github.com/a1ekseev/scd/internal/common/cron"
 	"github.com/a1ekseev/scd/internal/common/inputsrc"
 	"github.com/a1ekseev/scd/internal/common/jsonout"
 	"github.com/a1ekseev/scd/internal/common/labelfilter"
@@ -90,7 +93,8 @@ type SourceConfig struct {
 	// when not configured.
 	DialerProxy string `json:"dialerProxy,omitempty"`
 	// DependsOn are the sources of the same subscription, or balancers of
-	// the same target, this source is applied and monitored after.
+	// the same target or of another subscription's target, this source is
+	// applied and monitored after.
 	DependsOn []DependencyConfig `json:"dependsOn,omitempty"`
 }
 
@@ -106,8 +110,14 @@ type DependencyConfig struct {
 	// Source is the id of a source of the same subscription; exactly one of
 	// Source and Balancer is set.
 	Source string `json:"source,omitempty"`
+	// Subscription is the id of another subscription whose target.balancers
+	// entry Balancer (with an enabled selection) is the dependency; its
+	// health is read from that subscription's balancer selection state, with
+	// no RPC. "" for a dependency of the same target.
+	Subscription string `json:"subscription,omitempty"`
 	// Balancer is the tag of an Xray balancer of the same target that is not
-	// the balancer of any source of the subscription.
+	// the balancer of any source of the subscription, or with Subscription a
+	// balancer of that subscription's target.
 	Balancer string `json:"balancer,omitempty"`
 	// Health is how the dependency's health is judged: HealthBalancer.
 	Health string `json:"health"`
@@ -115,8 +125,12 @@ type DependencyConfig struct {
 	RecoverGraceSeconds int `json:"recoverGraceSeconds"`
 }
 
-// Name is the source id, or "balancer:<tag>"; source ids have no colon.
+// Name is the source id, "balancer:<tag>" or, with Subscription,
+// "balancer:<subscription>/<tag>"; source ids have no colon.
 func (d DependencyConfig) Name() string {
+	if d.Subscription != "" {
+		return "balancer:" + d.Subscription + "/" + d.Balancer
+	}
 	if d.Balancer != "" {
 		return "balancer:" + d.Balancer
 	}
@@ -285,6 +299,45 @@ type BalancerSelectionConfig struct {
 	Observatory bool `json:"observatory"`
 	// Strategy is an optional UI hint: leastPing|leastLoad|random|roundRobin.
 	Strategy string `json:"strategy,omitempty"`
+}
+
+// Stale reports whether a selection state written at last is stale at now:
+// now is after the third activation of Schedule after last, so the third
+// tick in flight already counts as stale. A zero last, a schedule that does
+// not parse or has no third activation is stale.
+func (b BalancerSelectionConfig) Stale(last, now time.Time) bool {
+	if last.IsZero() {
+		return true
+	}
+	s, err := cron.Parse(b.Schedule)
+	if err != nil {
+		return true
+	}
+	t := last
+	for range 3 {
+		if t = s.Next(t); t.IsZero() {
+			return true
+		}
+	}
+	return now.After(t)
+}
+
+// FindBalancer returns the first subscription of subs with id subID and its
+// target.balancers entry tag. It does not look at Enabled: validation
+// rejects a dependency on a disabled subscription.
+func FindBalancer(subs []SubscriptionConfig, subID, tag string) (SubscriptionConfig, BalancerConfig, bool) {
+	for _, s := range subs {
+		if s.ID != subID {
+			continue
+		}
+		for _, b := range s.Target.Balancers {
+			if b.Tag == tag {
+				return s, b, true
+			}
+		}
+		break
+	}
+	return SubscriptionConfig{}, BalancerConfig{}, false
 }
 
 // RuntimeConfig selects one-shot or scheduled operation.

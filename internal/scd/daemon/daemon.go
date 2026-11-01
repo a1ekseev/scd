@@ -107,6 +107,12 @@ func (d *Daemon) dialer() xrayapi.Dialer {
 	return d.Dial
 }
 
+// monitorDeps are the monitor collaborators of the loops; Subscriptions
+// lets the tunnel monitor read the balancers of other subscriptions.
+func (d *Daemon) monitorDeps(mem *state.Memory, bg *sync.WaitGroup) monitor.Deps {
+	return monitor.Deps{Memory: mem, Log: d.Log, Dial: d.dialer(), Now: d.Now, Background: bg, Subscriptions: d.Config.Config.Subscriptions}
+}
+
 // loops returns the cron loops of the config in start order (03 §3.1): the
 // sync loop; for every subscription, enabled or not, the tunnel monitor
 // loop, then for every target.balancers[] entry its monitor and selection
@@ -115,7 +121,7 @@ func (d *Daemon) loops(mem *state.Memory, agg *status.Aggregator, bg *sync.WaitG
 	cfg := d.Config.Config
 	dial := d.dialer()
 	s := &syncer.Syncer{Config: d.Config, Memory: mem, Log: d.Log, Dial: dial, Now: d.Now}
-	md := monitor.Deps{Memory: mem, Log: d.Log, Dial: dial, Now: d.Now, Background: bg}
+	md := d.monitorDeps(mem, bg)
 	bd := balancer.Deps{Memory: mem, Log: d.Log, Dial: dial, Now: d.Now}
 
 	out := []loop{{
