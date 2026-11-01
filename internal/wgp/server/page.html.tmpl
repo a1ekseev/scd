@@ -28,7 +28,8 @@ dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 <dl>
 <dt>type</dt><dd>{{.Type}}</dd>
 <dt>output</dt><dd>{{.Output}}</dd>
-<dt>issued</dt><dd>{{.Issued}}{{if .Limit}} of {{.Limit}}{{end}}</dd>
+<dt>issued</dt><dd>{{.Issued}}</dd>
+{{if .Limit}}<dt>connection limit</dt><dd>{{.Limit}}</dd>{{end}}
 {{if not .ExpiresAt.IsZero}}<dt>expires</dt><dd>{{.ExpiresAt.Format "2006-01-02 15:04 MST"}}</dd>{{end}}
 {{if not .LastTickAt.IsZero}}<dt>last tick</dt><dd>{{.LastTickAt.Format "2006-01-02 15:04:05 MST"}}</dd>{{end}}
 {{if not .LastSuccessAt.IsZero}}<dt>last success</dt><dd>{{.LastSuccessAt.Format "2006-01-02 15:04:05 MST"}}</dd>{{end}}

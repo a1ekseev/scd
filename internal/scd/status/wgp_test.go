@@ -165,7 +165,8 @@ func TestDashboardWGP(t *testing.T) {
 	local, remote, _ := strings.Cut(body, `id="instance-panel-1"`)
 	assertContains(t, local, "<h2>wgp</h2>", ">wgp · account<", ">acc · wg<", ">dev · mq<",
 		`<span class="metric metric-state-healthy"><span class="metric-label">Status</span><span class="metric-value">ok</span></span>`,
-		`<span class="metric-label">Issued</span><span class="metric-value">3 of 10</span>`,
+		`<span class="metric-label">Issued</span><span class="metric-value">3</span>`,
+		`<span class="metric-label">Connection limit</span><span class="metric-value">10</span>`,
 		`<span class="metric-label">Issued</span><span class="metric-value">2</span>`,
 		`<span class="metric"><span class="metric-label">Expires</span><span class="metric-value"><time datetime="2026-08-22T09:00:00.000Z">2026-08-22T09:00:00.000Z</time></span></span>`,
 		`<span class="metric-label">Last Success</span><span class="metric-value"><time datetime="2026-08-15T09:58:00.000Z">2026-08-15T09:58:00.000Z</time></span>`)

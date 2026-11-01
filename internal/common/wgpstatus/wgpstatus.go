@@ -50,7 +50,8 @@ type Provider struct {
 	LastSuccessAt time.Time `json:"lastSuccessAt,omitzero"`
 	// Issued is the number of candidates issued.
 	Issued int `json:"issued"`
-	// Limit is the plan limit on issued candidates, 0 when unknown. Information only.
+	// Limit is the provider limit on simultaneous connections (Proton MaxConnect), 0 when unknown.
+	// Information only: it does not limit the issued candidates.
 	Limit int `json:"limit,omitzero"`
 	// ExpiresAt is the earliest expiry among the issued candidates, zero when they do not expire.
 	ExpiresAt time.Time `json:"expiresAt,omitzero"`

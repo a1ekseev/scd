@@ -46,7 +46,7 @@ func TestServer(t *testing.T) {
 		t.Fatalf("api %d %s %q", code, ct, body)
 	}
 	code, ct, body = get("GET", "/")
-	for _, want := range []string{"<h1>wgp</h1>", "2 of 10", `class="bad">error`, "&lt;script&gt;output"} {
+	for _, want := range []string{"<h1>wgp</h1>", "connection limit", `class="bad">error`, "&lt;script&gt;output"} {
 		if code != 200 || !strings.HasPrefix(ct, "text/html") || !strings.Contains(body, want) {
 			t.Errorf("page %d %s lacks %q:\n%s", code, ct, want, body)
 		}

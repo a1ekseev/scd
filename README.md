@@ -835,7 +835,7 @@ Without the file there is no block and no key. A file that cannot be read
 (wrong mode, too large, invalid JSON, a `version` other than `1`) gives a block
 with only `error`, a text without the host path; the response is still 200 and
 complete. The dashboard shows a wgp section above the subscriptions with a card
-per provider (state, issued of limit, expiry, last success, error) and a card
+per provider (state, issued, connection limit, expiry, last success, error) and a card
 per unreadable file. `needs_login`, `error`, an unknown state,
 an expiry within 2 hours of the snapshot time (below the renewal window, so
 only a missed renewal; with `renewBeforeMinutes` under 120 a healthy
@@ -1386,7 +1386,7 @@ outputs:
 - **`logout`** revokes every certificate of that template, forgets the keys
   and closes the session.
 - `status.json`: `issued` is the number of candidates with a live
-  certificate, `limit` is `MaxConnect`, `expiresAt` the earliest expiry. A
+  certificate, `limit` is `MaxConnect` (the plan limit of simultaneous connections, not of issued certificates), `expiresAt` the earliest expiry. A
   failing candidate makes `state: error` with `candidate N: …`, never a key
   or token; no line at all fails the tick and the previous output stays.
 - Logs: `candidate_server_changed` (`fromServer`, `toServer`, `reasonCode`

@@ -153,11 +153,10 @@ func wgpCards(s *InstanceSnapshot) []wgpCardView {
 			if p.State != wgpstatus.StateOK {
 				c.Class, status.Class = state.TunnelDegraded, " metric-state-degraded"
 			}
-			issued := strconv.Itoa(p.Issued)
+			c.Metrics = append(c.Metrics, status, metricView{Label: "Issued", Value: strconv.Itoa(p.Issued)})
 			if p.Limit > 0 {
-				issued += " of " + strconv.Itoa(p.Limit)
+				c.Metrics = append(c.Metrics, metricView{Label: "Connection limit", Value: strconv.Itoa(p.Limit)})
 			}
-			c.Metrics = append(c.Metrics, status, metricView{Label: "Issued", Value: issued})
 			if p.ExpiresAt != "" {
 				exp := metricView{Label: "Expires", Time: p.ExpiresAt}
 				if at, err := time.Parse(time.RFC3339, p.ExpiresAt); err == nil && !captured.IsZero() && at.Sub(captured) < wgpExpirySoon {
