@@ -373,3 +373,228 @@ func TestReplaceFailedWhileWaiting(t *testing.T) {
 		t.Fatalf("done %v, err %v, calls %q", done, err, e.callsSince(n))
 	}
 }
+
+// balWaitEnv is waitEnv whose source "wg" depends on the balancer pool-en of
+// the same Xray (selects nothing until the test sets its override). With
+// withUp it also keeps the dependency on source "up" (mixed); otherwise
+// "up" is only a second dependent source without tunnels.
+func balWaitEnv(t *testing.T, grace int, withUp, withPool bool) (*env, *waitClock) {
+	t.Helper()
+	e, clock := waitEnv(t, grace)
+	dep := config.DependencyConfig{Balancer: "pool-en", Health: config.HealthBalancer, RecoverGraceSeconds: grace}
+	if withUp {
+		e.sub.Sources[0].DependsOn = append(e.sub.Sources[0].DependsOn, dep)
+	} else {
+		e.sub.Sources[0].DependsOn = []config.DependencyConfig{dep}
+	}
+	if withPool {
+		e.xray.AddBalancer("pool-en", []string{"none-"}, "random")
+	}
+	return e, clock
+}
+
+func balancerCalls(calls []string, tag string) int {
+	return strings.Count("\n"+strings.Join(calls, "\n")+"\n", "\nGetBalancerInfo:"+tag+"\n")
+}
+
+// An unhealthy dependency balancer starts the wait once; the failing tunnel
+// is only repaired (ListInbounds, remove, add).
+func TestWaitDependencyBalancer(t *testing.T) {
+	e, _ := balWaitEnv(t, 180, false, true)
+	tn := e.tunnel(0).Mapping
+	e.deps.Probe = failPort(tn.Port)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 5 })
+	n := len(e.xray.Calls())
+	e.tick()
+	e.tick()
+	calls := e.callsSince(n)
+	if hasReplacement(calls) || len(e.source().Selection.Quarantine) != 0 {
+		t.Fatalf("replaced: %q", calls)
+	}
+	repair := []string{
+		"GetBalancerInfo:pool-en", "ListInbounds", "RemoveRule:" + tn.RouteTag, "RemoveOutbound:" + tn.OutboundTagInitial,
+		"ListOutbounds", "AddOutbound:" + tn.OutboundWithoutPrefix.Tag, "AddRule:" + tn.RouteTag + "->" + tn.OutboundWithoutPrefix.Tag,
+	}
+	if got := calls[:len(repair)]; !slices.Equal(got, repair) {
+		t.Fatalf("calls %q, want %q", got, repair)
+	}
+	ev := e.logs.events(t, "source_dependency_unhealthy")
+	if len(ev) != 1 || ev[0]["level"] != "WARN" || ev[0]["health"] != "balancer" ||
+		!slices.Equal(ev[0]["dependsOn"].([]any), []any{"balancer:pool-en"}) {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	if w := e.wait(); w.Since == nil || w.Deps["balancer:pool-en"].State != state.DepUnhealthy {
+		t.Fatalf("wait %+v", w)
+	}
+}
+
+// The dependency comes back: the pause holds the wait, replacement waits
+// for its end, then FailuresInRow is reset.
+func TestWaitDependencyBalancerRecovers(t *testing.T) {
+	e, clock := balWaitEnv(t, 180, false, true)
+	tn := e.tunnel(0).Mapping
+	e.deps.Probe = failPort(tn.Port)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 5 })
+	e.tick()
+	e.xray.SetOverride("pool-en", "via-en")
+	clock.advance(time.Minute)
+	n := len(e.xray.Calls())
+	e.tick()
+	w := e.wait()
+	if w.Since == nil || w.Deps["balancer:pool-en"].RecoveredAt == nil || w.Deps["balancer:pool-en"].GraceUntil == nil || hasReplacement(e.callsSince(n)) {
+		t.Fatalf("no pause: %+v, calls %q", w, e.callsSince(n))
+	}
+	e.deps.Probe = ok(200, 10)
+	clock.advance(3 * time.Minute)
+	e.tick()
+	ev := e.logs.events(t, "source_dependency_recovered")
+	if len(ev) != 1 || ev[0]["failuresReset"] != 1.0 || ev[0]["waitedForMs"] != float64((4*time.Minute).Milliseconds()) {
+		t.Fatalf("source_dependency_recovered %v", ev)
+	}
+	if w := e.wait(); w.Since != nil || w.ResetAt == nil || e.tunnel(0).Monitor.FailuresInRow != 0 {
+		t.Fatalf("wait %+v, monitor %+v", w, e.tunnel(0).Monitor)
+	}
+}
+
+// Quarantines started within the pause before the wait are released, older
+// ones stay.
+func TestWaitDependencyBalancerQuarantine(t *testing.T) {
+	e, clock := balWaitEnv(t, 180, false, true)
+	e.xray.SetOverride("pool-en", "via-en")
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.tick()
+	e.tick() // replaceAfterFailures 2: replaced, its pair in quarantine
+	if len(e.logs.events(t, "candidate_replaced")) != 1 || len(e.source().Selection.Quarantine) != 1 {
+		t.Fatal("no replacement")
+	}
+	e.deps.Probe = ok(200, 10)
+	clock.advance(time.Minute)
+	e.xray.SetOverride("pool-en", "")
+	e.tick()
+	if q := e.source().Selection.Quarantine; len(q) != 0 {
+		t.Fatalf("quarantine %v", q)
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 1 || ev[0]["quarantineReleased"] != 1.0 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+
+	e, clock = balWaitEnv(t, 180, false, true)
+	e.deps.Probe = ok(200, 10)
+	e.xray.SetOverride("pool-en", "via-en")
+	e.tick()
+	cands := e.source().Candidates
+	e.mem.Update(e.key, func(tg *state.Target) {
+		tg.Sources["wg"].Selection.QuarantinePair(cands[len(cands)-1].SelectionCandidate(), clock.Now().Add(-3*time.Minute-time.Second), 4)
+	})
+	e.xray.SetOverride("pool-en", "")
+	e.tick()
+	if q := e.source().Selection.Quarantine; len(q) != 1 {
+		t.Fatalf("old quarantine released: %v", q)
+	}
+}
+
+// The tick saw the balancer healthy, it went down before ReplaceFailed:
+// ReplaceFailed starts the wait itself.
+func TestWaitDependencyBalancerFresh(t *testing.T) {
+	e, _ := balWaitEnv(t, 180, false, true)
+	e.xray.SetOverride("pool-en", "via-en")
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 1 })
+	dials := 0
+	e.onDial = func() {
+		dials++
+		if dials == 2 { // after the tick's dependency check
+			e.xray.SetOverride("pool-en", "")
+		}
+	}
+	n := len(e.xray.Calls())
+	e.tick()
+	if hasReplacement(e.callsSince(n)) || len(e.source().Selection.Quarantine) != 0 || e.wait().Since == nil {
+		t.Fatalf("calls %q, wait %+v", e.callsSince(n), e.wait())
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 1 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+}
+
+// With a source and a balancer dependency the source waits while either is
+// unhealthy; bad names both in config order; each has its own pause.
+func TestWaitDependencyMixed(t *testing.T) {
+	e, clock := balWaitEnv(t, 60, true, true)
+	e.deps.Probe = ok(200, 10)
+	e.tick()
+	ev := e.logs.events(t, "source_dependency_unhealthy")
+	if len(ev) != 1 || !slices.Equal(ev[0]["dependsOn"].([]any), []any{"up", "balancer:pool-en"}) {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	e.xray.SetOverride("x-up", "up-1")
+	clock.advance(time.Minute)
+	e.tick() // up pauses; pool-en still down
+	w := e.wait()
+	if w.Since == nil || w.Deps["up"].GraceUntil == nil || w.Deps["balancer:pool-en"].GraceUntil != nil {
+		t.Fatalf("wait %+v", w)
+	}
+	e.xray.SetOverride("pool-en", "via-en")
+	clock.advance(time.Minute)
+	e.tick() // pool-en pauses, up's pause is over
+	w = e.wait()
+	if w.Since == nil || w.Deps["balancer:pool-en"].GraceUntil == nil || len(e.logs.events(t, "source_dependency_recovered")) != 0 {
+		t.Fatalf("wait %+v", w)
+	}
+	clock.advance(2 * time.Minute)
+	e.tick()
+	if w := e.wait(); w.Since != nil || len(e.logs.events(t, "source_dependency_recovered")) != 1 {
+		t.Fatalf("wait %+v", w)
+	}
+}
+
+// Two sources waiting for one balancer cost one GetBalancerInfo per tick.
+func TestWaitDependencyBalancerShared(t *testing.T) {
+	e, _ := balWaitEnv(t, 180, false, true)
+	e.sub.Sources[1].DependsOn = []config.DependencyConfig{{Balancer: "pool-en", Health: config.HealthBalancer, RecoverGraceSeconds: 180}}
+	e.deps.Probe = ok(200, 10)
+	n := len(e.xray.Calls())
+	e.tick()
+	if c := balancerCalls(e.callsSince(n), "pool-en"); c != 1 {
+		t.Fatalf("GetBalancerInfo(pool-en) %d times: %q", c, e.callsSince(n))
+	}
+}
+
+// A balancer Xray does not know is unknown: the source waits.
+func TestWaitDependencyBalancerNotFound(t *testing.T) {
+	e, _ := balWaitEnv(t, 180, false, false)
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 5 })
+	n := len(e.xray.Calls())
+	e.tick()
+	if hasReplacement(e.callsSince(n)) {
+		t.Fatalf("replaced: %q", e.callsSince(n))
+	}
+	if w := e.wait(); w.Since == nil || w.Deps["balancer:pool-en"].State != state.DepUnknown {
+		t.Fatalf("wait %+v", w)
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 1 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+}
+
+// While the API is unavailable nothing changes or is logged; the source
+// counts as waiting.
+func TestWaitDependencyBalancerXrayUnavailable(t *testing.T) {
+	e, _ := balWaitEnv(t, 60, false, true)
+	e.xray.SetOverride("pool-en", "via-en")
+	e.deps.Probe = failPort(e.tunnel(0).Mapping.Port)
+	e.xray.FailNext("GetBalancerInfo", status.Error(codes.Unavailable, "connection refused"))
+	e.setTunnel(0, func(st *state.Tunnel) { st.Monitor.FailuresInRow = 5 })
+	n := len(e.xray.Calls())
+	e.tick()
+	if hasReplacement(e.callsSince(n)) {
+		t.Fatalf("replaced: %q", e.callsSince(n))
+	}
+	if ev := e.logs.events(t, "source_dependency_unhealthy"); len(ev) != 0 {
+		t.Fatalf("source_dependency_unhealthy %v", ev)
+	}
+	if w := e.wait(); w.Since != nil || len(w.Deps) != 0 {
+		t.Fatalf("wait %+v", w)
+	}
+}

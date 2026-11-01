@@ -89,8 +89,8 @@ type SourceConfig struct {
 	// wireguard or masque source dial through (sockopt.dialerProxy); ""
 	// when not configured.
 	DialerProxy string `json:"dialerProxy,omitempty"`
-	// DependsOn are the sources of the same subscription this source is
-	// applied and monitored after.
+	// DependsOn are the sources of the same subscription, or balancers of
+	// the same target, this source is applied and monitored after.
 	DependsOn []DependencyConfig `json:"dependsOn,omitempty"`
 }
 
@@ -103,12 +103,24 @@ const DefaultRecoverGraceSeconds = 180
 
 // DependencyConfig is one sources[].dependsOn entry.
 type DependencyConfig struct {
-	// Source is the id of a source of the same subscription.
-	Source string `json:"source"`
+	// Source is the id of a source of the same subscription; exactly one of
+	// Source and Balancer is set.
+	Source string `json:"source,omitempty"`
+	// Balancer is the tag of an Xray balancer of the same target that is not
+	// the balancer of any source of the subscription.
+	Balancer string `json:"balancer,omitempty"`
 	// Health is how the dependency's health is judged: HealthBalancer.
 	Health string `json:"health"`
 	// RecoverGraceSeconds is the pause after the dependency recovers.
 	RecoverGraceSeconds int `json:"recoverGraceSeconds"`
+}
+
+// Name is the source id, or "balancer:<tag>"; source ids have no colon.
+func (d DependencyConfig) Name() string {
+	if d.Balancer != "" {
+		return "balancer:" + d.Balancer
+	}
+	return d.Source
 }
 
 // SelectionConfig chooses the active candidates of a wireguard or masque

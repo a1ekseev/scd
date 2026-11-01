@@ -75,6 +75,11 @@
               "source": "warp",
               "health": "balancer",
               "recoverGraceSeconds": 240
+            },
+            {
+              "balancer": "pool-en",
+              "health": "balancer",
+              "recoverGraceSeconds": 180
             }
           ]
         }

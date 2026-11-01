@@ -134,10 +134,13 @@ type SourceView struct {
 
 // DependencyView is one dependsOn entry of a source.
 type DependencyView struct {
-	SourceID string `json:"sourceId"`
+	SourceID string `json:"sourceId,omitempty"`
+	// Balancer is the Xray balancer tag of a balancer dependency (then
+	// SourceID is empty).
+	Balancer string `json:"balancer,omitempty"`
 	Health   string `json:"health"`
 	// State is healthy, unhealthy, not_applied (the dependency has never
-	// been applied to the target) or unknown (not checked yet, the check
+	// been applied to the target; sources only) or unknown (not checked yet, the check
 	// failed, or the Xray API is unavailable).
 	State string `json:"state"`
 	// Since is when State was entered; RecoveredAt and GraceUntil are the

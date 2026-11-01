@@ -59,6 +59,15 @@
         "strategy": {
           "type": "leastPing"
         }
+      },
+      {
+        "tag": "x-uplink-probe",
+        "selector": [
+          "direct"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
       }
     ]
   }

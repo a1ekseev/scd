@@ -45,19 +45,19 @@ func monitorBalancer(sub config.SubscriptionConfig) config.BalancerConfig {
 
 // dependencyViews are the dependsOn entries of src with their health in t
 // (nil t: before any state). A dependency without state on the target is
-// not_applied; while the Xray API is unavailable every other one is
+// not_applied (a balancer dependency has no state of its own); while the Xray API is unavailable every other one is
 // unknown (the state keeps the last real health); never checked is unknown.
 func dependencyViews(src config.SourceConfig, t *state.Target) []DependencyView {
 	var out []DependencyView
 	for _, d := range src.DependsOn {
-		v := DependencyView{SourceID: d.Source, Health: d.Health, State: state.DepUnknown}
+		v := DependencyView{SourceID: d.Source, Balancer: d.Balancer, Health: d.Health, State: state.DepUnknown}
 		switch {
-		case t == nil || t.Sources[d.Source] == nil:
+		case d.Source != "" && (t == nil || t.Sources[d.Source] == nil):
 			v.State = DepNotApplied
-		case t.XrayDown != nil:
+		case t == nil || t.XrayDown != nil:
 		default:
 			if w := t.Waits[src.ID]; w != nil {
-				if h := w.Deps[d.Source]; h != nil {
+				if h := w.Deps[d.Name()]; h != nil {
 					if h.State != "" {
 						v.State = h.State
 					}

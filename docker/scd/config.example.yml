@@ -83,6 +83,12 @@ subscriptions:
         dependsOn:
           - source: vless
             health: balancer
+          # Демонстрация зависимости от балансировщика своего Xray: на стенде с одним
+          # Xray пробник на direct почти не добавляет сигнала к source: vless; на
+          # стенде с двумя Xray он смотрит socks-outbound в другой Xray. Правила
+          # пробника — README, «Cascade of sources».
+          - balancer: x-uplink-probe
+            health: balancer
       # Кандидаты MASQUE (по строке masque:// на транспорт h3/h2 ключа устройства).
       # Правила input — как у wireguard. На ключ устройства активен один кандидат:
       # новый берётся с наименьшим priority вне карантина «ключ + endpoint + transport».

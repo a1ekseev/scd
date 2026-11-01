@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/a1ekseev/scd/internal/scd/config"
+	"github.com/a1ekseev/scd/internal/scd/manifest"
+	"github.com/a1ekseev/scd/internal/scd/xrayapi/xrayfake"
 )
 
 // dependsSub has sources "a" (/a, ports 20000..20010), which depends on
@@ -93,5 +95,41 @@ func TestDependencyNotApplied(t *testing.T) {
 	}
 	if firstRPCOf(srv.Calls()[n:], "a") < 0 {
 		t.Fatal("a not applied while z keeps its state")
+	}
+}
+
+// A balancer entry before a source entry does not hide the source: without
+// target state and with the state of other sources, the unapplied z blocks
+// a (dependency_not_applied).
+func TestDependencyNotAppliedAfterBalancerEntry(t *testing.T) {
+	sub := dependsSub()
+	sub.Sources[0].DependsOn = append([]config.DependencyConfig{{Balancer: "pool-en", Health: config.HealthBalancer, RecoverGraceSeconds: 60}}, sub.Sources[0].DependsOn...)
+	m := source("b", "/b")
+	m.PortRange = &config.PortRange{Start: 20200, End: 20210}
+	sub.Sources = append(sub.Sources, m)
+	f := newSourcesFixture(t, sub, map[string]string{"/a": vienna, "/z": berlin, "/b": vienna},
+		xrayfake.WithBalancer("pool-en", []string{"none-"}, "random"))
+
+	// (a) No target state at all.
+	fail, err := f.s.runChecks(t.Context(), manifest.LoadedSource{Subscription: sub, Config: sub.Sources[0]})
+	if err != nil || fail.code != CodeDependencyNotApplied || fail.msg != `dependency "z" is not applied to the target` {
+		t.Fatalf("check %+v, %v", fail, err)
+	}
+
+	// (b) b is applied, z fails to load (twice: b has state in the second).
+	f.in.fail["/z"] = errors.New("boom")
+	for range 2 {
+		for _, tr := range f.run(t).Targets {
+			if (tr.SourceID == "b") != (tr.Failed == 0) {
+				t.Fatalf("report %+v", tr)
+			}
+		}
+	}
+	ev := f.logs.events(t, "source_check_failed")
+	if len(ev) != 2 || ev[1]["sourceId"] != "a" || ev[1]["reasonCode"] != CodeDependencyNotApplied {
+		t.Fatalf("source_check_failed %v", ev)
+	}
+	if firstRPCOf(f.x.servers[addrA].Calls(), "a") >= 0 {
+		t.Fatalf("RPC on the blocked source: %q", f.x.servers[addrA].Calls())
 	}
 }

@@ -58,6 +58,14 @@ func (s *Server) AddBalancer(tag string, selectors []string, strategy string) {
 	WithBalancer(tag, selectors, strategy)(s)
 }
 
+// RemoveBalancer drops a balancer at run time, like a static config change
+// and an Xray restart would; an unknown tag is a no-op.
+func (s *Server) RemoveBalancer(tag string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.balancers, tag)
+}
+
 // SetOverride sets the override target of balancer like
 // OverrideBalancerTarget ("" resets it). It panics on an unknown balancer.
 func (s *Server) SetOverride(balancer, target string) {

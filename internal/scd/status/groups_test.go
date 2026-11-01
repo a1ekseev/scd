@@ -65,6 +65,37 @@ func TestDependencyStates(t *testing.T) {
 	}
 }
 
+// A balancer dependency is never not_applied: unknown without state or
+// Waits, its own state and times from Deps["balancer:<tag>"], unknown while
+// Xray is down; no sourceId in the JSON, and it adds no group depth.
+func TestBalancerDependencyStates(t *testing.T) {
+	l := loadFixture(t, "chain-balancer-dep")
+	warp := sourceJSON(t, l, 0, 0, "warp")
+	d := warp["dependsOn"].([]any)[0].(map[string]any)
+	if _, ok := d["sourceId"]; ok || d["balancer"] != "pool-en" || d["state"] != state.DepUnhealthy || d["since"] != "2026-10-31T08:26:10.000Z" {
+		t.Errorf("down %v", d)
+	}
+	p := sourceJSON(t, l, 0, 0, "proton")["dependsOn"].([]any)[0].(map[string]any)
+	if p["state"] != state.DepHealthy || p["graceUntil"] != "2026-10-31T08:32:00.000Z" {
+		t.Errorf("pause %v", p)
+	}
+	l.mem.Update("main::127.0.0.1:10085", func(tg *state.Target) { tg.XrayDown = &state.XrayIssue{} })
+	if got := depState(t, sourceJSON(t, l, 0, 0, "warp")); got != state.DepUnknown {
+		t.Errorf("xray down %s", got)
+	}
+	l.mem.Update("main::127.0.0.1:10085", func(tg *state.Target) { tg.XrayDown, tg.Waits = nil, nil })
+	if got := depState(t, sourceJSON(t, l, 0, 0, "warp")); got != state.DepUnknown {
+		t.Errorf("no waits %s", got)
+	}
+	src := config.SourceConfig{ID: "w", DependsOn: []config.DependencyConfig{{Balancer: "pool-en", Health: "balancer"}}}
+	if v := dependencyViews(src, nil); v[0].State != state.DepUnknown {
+		t.Errorf("nil target %v", v)
+	}
+	if n := dependencyDepth([]config.SourceConfig{src})["w"]; n != 0 {
+		t.Errorf("depth %d", n)
+	}
+}
+
 // Groups: one per balancer of the sources, the sources without one in
 // group "", a balancer without sources alone; without any source balancer
 // one group of balancers[0]; order by dependsOn, then tag.

@@ -23,7 +23,8 @@ type SourceWait struct {
 	// source's tunnels were reset then. A repair series that started
 	// before it is not a new series.
 	ResetAt *time.Time
-	// Deps is the health of each dependency by source id.
+	// Deps is the health of each dependency by DependencyConfig.Name (a source
+	// id or "balancer:<tag>").
 	Deps map[string]*DepHealth
 }
 

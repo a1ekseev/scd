@@ -261,12 +261,17 @@ func sourceRow(s SourceView, n int, now time.Time) (row rowView, pause *metricVi
 		row.Metrics = append(row.Metrics, metricView{Label: "via", Value: s.DialerProxy, Title: "sockopt.dialerProxy: the outbounds of " + s.SourceID + " dial through this outbound"})
 	}
 	for _, d := range s.DependsOn {
-		title := "health: " + d.Health + " — the balancer of " + d.SourceID + " selects an outbound (GetBalancerInfo)"
+		name := d.SourceID
+		title := "health: " + d.Health + " — the balancer of " + name + " selects an outbound (GetBalancerInfo)"
+		if d.Balancer != "" {
+			name = d.Balancer
+			title = "health: " + d.Health + " — balancer " + name + " selects an outbound (GetBalancerInfo)"
+		}
 		switch d.State {
 		case state.DepUnhealthy:
-			pause = &metricView{Label: "Replace paused", Value: "waiting for " + d.SourceID}
+			pause = &metricView{Label: "Replace paused", Value: "waiting for " + name}
 			m := metricView{
-				Label: "Waiting for", Value: d.SourceID + " · " + d.Health + " down", Class: " metric-state-repairing",
+				Label: "Waiting for", Value: name + " · " + d.Health + " down", Class: " metric-state-repairing",
 				Title: title + ". Its tunnels are only repaired, not replaced.",
 			}
 			if d.Since != "" {
@@ -275,7 +280,7 @@ func sourceRow(s SourceView, n int, now time.Time) (row rowView, pause *metricVi
 			}
 			row.Metrics = append(row.Metrics, m)
 		case state.DepHealthy:
-			row.Metrics = append(row.Metrics, metricView{Label: "Depends on", Value: d.SourceID + " · " + d.Health + " · healthy", Class: " metric-state-healthy", Title: title})
+			row.Metrics = append(row.Metrics, metricView{Label: "Depends on", Value: name + " · " + d.Health + " · healthy", Class: " metric-state-healthy", Title: title})
 			if until, err := time.Parse(time.RFC3339, d.GraceUntil); err == nil && now.Before(until) {
 				if pause == nil {
 					pause = &metricView{Label: "Replace paused", Value: "until ", Time: d.GraceUntil}
@@ -286,7 +291,7 @@ func sourceRow(s SourceView, n int, now time.Time) (row rowView, pause *metricVi
 				})
 			}
 		default:
-			value := d.SourceID + " · " + d.Health + " · " + strings.ReplaceAll(d.State, "_", " ")
+			value := name + " · " + d.Health + " · " + strings.ReplaceAll(d.State, "_", " ")
 			row.Metrics = append(row.Metrics, metricView{Label: "Depends on", Value: value, Class: " metric-state-idle", Title: title})
 		}
 	}

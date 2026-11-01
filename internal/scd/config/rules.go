@@ -280,13 +280,21 @@ func checkTargetSources(n *schema.Node, sub SubscriptionConfig, res ResourceConf
 
 // checkDependencies applies the cascade rules (balancer, dialerProxy,
 // dependsOn) to the sources of sub, whose node is n, and returns the
-// warnings. Disabled sources are checked too, except that only an enabled
+// warnings. A dependsOn balancer is not a source: it adds no edge, may not
+// be the balancer of any source of sub (use dependsOn source), and need not
+// be in target.balancers. Disabled sources are checked too, except that only an enabled
 // source may not depend on a disabled one.
 func checkDependencies(n *schema.Node, sub SubscriptionConfig) []string {
 	byID := make(map[string]SourceConfig, len(sub.Sources))
 	for _, src := range sub.Sources {
 		if _, dup := byID[src.ID]; !dup {
 			byID[src.ID] = src
+		}
+	}
+	byBalancer := map[string]string{}
+	for _, src := range sub.Sources {
+		if _, dup := byBalancer[src.Balancer]; !dup && src.Balancer != "" {
+			byBalancer[src.Balancer] = src.ID
 		}
 	}
 	strategy := map[string]string{}
@@ -311,6 +319,23 @@ func checkDependencies(n *schema.Node, sub SubscriptionConfig) []string {
 		seen := map[string]bool{}
 		for k, d := range src.DependsOn {
 			dkey := fmt.Sprintf("%sdependsOn.%d.", key, k)
+			if d.Balancer != "" {
+				switch owner := byBalancer[d.Balancer]; {
+				case seen[d.Name()]:
+					n.Addf(dkey+"balancer", "duplicate dependency %q", d.Name())
+					continue
+				case owner == src.ID:
+					n.Addf(dkey+"balancer", "a source cannot depend on its own balancer")
+				case owner != "":
+					n.Addf(dkey+"balancer", "balancer %q is the balancer of source %q: use dependsOn source", d.Balancer, owner)
+				}
+				seen[d.Name()] = true
+				if st := strategy[d.Balancer]; d.Health == HealthBalancer && (st == "random" || st == "roundRobin") {
+					warnings = append(warnings, fmt.Sprintf("%s.%shealth: balancer %q has strategy %q, which selects every candidate; "+
+						"the dependency is always healthy", n.Path(), dkey, d.Balancer, st))
+				}
+				continue
+			}
 			if d.Source == "" {
 				continue
 			}

@@ -1,7 +1,8 @@
 {
   "observatory": {
     "subjectSelector": [
-      "x-observe-"
+      "x-observe-",
+      "direct"
     ],
     "probeURL": "https://www.google.com/generate_204",
     "probeInterval": "15s",

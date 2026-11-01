@@ -235,7 +235,7 @@ statusServer:
 | `.sources[].monitor.request.timeoutMs`, `.monitor.retry.{attempts,delayMs}` | Any type: override `target.monitor` for the source's tunnels. See [Monitoring and repair](#monitoring-and-repair). | the target's |
 | `.sources[].balancer` | Tag of the Xray balancer (`routing.balancers[].tag`) whose selector holds the source's outbounds. Changes nothing in Xray: checked before every apply, judged by `health: balancer` of dependent sources, groups the status API and dashboard. Must differ from the `balancer` of every (transitive) dependency. See [Cascade of sources](#cascade-of-sources). | none |
 | `.sources[].dialerProxy` | `wireguard` and `masque` only: a tag of `target.fixedOutbounds` outside the namespace of every enabled source (a loopback to the upper stage), written to `streamSettings.sockopt.dialerProxy` of the source's outbounds. | none |
-| `.sources[].dependsOn[]` | `{source, health, recoverGraceSeconds}`: another enabled source of the subscription (no repeats, no cycle) that must be applied first and whose `balancer` must select an outbound before this source's tunnels are replaced. `health` is required, only `balancer`; `recoverGraceSeconds` ≥ 0. | `[]`; `180` |
+| `.sources[].dependsOn[]` | `{source \| balancer, health, recoverGraceSeconds}`, exactly one of `source` / `balancer`. `source`: another enabled source of the subscription (no repeats, no cycle) that must be applied first. `balancer`: the tag of a balancer of the same Xray that belongs to no source of the subscription (a probe, see [Cascade of sources](#cascade-of-sources)). Either way its balancer must select an outbound before this source's tunnels are replaced. `health` is required, only `balancer`; `recoverGraceSeconds` ≥ 0. | `[]`; `180` |
 | `.sources[].filters.labelIncludeRegex`, `.labelExcludeRegex` | Label filters, see [Label filters](#label-filters). | no filter |
 | `.target.address` | Xray gRPC API `host:port`. | required |
 | `.target.timeoutMs` | Timeout of each Xray API call. | `5000` |
@@ -464,6 +464,32 @@ is a working example):
   a principle target, alive or not, so such a dependency is always healthy
   (validate-config warns when `target.balancers[].selection.strategy` says
   so).
+- **A dependency on a path in another Xray** (`dependsOn: [{balancer:
+  pool-en, health: balancer}]`). scd talks to its own Xray only, so a path
+  that leads through a second Xray (e.g. a socks outbound `via-en` to it) is
+  watched by a probe in the static config of the first one: an observatory
+  on that outbound and a balancer without rules, `pool-en`, whose selector
+  is the outbound. While the path lives, `pool-en` has a principle target;
+  when it does not, the dependent source waits. Rules:
+  - The probe is `leastPing` or `leastLoad`, and its selector is in
+    `observatory.subjectSelector`. Without `strategy` Xray uses `random`
+    and the dependency is **always healthy** (scd cannot see it).
+  - `observatory.probeInterval` ≤ the interval of the tunnel monitor,
+    otherwise the first replacement can pass before the wait starts (its
+    quarantine is released afterwards, but `candidate_replaced` is logged).
+  - The probe must be in the static Xray config before scd starts. A missing
+    probe stops the apply of the source (`source_check_failed`,
+    `reasonCode: balancer_not_found`, text `dependency balancer "pool-en":
+    …`); after an Xray restart without it the source has no tunnels until
+    `source_check_recovered`.
+  - The probe tag is not the `balancer` of any source of the subscription
+    (use `dependsOn: source` for that).
+  - **The path of the probe must not lead through outbounds of the dependent
+    source itself or of sources that depend on it.** scd compares tags only
+    and does not see such a loop: on a failure the source is only repaired,
+    never replaced.
+  - Check it by a failure once: stop the second Xray and see
+    `source_dependency_unhealthy` and no replacements.
 - **DNS**: `dns: {}`, or a `dns.tag` with its rule first; a remote DNS
   query without a tag goes to `chain-fail`.
 - All outbounds in one `-confdir` file (the outbounds of a later file go to
@@ -661,10 +687,14 @@ Xray once more: outbounds created before it keep their direct connections
   before are released. When it ends, the failed-check counts of the
   source's tunnels are reset, so failures during the cascade's comeback
   do not trigger replacements. Logs: `source_dependency_unhealthy` (warn,
-  `dependsOn`, `quarantineReleased`) and `source_dependency_recovered`
+  `dependsOn`, a list of names: a source id or `balancer:<tag>`, and `quarantineReleased`) and `source_dependency_recovered`
   (info, `waitedForMs`, `failuresReset`); none while the Xray API is
   unavailable (the source counts as waiting then). A source whose last check
   before an apply failed (`source_check_failed`) is also only repaired.
+  The wait exists only with the tunnel monitor on. A mistyped or missing
+  probe gives two signals for one problem: `source_check_failed` with
+  `balancer_not_found` (sync) and `source_dependency_unhealthy` with state
+  `unknown` (monitor).
   Observatory marks the upper stage dead only after its `probeInterval`, so
   keep `replaceAfterFailures` × `target.monitor.schedule` ≥ 2 ×
   `observatory.probeInterval` + the probe timeout.
@@ -739,8 +769,8 @@ three lines (full name on hover), the meta line is `<country> · <protocol>
 (ISO on hover, ISO without JavaScript).
 
 With the cascade keys a source view also has `balancer?`, `dialerProxy?`,
-`dependsOn?[]{sourceId, health, state, since?, recoveredAt?, graceUntil?}`
-(`state` is `healthy`, `unhealthy`, `not_applied` when the dependency was never
+`dependsOn?[]{sourceId?, balancer?, health, state, since?, recoveredAt?, graceUntil?}`
+(`state` is `healthy`, `unhealthy`, `not_applied` when the dependency source was never
 applied to the target, or `unknown` before the first check, after a failed one
 and while the Xray API is unavailable; `recoveredAt`/`graceUntil` are the pause
 after a recovery), `resetAt?` (the end of the source's last wait, when the

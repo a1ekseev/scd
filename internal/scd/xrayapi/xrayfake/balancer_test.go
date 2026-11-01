@@ -121,6 +121,11 @@ func TestFakeBalancerUnknownTag(t *testing.T) {
 	if st := status.Convert(err); st.Code() != codes.Unknown || st.Message() != "app/router: cannot find tag" {
 		t.Fatalf("OverrideBalancerTarget(nope) = %v", err)
 	}
+	s.RemoveBalancer("b")
+	_, err = raw.GetBalancerInfo(t.Context(), &routercmd.GetBalancerInfoRequest{Tag: "b"})
+	if st := status.Convert(err); st.Code() != codes.Unknown || st.Message() != "app/router: cannot find tag" {
+		t.Fatalf("GetBalancerInfo(b) after RemoveBalancer = %v", err)
+	}
 }
 
 func TestFakeOverrideNotValidated(t *testing.T) {

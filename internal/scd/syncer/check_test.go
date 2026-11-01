@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/a1ekseev/scd/internal/scd/apply"
+	"github.com/a1ekseev/scd/internal/scd/config"
 	"github.com/a1ekseev/scd/internal/scd/manifest"
 	"github.com/a1ekseev/scd/internal/scd/state"
 	"github.com/a1ekseev/scd/internal/scd/xrayapi"
@@ -232,4 +234,134 @@ func TestCheckRecordsFailedCheck(t *testing.T) {
 			t.Fatalf("CheckFailed %v", tg.CheckFailed)
 		}
 	})
+}
+
+// warpBalancerDep is the wgSub source renamed warp, depending only on
+// balancer pool-en.
+func warpBalancerDep(t *testing.T) config.SubscriptionConfig {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "warp")
+	writeCandidates(t, path, wgFixtureLines(t), 1, 2)
+	w := wgSub(path)
+	w.Sources[0].ID = "warp"
+	w.Sources[0].DependsOn = []config.DependencyConfig{{Balancer: "pool-en", Health: config.HealthBalancer, RecoverGraceSeconds: 60}}
+	return w
+}
+
+// outboundsOf returns the outbounds of source id in srv.
+func outboundsOf(srv *xrayfake.Server, id string) []string {
+	var out []string
+	for _, tag := range srv.OutboundTags() {
+		if touchesSource("x:"+tag, id) {
+			out = append(out, tag)
+		}
+	}
+	return out
+}
+
+// A balancer dependency needs no state of another source: with the balancer
+// in Xray (here without a target, unhealthy) the source applies in the
+// first sync; health is the monitor's business.
+func TestCheckDependencyBalancerExists(t *testing.T) {
+	f := newSourcesFixture(t, warpBalancerDep(t), nil, xrayfake.WithBalancer("pool-en", []string{"via-en"}, "leastPing"))
+	srv := f.x.servers[addrA]
+	if r := f.run(t); r.Failed != 0 || len(outboundsOf(srv, "warp")) != 2 {
+		t.Fatalf("report %+v, outbounds %v", r.Targets, srv.OutboundTags())
+	}
+	if e := f.logs.events(t, "source_check_failed"); len(e) != 0 {
+		t.Fatalf("source_check_failed %v", e)
+	}
+	if !slices.Contains(srv.Calls(), "GetBalancerInfo:pool-en") {
+		t.Fatalf("calls %q", srv.Calls())
+	}
+}
+
+// A dependency balancer missing in Xray blocks the source (no mutation,
+// CheckFailed, a source error) until it exists. Removed later, it blocks
+// the applied source with its tunnels kept; once Xray loses them, no full
+// apply brings them back: zero tunnels until the balancer returns.
+func TestCheckDependencyBalancerNotFound(t *testing.T) {
+	f := newSourcesFixture(t, warpBalancerDep(t), nil)
+	srv := f.x.servers[addrA]
+	key := state.Key("sub", addrA)
+	if r := f.run(t); r.Failed == 0 || mutations(srv.Calls()) != 0 {
+		t.Fatalf("report %+v, calls %q", r.Targets, srv.Calls())
+	}
+	checkEvent(t, f, CodeBalancerNotFound, "ERROR")
+	const msg = `dependency balancer "pool-en": Xray balancer "pool-en" not found.`
+	if ev := f.logs.events(t, "source_check_failed"); ev[0]["error"] != msg {
+		t.Fatalf("error %v", ev[0]["error"])
+	}
+	if e, ok := sourceError(f, "warp"); !ok || e.Code != CodeBalancerNotFound || e.Message != msg {
+		t.Fatalf("source error %+v %v", e, ok)
+	}
+	f.run(t) // the target state exists from the first sync's source error on
+	checkEvent(t, f, CodeBalancerNotFound, "DEBUG")
+	f.s.Memory.View(key, func(tg *state.Target) {
+		if tg.CheckFailed["warp"] != CodeBalancerNotFound {
+			t.Fatalf("CheckFailed %v", tg.CheckFailed)
+		}
+	})
+
+	srv.AddBalancer("pool-en", []string{"via-en"}, "leastPing")
+	if r := f.run(t); r.Failed != 0 || len(outboundsOf(srv, "warp")) != 2 {
+		t.Fatalf("report %+v, outbounds %v", r.Targets, srv.OutboundTags())
+	}
+	if e := f.logs.events(t, "source_check_recovered"); len(e) != 1 {
+		t.Fatalf("source_check_recovered %v", e)
+	}
+
+	srv.RemoveBalancer("pool-en")
+	n := len(srv.Calls())
+	if r := f.run(t); r.Failed == 0 || mutations(srv.Calls()[n:]) != 0 || len(outboundsOf(srv, "warp")) != 2 {
+		t.Fatalf("report %+v, calls %q", r.Targets, srv.Calls()[n:])
+	}
+	checkEvent(t, f, CodeBalancerNotFound, "ERROR")
+	f.s.Memory.View(key, func(tg *state.Target) {
+		if !tg.SourceWaiting("warp") {
+			t.Fatal("not waiting with a failed check")
+		}
+	})
+
+	// Xray loses the tunnels (no restart in the fake: a client removes them).
+	c, err := srv.Dialer()(addrA, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	for _, tag := range srv.InboundTags() {
+		if err := c.RemoveInbound(t.Context(), tag); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tag := range outboundsOf(srv, "warp") {
+		if err := c.RemoveOutbound(t.Context(), tag); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n = len(srv.Calls())
+	if r := f.run(t); r.Failed == 0 || count(srv.Calls()[n:], "Add") != 0 || len(outboundsOf(srv, "warp")) != 0 {
+		t.Fatalf("report %+v, calls %q", r.Targets, srv.Calls()[n:])
+	}
+	// The check comes before the drift check: the loss is not seen yet.
+	if e := f.logs.events(t, "xray_state_drift"); len(e) != 0 {
+		t.Fatalf("xray_state_drift %v", e)
+	}
+}
+
+// Without RoutingService a dependency balancer cannot be checked:
+// routing_service_disabled with the dependency named.
+func TestCheckDependencyBalancerRoutingDisabled(t *testing.T) {
+	f, srv := balancerSubFixture(t, outboundOnly, xrayfake.WithoutRoutingService())
+	s := f.s.Config.Config.Subscriptions[0]
+	s.Sources[0].Balancer = ""
+	s.Sources[0].DependsOn = []config.DependencyConfig{{Balancer: "pool-en", Health: config.HealthBalancer, RecoverGraceSeconds: 60}}
+	f.s.Config = cfg(outboundOnly, s)
+	if r := f.run(t); r.Failed == 0 || mutations(srv.Calls()) != 0 {
+		t.Fatalf("report %+v", r.Targets)
+	}
+	checkEvent(t, f, CodeRoutingServiceDisabled, "ERROR")
+	if ev := f.logs.events(t, "source_check_failed"); !strings.HasPrefix(ev[0]["error"].(string), `dependency balancer "pool-en": `) {
+		t.Fatalf("error %v", ev[0]["error"])
+	}
 }

@@ -151,14 +151,19 @@ scd_runtime_state_wireguard() {
 }
 
 # The cascade of the example: one group per balancer, wg waits for vless
-# through x-balancer (unknown: the tunnel monitor, which judges it, is off)
-# and was applied without an error.
+# through x-balancer and for the balancer x-uplink-probe (unknown: the tunnel
+# monitor, which judges both, is off; the probe has no sourceId and no group)
+# and was applied without an error. That x-uplink-probe exists in the real
+# Xray is proven by the earlier scd_wireguard_tunnels poll: the sync applies
+# wg only after its dependency balancer check passed.
 scd_cascade_status() {
   curl -fsS http://127.0.0.1:9090/api/instance-status |
     jq -e '.subscriptions[0].targets[0] |
-      ([.balancers[] | {(.balancerTag): .sourceIds}] | add | .["x-balancer"] == ["vless"] and .["x-wg-balancer"] == ["wg"]) and
+      ([.balancers[] | {(.balancerTag): .sourceIds}] | add | .["x-balancer"] == ["vless"] and .["x-wg-balancer"] == ["wg"] and
+        .["x-uplink-probe"] == null) and
       (.sources[] | select(.sourceId == "wg") | .dialerProxy == "chain-vless" and .dependsOn[0].sourceId == "vless" and
-        .dependsOn[0].state == "unknown" and has("error") == false)'
+        .dependsOn[0].state == "unknown" and .dependsOn[1].balancer == "x-uplink-probe" and
+        .dependsOn[1].state == "unknown" and (.dependsOn[1] | has("sourceId") | not) and has("error") == false)'
 }
 
 # GetBalancerInfo + GetOutboundStatus answered (ObservatoryService, D22).
@@ -214,7 +219,7 @@ poll "wgp logged the ignored .conf keys" wgp_logged_ignored_keys
 poll "scd /api/instance-status: wgp block of static" scd_wgp_block
 poll "scd /api/instance-status: 2 wireguard tunnels of source wg" scd_wireguard_tunnels
 poll "scd runtime-state: wireguard outbounds applied to Xray through chain-vless" scd_runtime_state_wireguard
-poll "scd /api/instance-status: balancer groups, wg depends on vless" scd_cascade_status
+poll "scd /api/instance-status: balancer groups, wg depends on vless and x-uplink-probe" scd_cascade_status
 
 # The image runs as nonroot (65532), and sfc must still be able to write its
 # source cache (a failed write is only a warning, so check that a refresh

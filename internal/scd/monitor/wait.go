@@ -24,9 +24,12 @@ func dependents(sub config.SubscriptionConfig) []config.SourceConfig {
 }
 
 // dependencyBalancer is the balancer whose selection is the health of
-// dependency dep of sub ("" when the dependency has none: config rejects
-// it).
+// dependency dep of sub: the tag of a balancer dependency itself, else the
+// balancer of the source dependency ("" when it has none: config rejects it).
 func dependencyBalancer(sub config.SubscriptionConfig, dep config.DependencyConfig) string {
+	if dep.Balancer != "" {
+		return dep.Balancer
+	}
 	if s := sourceOf(sub, dep.Source); s != nil {
 		return s.Balancer
 	}
@@ -145,10 +148,11 @@ func (d Deps) applyWaits(ctx context.Context, sub config.SubscriptionConfig, src
 			var bad []string
 			inGrace := false
 			for _, dep := range src.DependsOn {
-				dh := w.Deps[dep.Source]
+				name := dep.Name()
+				dh := w.Deps[name]
 				if dh == nil {
 					dh = &state.DepHealth{}
-					w.Deps[dep.Source] = dh
+					w.Deps[name] = dh
 				}
 				st := health[dependencyBalancer(sub, dep)]
 				if st == "" {
@@ -157,7 +161,7 @@ func (d Deps) applyWaits(ctx context.Context, sub config.SubscriptionConfig, src
 				switch {
 				case st != state.DepHealthy:
 					dh.RecoveredAt, dh.GraceUntil = nil, nil
-					bad = append(bad, dep.Source)
+					bad = append(bad, name)
 				case dh.State != state.DepHealthy && w.Since != nil:
 					// Healthy again during a wait: the pause starts.
 					dh.RecoveredAt = new(now)

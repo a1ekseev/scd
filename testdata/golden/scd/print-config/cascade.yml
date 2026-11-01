@@ -25,7 +25,7 @@ subscriptions:
         wireguard: {endpointDomainStrategy: UseIPv4}
         balancer: x-proton-balancer
         dialerProxy: chain-warp
-        dependsOn: [{source: warp, health: balancer, recoverGraceSeconds: 240}]
+        dependsOn: [{source: warp, health: balancer, recoverGraceSeconds: 240}, {balancer: pool-en, health: balancer}]
     target:
       address: 127.0.0.1:8080
       inboundSocks: {listen: 127.0.0.1}

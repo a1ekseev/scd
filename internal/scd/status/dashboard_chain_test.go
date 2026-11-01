@@ -55,6 +55,14 @@ func TestDashboardChain(t *testing.T) {
 	page := get(t, NewHandler(l.deps()), "/").Body.String()
 	assertNotContains(t, bodyOf(t, page), "failures reset")
 
+	bd := bodyOf(t, dashboard(t, "chain-balancer-dep", "/"))
+	assertContains(t, groupHTML(t, bd, "x-warp-balancer"),
+		`<span class="metric-label">Waiting for</span><span class="metric-value">pool-en · balancer down since`,
+		`<span class="metric-label">Replace paused</span><span class="metric-value">waiting for pool-en</span>`,
+		`title="health: balancer — balancer pool-en selects an outbound (GetBalancerInfo)`)
+	assertContains(t, groupHTML(t, bd, "x-proton-balancer"), `<span class="metric-label">Depends on</span><span class="metric-value">pool-en · balancer · healthy</span>`)
+	assertNotContains(t, bd, "the balancer of")
+
 	errs := bodyOf(t, dashboard(t, "chain-config-error", "/"))
 	assertContains(t, groupHTML(t, errs, "x-warp-balancer"), `class="bal-head state-degraded"`, "Source not applied.",
 		`title="warp: dialer_proxy_missing"><span class="metric-label">Error</span>`)

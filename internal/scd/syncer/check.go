@@ -22,10 +22,10 @@ const (
 	// to the target (no state), so the source would have nothing to dial
 	// through.
 	CodeDependencyNotApplied = "dependency_not_applied"
-	// CodeBalancerNotFound: Xray has no balancer with the source's balancer
-	// tag.
+	// CodeBalancerNotFound: Xray has no balancer with the tag of the
+	// source's balancer or of a dependency balancer.
 	CodeBalancerNotFound = "balancer_not_found"
-	// CodeRoutingServiceDisabled: the balancer cannot be checked, Xray's
+	// CodeRoutingServiceDisabled: a balancer cannot be checked, Xray's
 	// api.services has no RoutingService.
 	CodeRoutingServiceDisabled = "routing_service_disabled"
 	// CodeDialerProxyMissing: the source's dialerProxy is not an outbound of
@@ -35,7 +35,8 @@ const (
 
 // dependencyOrder returns loaded in dependsOn order: a source after every
 // loaded source it depends on, ties in id order (Kahn's algorithm over the
-// id-ordered list). A dependency that is not loaded in this sync puts no
+// id-ordered list). A dependency that is not loaded in this sync, and a
+// balancer dependency (its Source is "", never pending), put no
 // constraint on the order. The config has no cycle; were there one, its
 // sources would follow the others in id order.
 func dependencyOrder(loaded []manifest.LoadedSource) []manifest.LoadedSource {
@@ -81,10 +82,13 @@ func (f checkFailure) text() string { return f.code + ": " + f.msg }
 // every sync (unchanged sources too), in this order:
 //   - every dependsOn source has state on the target (applied in this or an
 //     earlier sync, an empty topology included): dependency_not_applied;
-//   - its balancer exists in Xray (read-only GetBalancerInfo):
-//     balancer_not_found, or routing_service_disabled without
-//     RoutingService; both are answers of the API, so they end an
-//     xray_unavailable episode like a success;
+//     a balancer dependency needs no state;
+//   - its balancer, then every dependency balancer, exists in Xray
+//     (read-only GetBalancerInfo over one client): balancer_not_found, or
+//     routing_service_disabled without RoutingService (the text of a
+//     dependency balancer starts with `dependency balancer "<tag>": `);
+//     both are answers of the API, so they end an xray_unavailable
+//     episode like a success. Only existence is checked, not health;
 //   - its dialerProxy is an outbound of the target (the list of this sync's
 //     orphan removal): dialer_proxy_missing.
 //
@@ -196,46 +200,76 @@ func firstFailure(r TargetReport) string {
 func (s *Syncer) runChecks(ctx context.Context, l manifest.LoadedSource) (f checkFailure, err error) {
 	c, src := l.Subscription, l.Config
 	t := c.Target
-	if len(src.DependsOn) > 0 {
-		missing := src.DependsOn[0].Source // without target state no dependency is applied
+	missing := "" // without target state no dependsOn source is applied: the first one
+	for _, d := range src.DependsOn {
+		if d.Source != "" {
+			missing = d.Source
+			break
+		}
+	}
+	if missing != "" {
 		s.Memory.View(state.Key(c.ID, t.Address), func(tg *state.Target) {
 			missing = ""
 			for _, d := range src.DependsOn {
-				if tg.Sources[d.Source] == nil {
+				if d.Source != "" && tg.Sources[d.Source] == nil {
 					missing = d.Source
 					break
 				}
 			}
 		})
-		if missing != "" {
-			return checkFailure{CodeDependencyNotApplied, fmt.Sprintf("dependency %q is not applied to the target", missing)}, nil
+	}
+	if missing != "" {
+		return checkFailure{CodeDependencyNotApplied, fmt.Sprintf("dependency %q is not applied to the target", missing)}, nil
+	}
+	// The source's own balancer first, then the dependency balancers in
+	// config order, all over one client.
+	var tags []string
+	if src.Balancer != "" {
+		tags = append(tags, src.Balancer)
+	}
+	for _, d := range src.DependsOn {
+		if d.Balancer != "" {
+			tags = append(tags, d.Balancer)
 		}
 	}
-	if src.Balancer != "" {
-		client, err := s.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
-		if err == nil {
-			_, err = client.GetBalancerInfo(ctx, src.Balancer)
-			_ = client.Close()
+	if len(tags) > 0 {
+		client, dialErr := s.Dial(t.Address, time.Duration(t.TimeoutMs)*time.Millisecond)
+		if dialErr == nil {
+			defer func() { _ = client.Close() }()
 		}
-		var (
-			notFound *xrayapi.BalancerNotFoundError
-			disabled *xrayapi.ServiceDisabledError
-		)
-		switch {
-		case errors.As(err, &notFound):
-			f = checkFailure{CodeBalancerNotFound, err.Error()}
-		case errors.As(err, &disabled):
-			f = checkFailure{CodeRoutingServiceDisabled, err.Error()}
-		case ctx.Err() != nil:
-			return checkFailure{}, ctx.Err()
-		case err != nil:
-			state.NoteXray(ctx, s.Memory, s.Log, c.ID, t.Address, err, s.now())
-			return checkFailure{}, fmt.Errorf("balancer check: %w", err)
-		}
-		// The API answered: a verdict ends an unavailability like a success.
-		state.NoteXray(ctx, s.Memory, s.Log, c.ID, t.Address, nil, s.now())
-		if f.code != "" {
-			return f, nil
+		for i, tag := range tags {
+			err := dialErr
+			if err == nil {
+				_, err = client.GetBalancerInfo(ctx, tag)
+			}
+			own := i == 0 && src.Balancer != ""
+			prefix := ""
+			if !own {
+				prefix = fmt.Sprintf("dependency balancer %q: ", tag)
+			}
+			var (
+				notFound *xrayapi.BalancerNotFoundError
+				disabled *xrayapi.ServiceDisabledError
+			)
+			switch {
+			case errors.As(err, &notFound):
+				f = checkFailure{CodeBalancerNotFound, prefix + err.Error()}
+			case errors.As(err, &disabled):
+				f = checkFailure{CodeRoutingServiceDisabled, prefix + err.Error()}
+			case ctx.Err() != nil:
+				return checkFailure{}, ctx.Err()
+			case err != nil:
+				state.NoteXray(ctx, s.Memory, s.Log, c.ID, t.Address, err, s.now())
+				if own {
+					return checkFailure{}, fmt.Errorf("balancer check: %w", err)
+				}
+				return checkFailure{}, fmt.Errorf("dependency balancer %q check: %w", tag, err)
+			}
+			// The API answered: a verdict ends an unavailability like a success.
+			state.NoteXray(ctx, s.Memory, s.Log, c.ID, t.Address, nil, s.now())
+			if f.code != "" {
+				return f, nil
+			}
 		}
 	}
 	if src.DialerProxy != "" {

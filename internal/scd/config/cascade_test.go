@@ -83,6 +83,19 @@ func TestCascadeKeysLoad(t *testing.T) {
 	}
 }
 
+func TestCascadeBalancerDependencyLoad(t *testing.T) {
+	l, warnings := mustLoad(t, cascade(t, "{source: vless, health: balancer}", "{balancer: pool-en, health: balancer}"))
+	if len(warnings) != 0 {
+		t.Fatalf("warnings %q", warnings)
+	}
+	d := l.Config.Subscriptions[0].Sources[1].DependsOn
+	if !reflect.DeepEqual(d, []DependencyConfig{{Balancer: "pool-en", Health: HealthBalancer, RecoverGraceSeconds: 180}}) || d[0].Name() != "balancer:pool-en" {
+		t.Fatalf("dependsOn %+v", d)
+	}
+	// Both kinds in one list are valid.
+	mustLoad(t, cascade(t, "[{source: vless, health: balancer}]", "[{source: vless, health: balancer}, {balancer: pool-en, health: balancer}]"))
+}
+
 func TestCascadeRules(t *testing.T) {
 	const p = "subscriptions.0.sources."
 	cases := []struct {
@@ -117,6 +130,22 @@ func TestCascadeRules(t *testing.T) {
 			"balancer of a dependency",
 			[]string{"balancer: x-proton-balancer", "balancer: x-balancer"},
 			p + `2.balancer: balancer "x-balancer" is also the balancer of dependency "vless"`,
+		},
+		{"neither key", []string{"{source: vless, health: balancer}", "{health: balancer}"}, p + "1.dependsOn.0: one of source or balancer is required"},
+		{"both keys", []string{"{source: vless, health: balancer}", "{source: vless, balancer: pool-en, health: balancer}"}, p + "1.dependsOn.0: source and balancer are mutually exclusive"},
+		{"empty balancer", []string{"{source: vless, health: balancer}", `{balancer: "", health: balancer}`}, p + "1.dependsOn.0.balancer: must not be empty"},
+		{"balancer health required", []string{"{source: vless, health: balancer}", "{balancer: pool-en}"}, p + "1.dependsOn.0.health: required"},
+		{"own balancer", []string{"{source: vless, health: balancer}", "{balancer: x-warp-balancer, health: balancer}"}, p + "1.dependsOn.0.balancer: a source cannot depend on its own balancer"},
+		{"balancer of another source", []string{"{source: vless, health: balancer}", "{balancer: x-balancer, health: balancer}"}, p + `1.dependsOn.0.balancer: balancer "x-balancer" is the balancer of source "vless": use dependsOn source`},
+		{
+			"balancer of a disabled source",
+			[]string{"        balancer: x-balancer\n", "        balancer: x-balancer\n        enabled: false\n", "{source: vless, health: balancer}", "{balancer: x-balancer, health: balancer}"},
+			p + `1.dependsOn.0.balancer: balancer "x-balancer" is the balancer of source "vless": use dependsOn source`,
+		},
+		{
+			"duplicate balancer",
+			[]string{"[{source: vless, health: balancer}]", "[{balancer: pool-en, health: balancer}, {balancer: pool-en, health: balancer}]"},
+			p + `1.dependsOn.1.balancer: duplicate dependency "balancer:pool-en"`,
 		},
 		{
 			"cycle",
@@ -160,6 +189,18 @@ func TestCascadeWarnings(t *testing.T) {
 		"        balancer: x-proton-balancer\n", "        balancer: x-proton-balancer\n        enabled: false\n"))
 	if len(warnings) != 0 {
 		t.Errorf("disabled source warnings %q", warnings)
+	}
+	// A balancer dependency is no edge: no cycle, and it is not in balancers[].
+	mustLoad(t, cascade(t, "[{source: vless, health: balancer}]", "[{balancer: pool-en, health: balancer}]",
+		"        balancer: x-balancer\n", "        balancer: x-balancer\n        enabled: false\n"))
+	for _, st := range []string{"random", "roundRobin"} {
+		_, warnings = mustLoad(t, cascade(t, "[{source: vless, health: balancer}]", "[{balancer: pool-en, health: balancer}]",
+			"- {tag: x-balancer, selection: {strategy: leastPing}}", "- {tag: pool-en, selection: {strategy: "+st+"}}"))
+		want = []string{`subscriptions.0.sources.1.dependsOn.0.health: balancer "pool-en" has strategy "` + st +
+			`", which selects every candidate; the dependency is always healthy`}
+		if !reflect.DeepEqual(warnings, want) {
+			t.Errorf("%s balancer dependency warnings %q", st, warnings)
+		}
 	}
 	for _, st := range []string{"random", "roundRobin"} {
 		_, warnings = mustLoad(t, cascade(t, "strategy: leastPing", "strategy: "+st))
